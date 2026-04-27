@@ -1,8 +1,14 @@
 "use client";
 
-import { useDashboard } from "@/hooks/use-api";
+import { useState, useMemo } from "react";
+import Link from "next/link";
+import { useDashboard, useAppointments } from "@/hooks/use-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { format, parseISO, addDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   Calendar,
   CheckCircle,
@@ -10,6 +16,8 @@ import {
   AlertTriangle,
   TrendingUp,
   BarChart3,
+  Info,
+  Clock,
 } from "lucide-react";
 import {
   BarChart,
@@ -17,11 +25,12 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend,
   ResponsiveContainer,
 } from "recharts";
 import { PageHeader } from "@/components/layout/page-header";
+import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
 
 function MetricCard({
   title,
@@ -30,6 +39,7 @@ function MetricCard({
   trend,
   className,
   delay = 0,
+  tooltip,
 }: {
   title: string;
   value: string | number;
@@ -37,6 +47,7 @@ function MetricCard({
   trend?: string;
   className?: string;
   delay?: number;
+  tooltip?: string;
 }) {
   return (
     <Card
@@ -44,7 +55,25 @@ function MetricCard({
       style={{ animationDelay: `${delay}ms`, animationFillMode: "forwards" }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          {tooltip && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Sobre ${title}`}
+                  className="text-muted-foreground/60 hover:text-muted-foreground"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[260px] text-xs">
+                {tooltip}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -157,8 +186,106 @@ function computeWeeklyTrend(
   return { diff: Math.round(diff * 10) / 10, improving: diff >= 0 };
 }
 
+function UpcomingAppointments() {
+  const { today, ahead, nowMs } = useMemo(() => {
+    const now = new Date();
+    return {
+      today: format(now, "yyyy-MM-dd"),
+      ahead: format(addDays(now, 7), "yyyy-MM-dd"),
+      nowMs: now.getTime(),
+    };
+  }, []);
+  const { data: appointments, isLoading } = useAppointments({
+    startDate: today,
+    endDate: ahead,
+  });
+
+  const upcoming = (appointments ?? [])
+    .filter(
+      (a) =>
+        new Date(a.dateTime).getTime() >= nowMs && a.status !== "CANCELED",
+    )
+    .sort((a, b) => a.dateTime.localeCompare(b.dateTime))
+    .slice(0, 6);
+
+  return (
+    <Card
+      className="opacity-0 animate-fade-in-up transition-shadow duration-200 hover:shadow-lg"
+      style={{ animationDelay: "300ms", animationFillMode: "forwards" }}
+    >
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base">Próximos agendamentos</CardTitle>
+        <Link
+          href="/agenda"
+          className="text-xs text-primary hover:underline font-medium"
+        >
+          Ver agenda →
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : upcoming.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+            <Calendar className="h-10 w-10 opacity-40 mb-2" />
+            <p className="text-sm">Nenhum agendamento nos próximos 7 dias</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {upcoming.map((apt) => {
+              const dt = parseISO(apt.dateTime);
+              const isToday =
+                format(dt, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+              return (
+                <div
+                  key={apt.id}
+                  className="flex items-center justify-between p-2.5 rounded-lg border bg-card"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {apt.patient?.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {isToday
+                          ? `Hoje, ${format(dt, "HH:mm")}`
+                          : format(dt, "EEE, dd/MM 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge
+                    className={
+                      apt.status === "CONFIRMED"
+                        ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                        : apt.status === "PENDING"
+                        ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400"
+                        : "bg-gray-500/10 text-gray-700 dark:text-gray-400"
+                    }
+                  >
+                    {apt.status === "CONFIRMED"
+                      ? "Confirmado"
+                      : apt.status === "PENDING"
+                      ? "Pendente"
+                      : apt.status}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
-  const { data, isLoading, error } = useDashboard();
+  const [range, setRange] = useState<"7d" | "30d" | "month">("month");
+  const { data, isLoading, error } = useDashboard(range);
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -194,10 +321,37 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        description="Visão geral dos seus agendamentos"
-      />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <PageHeader
+          title="Dashboard"
+          description="Visão geral dos seus agendamentos"
+        />
+        <div className="inline-flex rounded-lg border border-border bg-card p-1 shadow-xs">
+          {(
+            [
+              { v: "7d", label: "7 dias" },
+              { v: "30d", label: "30 dias" },
+              { v: "month", label: "Este mês" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => setRange(opt.v)}
+              className={
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors " +
+                (range === opt.v
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <OnboardingBanner />
 
       {/* Metrics Grid */}
       <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -233,6 +387,7 @@ export default function DashboardPage() {
           icon={AlertTriangle}
           className="text-rose-600 dark:text-rose-400"
           delay={225}
+          tooltip="Soma do valor médio da consulta multiplicado pelo nº de faltas no período. Ajuste o valor médio em Configurações."
         />
       </div>
 
@@ -266,7 +421,7 @@ export default function DashboardPage() {
                   axisLine={false}
                   tickFormatter={(value) => `${value}`}
                 />
-                <Tooltip
+                <RechartsTooltip
                   cursor={{ fill: "var(--color-muted)", opacity: 0.3 }}
                   contentStyle={{
                     backgroundColor: "var(--color-card)",
@@ -299,7 +454,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Summary Cards */}
-        <div className="col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1">
+        <div className="col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1 content-start">
           <Card
             className="h-full flex flex-col justify-center bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20 opacity-0 animate-fade-in-up transition-shadow duration-200 hover:shadow-lg"
             style={{ animationDelay: "275ms", animationFillMode: "forwards" }}
@@ -334,6 +489,8 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      <UpcomingAppointments />
     </div>
   );
 }

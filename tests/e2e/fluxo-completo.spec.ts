@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login } from "./helpers";
+import { login, fillPhoneInput, selectPatient } from "./helpers";
 
 /**
  * Fluxo completo conforme solicitado:
@@ -69,7 +69,7 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
     await expect(page.locator("text=Novo Paciente").nth(1)).toBeVisible();
 
     await page.fill('input[id="name"]', PAC_A);
-    await page.fill('input[id="phone"]', PHONE_A);
+    await fillPhoneInput(page, PHONE_A);
     await page.fill('input[id="email"]', `alpha${TS}@teste.com`);
     await page.click('button[type="submit"]:has-text("Criar")');
 
@@ -85,7 +85,7 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
     await expect(page.locator("text=Novo Paciente").nth(1)).toBeVisible();
 
     await page.fill('input[id="name"]', PAC_B);
-    await page.fill('input[id="phone"]', PHONE_B);
+    await fillPhoneInput(page, PHONE_B);
     await page.fill('input[id="email"]', `beta${TS}@teste.com`);
     await page.click('button[type="submit"]:has-text("Criar")');
 
@@ -107,10 +107,8 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
       await page.click("button:has-text('Novo Agendamento')");
       await expect(page.locator("text=Novo Agendamento").nth(1)).toBeVisible();
 
-      // Select patient Alpha
-      await page.locator('button[role="combobox"]').click();
-      await page.locator('[role="listbox"]').waitFor({ timeout: 5000 });
-      await page.locator('[role="option"]').filter({ hasText: PAC_A }).click();
+      // Select patient Alpha via combobox helper
+      await selectPatient(page, PAC_A);
 
       await page.fill('input[id="date"]', apptDate);
       await page.fill('input[id="time"]', TIMES[i]);
@@ -133,10 +131,8 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
       await page.click("button:has-text('Novo Agendamento')");
       await expect(page.locator("text=Novo Agendamento").nth(1)).toBeVisible();
 
-      // Select patient Beta
-      await page.locator('button[role="combobox"]').click();
-      await page.locator('[role="listbox"]').waitFor({ timeout: 5000 });
-      await page.locator('[role="option"]').filter({ hasText: PAC_B }).click();
+      // Select patient Beta via combobox helper
+      await selectPatient(page, PAC_B);
 
       await page.fill('input[id="date"]', apptDate);
       await page.fill('input[id="time"]', TIMES[i]);
@@ -167,8 +163,11 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
     await expect(page.locator("text=Estatísticas Semanais")).toBeVisible();
 
     // Total deve incluir os novos agendamentos
-    const totalCard = page.locator("text=Total de Agendamentos").locator("..").locator("..").locator(".text-2xl");
-    const totalText = await totalCard.textContent();
+    const totalCard = page
+      .locator("[data-slot='card']")
+      .filter({ hasText: "Total de Agendamentos" })
+      .first();
+    const totalText = await totalCard.locator(".text-2xl").textContent();
     const total = Number(totalText);
     expect(total).toBeGreaterThanOrEqual(8);
 
@@ -290,8 +289,11 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
     await expect(page.locator("text=Estatísticas Semanais")).toBeVisible();
 
     // Total diminuiu (4 agendamentos do Alpha foram cascade-deleted)
-    const totalCard = page.locator("text=Total de Agendamentos").locator("..").locator("..").locator(".text-2xl");
-    const totalText = await totalCard.textContent();
+    const totalCard = page
+      .locator("[data-slot='card']")
+      .filter({ hasText: "Total de Agendamentos" })
+      .first();
+    const totalText = await totalCard.locator(".text-2xl").textContent();
     expect(Number(totalText)).toBeGreaterThanOrEqual(4); // Beta's 4 + seed data
 
     // Summary cards (dashboard has "Confirmados" and "Faltas")
@@ -365,8 +367,11 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
     expect(errorVisible).toBe(false);
 
     // Valores numéricos presentes nos cards (não NaN, não undefined)
-    const totalCard = page.locator("text=Total de Agendamentos").locator("..").locator("..").locator(".text-2xl");
-    const totalText = await totalCard.textContent();
+    const totalCard = page
+      .locator("[data-slot='card']")
+      .filter({ hasText: "Total de Agendamentos" })
+      .first();
+    const totalText = await totalCard.locator(".text-2xl").textContent();
     expect(totalText).toBeTruthy();
     expect(totalText).not.toContain("NaN");
     expect(totalText).not.toContain("undefined");

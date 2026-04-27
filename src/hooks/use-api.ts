@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 
 // Types matching the actual API responses
@@ -17,11 +18,13 @@ type Patient = {
   _count?: {
     appointments: number;
   };
+  noShowCount?: number;
 };
 
 type Appointment = {
   id: string;
   dateTime: string;
+  durationMinutes: number;
   status: string;
   patientId: string;
   userId: string;
@@ -69,9 +72,14 @@ type Settings = {
 // Helper to unwrap ApiResponse
 async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
-  const json = await res.json();
+  if (res.status === 401) {
+    // Stale session (e.g., user removed). Sign out and bounce to /login.
+    await signOut({ callbackUrl: "/login", redirect: true });
+    throw new Error("Sessão expirada");
+  }
+  const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(json.error || "Erro na requisição");
+    throw new Error(json?.error || json?.message || "Erro na requisição");
   }
   return json.data as T;
 }
@@ -86,6 +94,49 @@ export function usePatients(search?: string) {
         : "/api/patients";
       return fetchApi<Patient[]>(url);
     },
+  });
+}
+
+type PaginatedPatients = {
+  data: Patient[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+};
+
+async function fetchPaginated<T>(url: string): Promise<{
+  data: T[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+}> {
+  const res = await fetch(url);
+  if (res.status === 401) {
+    await signOut({ callbackUrl: "/login", redirect: true });
+    throw new Error("Sessão expirada");
+  }
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error || "Erro na requisição");
+  }
+  return { data: json.data, meta: json.meta };
+}
+
+export function usePatientsPaginated({
+  search,
+  page,
+  limit = 20,
+}: {
+  search?: string;
+  page: number;
+  limit?: number;
+}) {
+  return useQuery<PaginatedPatients>({
+    queryKey: ["patients", "paginated", { search, page, limit }],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      return fetchPaginated<Patient>(`/api/patients?${params.toString()}`);
+    },
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -173,7 +224,12 @@ export function useCreateAppointment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (appointment: { patientId: string; dateTime: string; notes?: string }) =>
+    mutationFn: (appointment: {
+      patientId: string;
+      dateTime: string;
+      durationMinutes?: number;
+      notes?: string;
+    }) =>
       fetchApi<Appointment>("/api/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -194,7 +250,14 @@ export function useUpdateAppointment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; patientId?: string; dateTime?: string; status?: string; notes?: string | null }) =>
+    mutationFn: ({ id, ...data }: {
+      id: string;
+      patientId?: string;
+      dateTime?: string;
+      durationMinutes?: number;
+      status?: string;
+      notes?: string | null;
+    }) =>
       fetchApi<Appointment>(`/api/appointments/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -229,10 +292,10 @@ export function useDeleteAppointment() {
 }
 
 // Dashboard
-export function useDashboard() {
+export function useDashboard(range: "7d" | "30d" | "month" = "month") {
   return useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => fetchApi<DashboardStats>("/api/dashboard"),
+    queryKey: ["dashboard", range],
+    queryFn: () => fetchApi<DashboardStats>(`/api/dashboard?range=${range}`),
   });
 }
 

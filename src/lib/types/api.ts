@@ -24,6 +24,7 @@ export type PatientResponse = Patient & {
   _count?: {
     appointments: number
   }
+  noShowCount?: number
 }
 
 export type AppointmentResponse = Appointment & {

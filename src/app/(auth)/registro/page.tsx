@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
 const registerSchema = z.object({
@@ -82,9 +83,11 @@ export default function RegisterPage() {
           <Label htmlFor="name">Seu Nome</Label>
           <Input
             id="name"
+            autoComplete="name"
             placeholder="João Silva"
             {...register("name")}
             disabled={isLoading}
+            aria-invalid={!!errors.name}
           />
           {errors.name && (
             <p className="text-sm text-destructive">{errors.name.message}</p>
@@ -95,9 +98,11 @@ export default function RegisterPage() {
           <Label htmlFor="clinicName">Nome da Clínica</Label>
           <Input
             id="clinicName"
+            autoComplete="organization"
             placeholder="Clínica Saúde & Bem-estar"
             {...register("clinicName")}
             disabled={isLoading}
+            aria-invalid={!!errors.clinicName}
           />
           {errors.clinicName && (
             <p className="text-sm text-destructive">
@@ -111,9 +116,12 @@ export default function RegisterPage() {
           <Input
             id="email"
             type="email"
+            autoComplete="email"
+            inputMode="email"
             placeholder="seu@email.com"
             {...register("email")}
             disabled={isLoading}
+            aria-invalid={!!errors.email}
           />
           {errors.email && (
             <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -122,12 +130,13 @@ export default function RegisterPage() {
 
         <div className="space-y-2">
           <Label htmlFor="password">Senha</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
-            placeholder="••••••"
+            autoComplete="new-password"
+            placeholder="Mínimo 6 caracteres"
             {...register("password")}
             disabled={isLoading}
+            aria-invalid={!!errors.password}
           />
           {errors.password && (
             <p className="text-sm text-destructive">

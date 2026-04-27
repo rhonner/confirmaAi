@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { AppointmentStatus } from "@/generated/prisma/client"
 import { getAuthSession, unauthorizedResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import type { ApiResponse, DashboardStats } from "@/lib/types/api"
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachWeekOfInterval, format } from "date-fns"
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachWeekOfInterval, format, subDays } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 export async function GET(request: NextRequest) {
@@ -23,13 +23,27 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse()
     }
 
+    const { searchParams } = new URL(request.url)
+    const range = searchParams.get("range") ?? "month"
     const now = new Date()
-    const monthStart = startOfMonth(now)
-    const monthEnd = endOfMonth(now)
+
+    let periodStart: Date
+    let periodEnd: Date
+    if (range === "7d") {
+      periodEnd = now
+      periodStart = subDays(now, 7)
+    } else if (range === "30d") {
+      periodEnd = now
+      periodStart = subDays(now, 30)
+    } else {
+      // default: current month
+      periodStart = startOfMonth(now)
+      periodEnd = endOfMonth(now)
+    }
 
     const monthFilter = {
       userId: session.user.id,
-      dateTime: { gte: monthStart, lte: monthEnd },
+      dateTime: { gte: periodStart, lte: periodEnd },
     }
 
     // Use efficient count queries instead of loading all appointments
@@ -60,7 +74,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate weekly data
     const weeks = eachWeekOfInterval(
-      { start: monthStart, end: monthEnd },
+      { start: periodStart, end: periodEnd },
       { weekStartsOn: 0 }
     )
 

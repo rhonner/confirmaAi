@@ -1,17 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { signOut } from "next-auth/react";
-import { Menu, LogOut, Moon, Sun } from "lucide-react";
+import { Menu, LogOut, Moon, Sun, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type AppHeaderProps = {
   clinicName: string;
   onMenuClick: () => void;
+  onToggleCollapsed?: () => void;
+  collapsed?: boolean;
 };
 
-export function AppHeader({ clinicName, onMenuClick }: AppHeaderProps) {
+export function AppHeader({
+  clinicName,
+  onMenuClick,
+  onToggleCollapsed,
+  collapsed,
+}: AppHeaderProps) {
   const { theme, setTheme } = useTheme();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-border bg-background/70 backdrop-blur-xl px-4 lg:px-6">
@@ -24,18 +43,27 @@ export function AppHeader({ clinicName, onMenuClick }: AppHeaderProps) {
       >
         <Menu className="h-5 w-5" />
       </Button>
+      {onToggleCollapsed && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          className="hidden lg:inline-flex"
+        >
+          {collapsed ? (
+            <PanelLeft className="h-5 w-5" />
+          ) : (
+            <PanelLeftClose className="h-5 w-5" />
+          )}
+        </Button>
+      )}
 
       <div className="flex-1">
         <h2 className="text-lg font-semibold tracking-tight">{clinicName}</h2>
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-xs font-medium text-muted-foreground">
-            Online
-          </span>
-        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -49,7 +77,7 @@ export function AppHeader({ clinicName, onMenuClick }: AppHeaderProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => setConfirmLogout(true)}
           className="gap-2 hover:bg-destructive/10 hover:text-destructive transition-colors duration-200"
           aria-label="Sair da conta"
         >
@@ -57,6 +85,23 @@ export function AppHeader({ clinicName, onMenuClick }: AppHeaderProps) {
           <span className="hidden sm:inline">Sair</span>
         </Button>
       </div>
+
+      <AlertDialog open={confirmLogout} onOpenChange={setConfirmLogout}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sair da conta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você precisará entrar novamente para acessar o sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => signOut({ callbackUrl: "/login" })}>
+              Sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }

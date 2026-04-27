@@ -1,0 +1,98 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e7]: C
+          - heading "ConfirmaAí" [level=1] [ref=e8]
+        - navigation [ref=e9]:
+          - link "Dashboard" [ref=e10] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e11]
+            - generic [ref=e16]: Dashboard
+          - link "Agenda" [ref=e17] [cursor=pointer]:
+            - /url: /agenda
+            - img [ref=e19]
+            - generic [ref=e21]: Agenda
+            - img [ref=e22]
+          - link "Pacientes" [ref=e24] [cursor=pointer]:
+            - /url: /pacientes
+            - img [ref=e25]
+            - generic [ref=e30]: Pacientes
+          - link "Configurações" [ref=e31] [cursor=pointer]:
+            - /url: /configuracoes
+            - img [ref=e32]
+            - generic [ref=e35]: Configurações
+        - paragraph [ref=e37]: ConfirmaAí · v0.1
+    - generic [ref=e38]:
+      - banner [ref=e39]:
+        - button "Recolher menu" [ref=e40]:
+          - img
+        - heading "Clínica Saúde Total" [level=2] [ref=e42]
+        - generic [ref=e43]:
+          - button "Alternar tema" [ref=e44]:
+            - img
+          - button "Sair da conta" [ref=e45]:
+            - img
+            - generic [ref=e46]: Sair
+      - main [ref=e47]:
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - heading "Agenda" [level=1] [ref=e52]
+              - paragraph [ref=e53]: Gerencie seus agendamentos
+            - generic [ref=e55]:
+              - link "Exportar CSV" [ref=e56] [cursor=pointer]:
+                - /url: /api/appointments/export
+                - img
+                - generic [ref=e57]: Exportar CSV
+              - button "Novo Agendamento" [ref=e58]:
+                - img
+                - text: Novo Agendamento
+          - generic [ref=e59]:
+            - combobox "Filtrar por status" [ref=e60]:
+              - option "Todos os status" [selected]
+              - option "Pendente"
+              - option "Confirmado"
+              - option "Cancelado"
+              - option "Faltou"
+            - combobox "Filtrar por paciente" [ref=e61]:
+              - option "Todos os pacientes" [selected]
+              - option "Ana Costa"
+              - option "Carla Lima"
+              - option "José Oliveira"
+              - option "Maria Santos"
+              - option "Pac Atualizado 1777253359699"
+              - option "Pac Atualizado 1777253400058"
+              - option "Paciente Beta 1777253354506"
+              - option "Paciente Teste 1777253382912"
+              - option "Paciente Teste 1777253390991"
+              - option "Pedro Souza"
+          - generic [ref=e62]:
+            - button "Anterior" [ref=e63]:
+              - img
+              - text: Anterior
+            - generic [ref=e64]:
+              - img [ref=e65]
+              - generic [ref=e67]: 17 mai - 23 mai 2026
+            - generic [ref=e68]:
+              - button "Hoje" [ref=e69]
+              - button "Próxima" [active] [ref=e70]:
+                - text: Próxima
+                - img
+          - generic [ref=e71]:
+            - img [ref=e72]
+            - generic [ref=e74]:
+              - paragraph [ref=e75]: Nenhum agendamento nesta semana
+              - paragraph [ref=e76]: Agende sua primeira consulta para começar
+            - button "Novo Agendamento" [ref=e77]:
+              - img
+              - text: Novo Agendamento
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e83] [cursor=pointer]:
+    - img [ref=e84]
+  - alert [ref=e87]
+```

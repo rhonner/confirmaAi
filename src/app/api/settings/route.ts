@@ -69,18 +69,21 @@ export async function PUT(request: NextRequest) {
       })
     }
 
-    const { avgAppointmentValue, ...settingsData } = validation.data
+    const { avgAppointmentValue, clinicName, ...settingsData } = validation.data
 
     const settings = await prisma.settings.update({
       where: { userId: session.user.id },
       data: settingsData,
     })
 
-    // Update avgAppointmentValue on User model if provided
-    if (avgAppointmentValue !== undefined) {
+    // Update User-level fields if provided.
+    if (avgAppointmentValue !== undefined || clinicName !== undefined) {
       await prisma.user.update({
         where: { id: session.user.id },
-        data: { avgAppointmentValue },
+        data: {
+          ...(avgAppointmentValue !== undefined ? { avgAppointmentValue } : {}),
+          ...(clinicName !== undefined ? { clinicName } : {}),
+        },
       })
     }
 

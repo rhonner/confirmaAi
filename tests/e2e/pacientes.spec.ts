@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login } from "./helpers";
+import { login, fillPhoneInput } from "./helpers";
 
 test.describe("Pacientes", () => {
   test.beforeEach(async ({ page }) => {
@@ -67,13 +67,15 @@ test.describe("Pacientes", () => {
   test("should create a new patient", async ({ page }) => {
     await page.click("button:has-text('Novo Paciente')");
 
-    // Use unique name to avoid conflicts
-    const uniqueName = `Paciente Teste ${Date.now()}`;
+    // Use unique name and phone to avoid conflicts with previous test runs.
+    const stamp = Date.now();
+    const uniqueName = `Paciente Teste ${stamp}`;
+    const uniquePhone = `+5511${String(stamp).slice(-9)}`;
 
     // Fill form with valid phone format
     await page.fill('input[id="name"]', uniqueName);
-    await page.fill('input[id="phone"]', "+5511999887766");
-    await page.fill('input[id="email"]', `teste${Date.now()}@example.com`);
+    await fillPhoneInput(page, uniquePhone);
+    await page.fill('input[id="email"]', `teste${stamp}@example.com`);
 
     // Submit
     await page.click('button[type="submit"]:has-text("Criar")');
@@ -116,10 +118,12 @@ test.describe("Pacientes", () => {
   test("should delete a patient", async ({ page }) => {
     // First create a patient to delete using the working creation test pattern
     await page.click("button:has-text('Novo Paciente')");
-    const deleteName = `Paciente Teste ${Date.now()}`;
+    const stamp = Date.now();
+    const deleteName = `Paciente Teste ${stamp}`;
+    const uniquePhone = `+5512${String(stamp).slice(-9)}`;
     await page.fill('input[id="name"]', deleteName);
-    await page.fill('input[id="phone"]', "+5511999887766");
-    await page.fill('input[id="email"]', `teste${Date.now()}@example.com`);
+    await fillPhoneInput(page, uniquePhone);
+    await page.fill('input[id="email"]', `teste${stamp}@example.com`);
     await page.click('button[type="submit"]:has-text("Criar")');
 
     // Wait for creation to complete
@@ -134,7 +138,9 @@ test.describe("Pacientes", () => {
 
     // Wait for AlertDialog to appear
     await expect(page.locator('[role="alertdialog"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Excluir paciente')).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Excluir paciente" }),
+    ).toBeVisible();
 
     // Click "Cancelar" to dismiss (not delete, just test the functionality exists)
     await page.locator('[role="alertdialog"] button:has-text("Cancelar")').click();

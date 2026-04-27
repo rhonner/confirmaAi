@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { AppointmentStatus } from "@/generated/prisma/client"
 import { createAppointmentSchema } from "@/lib/validations/appointment"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
+import { findConflictingAppointment } from "@/lib/services/conflict"
 import type { ApiResponse, PaginatedResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -129,7 +130,8 @@ export async function POST(request: NextRequest) {
       return badRequestResponse(validation.error.issues[0].message)
     }
 
-    const { patientId, dateTime, notes } = validation.data
+    const { patientId, dateTime, durationMinutes, notes } = validation.data
+    const duration = durationMinutes ?? 30
 
     // Reject appointments in the past
     const appointmentDate = new Date(dateTime)
@@ -149,23 +151,15 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Paciente não encontrado")
     }
 
-    // Check for overlapping appointments (1-hour window)
-    const windowStart = new Date(appointmentDate.getTime() - 59 * 60 * 1000)
-    const windowEnd = new Date(appointmentDate.getTime() + 59 * 60 * 1000)
-
-    const conflictingAppointment = await prisma.appointment.findFirst({
-      where: {
-        userId: session.user.id,
-        dateTime: {
-          gte: windowStart,
-          lte: windowEnd,
-        },
-        status: { notIn: ["CANCELED", "NO_SHOW"] },
-      },
+    const conflict = await findConflictingAppointment({
+      userId: session.user.id,
+      dateTime: appointmentDate,
+      durationMinutes: duration,
     })
-
-    if (conflictingAppointment) {
-      return badRequestResponse("Já existe um agendamento neste horário")
+    if (conflict) {
+      return badRequestResponse(
+        `Conflito com agendamento de ${conflict.patient.name}`,
+      )
     }
 
     const appointment = await prisma.appointment.create({
@@ -173,6 +167,7 @@ export async function POST(request: NextRequest) {
         patientId,
         userId: session.user.id,
         dateTime: new Date(dateTime),
+        durationMinutes: duration,
         notes,
       },
       include: {

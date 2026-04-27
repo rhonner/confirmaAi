@@ -1,8 +1,9 @@
 "use client";
 
+import * as React from "react";
 import { useState } from "react";
 import {
-  usePatients,
+  usePatientsPaginated,
   useCreatePatient,
   useUpdatePatient,
   useDeletePatient,
@@ -38,16 +39,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/page-header";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { formatPhoneDisplay, PHONE_REGEX } from "@/lib/phone";
 
 const patientSchema = z.object({
-  name: z.string().min(2, "O nome deve ter no mínimo 2 caracteres"),
-  phone: z.string().min(10, "Informe um telefone válido"),
+  name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
+  phone: z.string().regex(PHONE_REGEX, "Informe um celular válido com DDD"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   notes: z.string().optional(),
 });
@@ -64,21 +67,41 @@ export default function PacientesPage() {
     email?: string | null;
     notes?: string | null;
   } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    appointmentsCount: number;
+  } | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data: patients, isLoading } = usePatients(debouncedSearch);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+  const { data: paginated, isLoading } = usePatientsPaginated({
+    search: debouncedSearch,
+    page,
+    limit: PAGE_SIZE,
+  });
+  const patients = paginated?.data;
+  const meta = paginated?.meta;
   const createMutation = useCreatePatient();
   const updateMutation = useUpdatePatient();
   const deleteMutation = useDeletePatient();
+
+  // Reset to page 1 whenever search changes.
+  React.useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    control,
+    setError,
+    formState: { errors, isSubmitting },
   } = useForm<PatientForm>({
     resolver: zodResolver(patientSchema),
+    defaultValues: { name: "", phone: "", email: "", notes: "" },
   });
 
   const handleOpenDialog = (patient?: typeof selectedPatient) => {
@@ -121,7 +144,12 @@ export default function PacientesPage() {
       setDialogOpen(false);
       reset();
     } catch (error) {
-      console.error("Error saving patient:", error);
+      const message = error instanceof Error ? error.message : "";
+      if (/telefone/i.test(message)) {
+        setError("phone", { type: "server", message });
+      } else if (/email/i.test(message)) {
+        setError("email", { type: "server", message });
+      }
     }
   };
 
@@ -138,10 +166,19 @@ export default function PacientesPage() {
         title="Pacientes"
         description="Gerencie seus pacientes/clientes"
         action={
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Paciente
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <a href="/api/patients/export" download>
+                <Download className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Exportar CSV</span>
+                <span className="sm:hidden">CSV</span>
+              </a>
+            </Button>
+            <Button onClick={() => handleOpenDialog()}>
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Paciente
+            </Button>
+          </div>
         }
       />
 
@@ -175,19 +212,28 @@ export default function PacientesPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="phone">Telefone (WhatsApp)</Label>
-                <Input
-                  id="phone"
-                  placeholder="+5511999999999"
-                  {...register("phone")}
+                <Controller
+                  name="phone"
+                  control={control}
+                  render={({ field }) => (
+                    <PhoneInput
+                      id="phone"
+                      placeholder="(11) 99999-9999"
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={!!errors.phone}
+                    />
+                  )}
                 />
-                {errors.phone && (
+                {errors.phone ? (
                   <p className="text-sm text-destructive">
                     {errors.phone.message}
                   </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Será usado para enviar a confirmação automática.
+                  </p>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Incluir código do país e DDD (ex: +5511999999999)
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -215,9 +261,21 @@ export default function PacientesPage() {
                 />
               </div>
 
-              <DialogFooter>
-                <Button type="submit">
-                  {selectedPatient ? "Atualizar" : "Criar"}
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDialogOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting
+                    ? "Salvando..."
+                    : selectedPatient
+                    ? "Atualizar"
+                    : "Criar"}
                 </Button>
               </DialogFooter>
             </form>
@@ -231,8 +289,18 @@ export default function PacientesPage() {
           placeholder="Buscar por nome, telefone ou email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
+          className="pl-10 pr-10"
         />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Limpar busca"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -242,7 +310,9 @@ export default function PacientesPage() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Telefone</TableHead>
-              <TableHead className="hidden sm:table-cell">Email</TableHead>
+              <TableHead className="hidden md:table-cell">Email</TableHead>
+              <TableHead className="text-center hidden sm:table-cell">Consultas</TableHead>
+              <TableHead className="text-center hidden sm:table-cell">Faltas</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -252,7 +322,9 @@ export default function PacientesPage() {
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-28" /></TableCell>
-                  <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell className="hidden sm:table-cell text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
+                  <TableCell className="hidden sm:table-cell text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
                   <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                 </TableRow>
               ))
@@ -260,9 +332,21 @@ export default function PacientesPage() {
               patients.map((patient) => (
                 <TableRow key={patient.id} className="transition-colors duration-150 hover:bg-accent/50 cursor-default">
                   <TableCell className="font-medium">{patient.name}</TableCell>
-                  <TableCell>{patient.phone}</TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell className="font-mono text-sm">{formatPhoneDisplay(patient.phone)}</TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {patient.email || "-"}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell text-center text-sm tabular-nums">
+                    {patient._count?.appointments ?? 0}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell text-center text-sm tabular-nums">
+                    {(patient.noShowCount ?? 0) > 0 ? (
+                      <span className="text-rose-600 dark:text-rose-400 font-medium">
+                        {patient.noShowCount}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -277,7 +361,13 @@ export default function PacientesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setDeleteTarget({ id: patient.id, name: patient.name })}
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: patient.id,
+                            name: patient.name,
+                            appointmentsCount: patient._count?.appointments ?? 0,
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                         <span className="sr-only">Excluir</span>
@@ -288,7 +378,7 @@ export default function PacientesPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-12">
+                <TableCell colSpan={6} className="text-center py-12">
                   <div className="flex flex-col items-center gap-3">
                     <Users className="h-12 w-12 text-muted-foreground/50" />
                     <div>
@@ -315,14 +405,51 @@ export default function PacientesPage() {
         </Table>
       </div>
 
+      {/* Pagination */}
+      {meta && meta.totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <p className="text-muted-foreground">
+            Página {meta.page} de {meta.totalPages} · {meta.total} paciente
+            {meta.total !== 1 ? "s" : ""}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={meta.page <= 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+              disabled={meta.page >= meta.totalPages}
+            >
+              Próxima
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir paciente</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o paciente <strong>{deleteTarget?.name}</strong>?
-              Isso também excluirá todos os agendamentos relacionados. Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir <strong>{deleteTarget?.name}</strong>?
+              {deleteTarget && deleteTarget.appointmentsCount > 0 && (
+                <>
+                  {" "}Isso também excluirá <strong>{deleteTarget.appointmentsCount}</strong>{" "}
+                  agendamento{deleteTarget.appointmentsCount !== 1 ? "s" : ""} relacionado
+                  {deleteTarget.appointmentsCount !== 1 ? "s" : ""}.
+                </>
+              )}{" "}
+              Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

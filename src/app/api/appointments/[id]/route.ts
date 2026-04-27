@@ -8,6 +8,7 @@ import {
   notFoundResponse,
   serverErrorResponse
 } from "@/lib/auth-helpers"
+import { findConflictingAppointment } from "@/lib/services/conflict"
 import type { ApiResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(
@@ -83,7 +84,7 @@ export async function PUT(
       return badRequestResponse(validation.error.issues[0].message)
     }
 
-    const { patientId, dateTime, status, notes } = validation.data
+    const { patientId, dateTime, durationMinutes, status, notes } = validation.data
 
     // If patientId is being changed, verify it belongs to user
     if (patientId && patientId !== existingAppointment.patientId) {
@@ -99,32 +100,33 @@ export async function PUT(
       }
     }
 
-    // If dateTime is being changed, check for overlapping appointments (1-hour window)
-    if (dateTime && new Date(dateTime).getTime() !== existingAppointment.dateTime.getTime()) {
-      const newDateTime = new Date(dateTime)
-      const windowStart = new Date(newDateTime.getTime() - 59 * 60 * 1000)
-      const windowEnd = new Date(newDateTime.getTime() + 59 * 60 * 1000)
+    const willChangeSchedule =
+      (dateTime !== undefined &&
+        new Date(dateTime).getTime() !== existingAppointment.dateTime.getTime()) ||
+      (durationMinutes !== undefined &&
+        durationMinutes !== existingAppointment.durationMinutes)
 
-      const conflictingAppointment = await prisma.appointment.findFirst({
-        where: {
-          userId: session.user.id,
-          dateTime: {
-            gte: windowStart,
-            lte: windowEnd,
-          },
-          status: { notIn: ["CANCELED", "NO_SHOW"] },
-          id: { not: id },
-        },
+    if (willChangeSchedule) {
+      const conflict = await findConflictingAppointment({
+        userId: session.user.id,
+        dateTime: dateTime
+          ? new Date(dateTime)
+          : existingAppointment.dateTime,
+        durationMinutes:
+          durationMinutes ?? existingAppointment.durationMinutes,
+        ignoreId: id,
       })
-
-      if (conflictingAppointment) {
-        return badRequestResponse("Já existe um agendamento neste horário")
+      if (conflict) {
+        return badRequestResponse(
+          `Conflito com agendamento de ${conflict.patient.name}`,
+        )
       }
     }
 
     const updateData: any = {}
     if (patientId !== undefined) updateData.patientId = patientId
     if (dateTime !== undefined) updateData.dateTime = new Date(dateTime)
+    if (durationMinutes !== undefined) updateData.durationMinutes = durationMinutes
     if (status !== undefined) updateData.status = status
     if (notes !== undefined) updateData.notes = notes
 

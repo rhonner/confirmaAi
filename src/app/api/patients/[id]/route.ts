@@ -90,7 +90,10 @@ export async function PUT(
       data: patient,
       message: "Paciente atualizado com sucesso",
     })
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      return badRequestResponse("Telefone já cadastrado para este usuário")
+    }
     console.error("PUT patient error:", error)
     return serverErrorResponse()
   }

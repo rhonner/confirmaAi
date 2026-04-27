@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login } from "./helpers";
+import { login, fillPhoneInput, displayPhone, selectPatient } from "./helpers";
 
 /**
  * Comprehensive CRUD lifecycle tests.
@@ -16,25 +16,29 @@ import { login } from "./helpers";
  */
 
 const TS = Date.now();
+const last9 = String(TS).slice(-9);
 
 const PATIENT = {
   name: `Paciente E2E ${TS}`,
-  phone: "+5511988776655",
+  // Unique phones per run to avoid collisions with prior leftover data.
+  phone: `+5513${last9}`,
   email: `e2e${TS}@teste.com`,
   notes: "Criado via Playwright E2E",
 };
 
 const PATIENT_UPDATED = {
   name: `Pac Atualizado ${TS}`,
-  phone: "+5511977665544",
+  phone: `+5514${last9}`,
 };
 
 // Tomorrow's date in YYYY-MM-DD for the appointment (ensures it's always in the future)
 const tomorrow = new Date();
 tomorrow.setDate(tomorrow.getDate() + 1);
 const APPT_DATE = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
-const APPT_TIME = "10:00";
-const APPT_TIME_UPDATED = "10:15";
+// Use unusual times to avoid conflicting with seed appointments (which use
+// 10:00 / 14:00 / 15:00 / 16:00).
+const APPT_TIME = "07:30";
+const APPT_TIME_UPDATED = "08:15";
 
 test.describe("Full CRUD Lifecycle", () => {
   test.describe.configure({ mode: "serial" });
@@ -54,7 +58,7 @@ test.describe("Full CRUD Lifecycle", () => {
 
     // Fill all fields
     await page.fill('input[id="name"]', PATIENT.name);
-    await page.fill('input[id="phone"]', PATIENT.phone);
+    await fillPhoneInput(page, PATIENT.phone);
     await page.fill('input[id="email"]', PATIENT.email);
     await page.fill('textarea[id="notes"]', PATIENT.notes);
 
@@ -81,8 +85,8 @@ test.describe("Full CRUD Lifecycle", () => {
     const row = page.locator(`tr:has-text("${PATIENT.name}")`);
     await expect(row).toBeVisible();
 
-    // Verify phone number is in the row
-    await expect(row.locator(`text=${PATIENT.phone}`)).toBeVisible();
+    // Verify phone number is in the row (formatted display)
+    await expect(row.locator(`text=${displayPhone(PATIENT.phone)}`)).toBeVisible();
   });
 
   test("Search filters to find the patient", async ({ page }) => {
@@ -119,17 +123,13 @@ test.describe("Full CRUD Lifecycle", () => {
     // Verify edit dialog opened with pre-filled values
     await expect(page.locator("text=Editar Paciente")).toBeVisible({ timeout: 10000 });
     await expect(page.locator('input[id="name"]')).toHaveValue(PATIENT.name);
-    await expect(page.locator('input[id="phone"]')).toHaveValue(PATIENT.phone);
+    await expect(page.locator('input[id="phone"]')).toHaveValue(displayPhone(PATIENT.phone));
 
-    // Clear and fill name - use triple-click + type to ensure RHF detects change
-    const nameInput = page.locator('input[id="name"]');
-    await nameInput.click({ clickCount: 3 });
-    await nameInput.pressSequentially(PATIENT_UPDATED.name, { delay: 5 });
+    // Clear and fill name (fill replaces the value cleanly for controlled inputs)
+    await page.fill('input[id="name"]', PATIENT_UPDATED.name);
 
-    // Clear and fill phone
-    const phoneInput = page.locator('input[id="phone"]');
-    await phoneInput.click({ clickCount: 3 });
-    await phoneInput.pressSequentially(PATIENT_UPDATED.phone, { delay: 5 });
+    // Clear and fill phone (using helper that handles +55 prefix)
+    await fillPhoneInput(page, PATIENT_UPDATED.phone);
 
     // Wait for React to process the changes
     await page.waitForTimeout(300);
@@ -166,7 +166,7 @@ test.describe("Full CRUD Lifecycle", () => {
     // Verify the updated values are still there
     const row = page.locator(`tr:has-text("${PATIENT_UPDATED.name}")`);
     await expect(row).toBeVisible();
-    await expect(row.locator(`text=${PATIENT_UPDATED.phone}`)).toBeVisible();
+    await expect(row.locator(`text=${displayPhone(PATIENT_UPDATED.phone)}`)).toBeVisible();
   });
 
   // ═══════════════════════════════════════════
@@ -182,24 +182,30 @@ test.describe("Full CRUD Lifecycle", () => {
     await page.click("button:has-text('Novo Agendamento')");
     await expect(page.locator("text=Novo Agendamento").nth(1)).toBeVisible();
 
-    // Select patient via Radix UI Select component
-    await page.locator('button[role="combobox"]').click();
-    await page.locator('[role="listbox"]').waitFor({ timeout: 5000 });
-    await page
-      .locator('[role="option"]')
-      .filter({ hasText: PATIENT_UPDATED.name })
-      .click();
+    // Select patient via combobox
+    await selectPatient(page, PATIENT_UPDATED.name);
 
     // Fill date (tomorrow) and time
     await page.fill('input[id="date"]', APPT_DATE);
     await page.fill('input[id="time"]', APPT_TIME);
     await page.fill('textarea[id="notes"]', "Consulta criada via E2E");
 
-    // Submit
-    await page.click('button[type="submit"]:has-text("Criar")');
+    // Submit and wait for the API to confirm 201
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) =>
+          resp.url().endsWith("/api/appointments") &&
+          resp.request().method() === "POST",
+        { timeout: 10000 },
+      ),
+      page.click('button[type="submit"]:has-text("Criar")'),
+    ]);
+    expect(response.status()).toBe(201);
 
     // Verify success toast
-    await expect(page.locator('[data-sonner-toast]')).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.locator('[data-sonner-toast]:has-text("criado com sucesso")'),
+    ).toBeVisible({ timeout: 10000 });
     await page.waitForTimeout(2000);
   });
 
@@ -212,16 +218,14 @@ test.describe("Full CRUD Lifecycle", () => {
     await page.goto("/agenda");
     await page.waitForTimeout(1500);
 
-    // Navigate to next week if appointment (tomorrow) isn't in current week view
-    let card = page.locator(".cursor-pointer").filter({
-      hasText: PATIENT_UPDATED.name,
-    });
-    if (await card.count() === 0) {
+    // Navigate forward through up to 3 weeks until we find the appointment.
+    let attempts = 0;
+    let card = page.locator(".cursor-pointer").filter({ hasText: PATIENT_UPDATED.name });
+    while ((await card.count()) === 0 && attempts < 3) {
       await page.click('button:has-text("Próxima")');
       await page.waitForTimeout(1500);
-      card = page.locator(".cursor-pointer").filter({
-        hasText: PATIENT_UPDATED.name,
-      });
+      card = page.locator(".cursor-pointer").filter({ hasText: PATIENT_UPDATED.name });
+      attempts++;
     }
     await expect(card.first()).toBeVisible({ timeout: 10000 });
 
@@ -241,18 +245,17 @@ test.describe("Full CRUD Lifecycle", () => {
     await page.goto("/agenda");
     await page.waitForTimeout(1500);
 
-    // Navigate to next week if appointment isn't in current week view
-    if (await page.locator(".cursor-pointer").filter({ hasText: PATIENT_UPDATED.name }).count() === 0) {
+    // Navigate forward up to 3 weeks until the appointment for our patient is in view.
+    const patientText = page.getByText(PATIENT_UPDATED.name).first();
+    let attempts = 0;
+    while ((await patientText.count()) === 0 && attempts < 3) {
       await page.click('button:has-text("Próxima")');
       await page.waitForTimeout(1500);
+      attempts++;
     }
-
-    // Click the appointment card to open edit dialog
-    await page
-      .locator(".cursor-pointer")
-      .filter({ hasText: PATIENT_UPDATED.name })
-      .first()
-      .click();
+    await expect(patientText).toBeVisible({ timeout: 10000 });
+    // Click the patient text — its parent has the onClick that opens the edit dialog.
+    await patientText.click();
 
     // Verify edit dialog opened
     await expect(page.locator("text=Editar Agendamento")).toBeVisible({
@@ -523,12 +526,11 @@ test.describe("Full CRUD Lifecycle", () => {
     await expect(page.locator("text=Faltas").first()).toBeVisible({ timeout: 10000 });
 
     // Verify actual numeric values are displayed (not loading/error)
-    const totalText = await page
-      .locator("text=Total de Agendamentos")
-      .locator("..")
-      .locator("..")
-      .locator(".text-2xl")
-      .textContent();
+    const totalCard = page
+      .locator("[data-slot='card']")
+      .filter({ hasText: "Total de Agendamentos" })
+      .first();
+    const totalText = await totalCard.locator(".text-2xl").textContent();
     expect(Number(totalText)).toBeGreaterThanOrEqual(0);
   });
 
@@ -605,8 +607,12 @@ test.describe("Full CRUD Lifecycle", () => {
     await page.goto("/dashboard");
     await page.waitForTimeout(1000);
 
-    // Click the "Sair" button
-    await page.click('button:has-text("Sair")');
+    // Click the "Sair" button in the header (opens confirmation dialog)
+    await page.locator('header button[aria-label="Sair da conta"]').click();
+
+    // Confirm in the AlertDialog
+    await expect(page.locator('[role="alertdialog"]')).toBeVisible();
+    await page.locator('[role="alertdialog"] button:has-text("Sair")').click();
 
     // Should redirect to login
     await page.waitForURL("**/login", { timeout: 10000 });

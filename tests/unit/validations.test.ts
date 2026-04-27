@@ -212,7 +212,7 @@ describe("Settings validations", () => {
 
     it("fails when confirmationHoursBefore exceeds max", () => {
       const invalidData = {
-        confirmationHoursBefore: 73,
+        confirmationHoursBefore: 169,
       };
 
       const result = updateSettingsSchema.safeParse(invalidData);
@@ -230,9 +230,9 @@ describe("Settings validations", () => {
       expect(result.success).toBe(false);
     });
 
-    it("fails when reminderHoursBefore exceeds 24", () => {
+    it("fails when reminderHoursBefore exceeds max", () => {
       const invalidData = {
-        reminderHoursBefore: 25,
+        reminderHoursBefore: 169,
       };
 
       const result = updateSettingsSchema.safeParse(invalidData);

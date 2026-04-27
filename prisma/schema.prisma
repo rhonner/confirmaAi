@@ -70,6 +70,7 @@ model Patient {
 model Appointment {
   id                  String            @id @default(cuid())
   dateTime            DateTime
+  durationMinutes     Int               @default(30)
   status              AppointmentStatus @default(PENDING)
   patientId           String
   userId              String

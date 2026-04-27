@@ -49,8 +49,25 @@ export async function GET(request: NextRequest) {
         prisma.patient.count({ where }),
       ])
 
+      const noShowCounts = patients.length
+        ? await prisma.appointment.groupBy({
+            by: ["patientId"],
+            where: {
+              patientId: { in: patients.map((p) => p.id) },
+              status: "NO_SHOW",
+            },
+            _count: { _all: true },
+          })
+        : []
+      const noShowMap = new Map(
+        noShowCounts.map((c) => [c.patientId, c._count._all]),
+      )
+
       return NextResponse.json<PaginatedResponse<PatientResponse>>({
-        data: patients,
+        data: patients.map((p) => ({
+          ...p,
+          noShowCount: noShowMap.get(p.id) ?? 0,
+        })),
         meta: {
           total,
           page,
@@ -71,8 +88,27 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    const noShowCounts = patients.length
+      ? await prisma.appointment.groupBy({
+          by: ["patientId"],
+          where: {
+            patientId: { in: patients.map((p) => p.id) },
+            status: "NO_SHOW",
+          },
+          _count: { _all: true },
+        })
+      : []
+    const noShowMap = new Map(
+      noShowCounts.map((c) => [c.patientId, c._count._all]),
+    )
+
+    const enriched = patients.map((p) => ({
+      ...p,
+      noShowCount: noShowMap.get(p.id) ?? 0,
+    }))
+
     return NextResponse.json<ApiResponse<PatientResponse[]>>({
-      data: patients,
+      data: enriched,
     })
   } catch (error) {
     console.error("GET patients error:", error)

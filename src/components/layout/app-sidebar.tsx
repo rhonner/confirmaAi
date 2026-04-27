@@ -9,6 +9,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -20,37 +21,46 @@ const navigation = [
 type AppSidebarProps = {
   pathname: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
 };
 
-export function AppSidebar({ pathname, onNavigate }: AppSidebarProps) {
+export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSidebarProps) {
   return (
     <div className="flex h-full flex-col glass-sidebar">
       {/* Logo */}
-      <div className="border-b border-sidebar-border p-6 flex items-center gap-3">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+      <div
+        className={cn(
+          "border-b border-sidebar-border flex items-center gap-3",
+          collapsed ? "p-4 justify-center" : "p-6",
+        )}
+      >
+        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
           <span className="text-primary-foreground font-bold text-sm">C</span>
         </div>
-        <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
-          ConfirmaAí
-        </h1>
+        {!collapsed && (
+          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
+            ConfirmaAí
+          </h1>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4">
-        {navigation.map((item, index) => {
+      <nav className={cn("flex-1 space-y-1", collapsed ? "p-2" : "p-4")}>
+        {navigation.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
-          return (
+          const linkContent = (
             <Link
               key={item.name}
               href={item.href}
               onClick={onNavigate}
+              aria-label={collapsed ? item.name : undefined}
               className={cn(
-                "group relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 border border-transparent",
-                "",
+                "group relative flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200 border border-transparent",
+                collapsed ? "px-3 py-3 justify-center" : "px-4 py-3",
                 isActive
                   ? "bg-primary/10 text-primary border-primary/20"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
             >
               {isActive && (
@@ -58,30 +68,38 @@ export function AppSidebar({ pathname, onNavigate }: AppSidebarProps) {
               )}
               <Icon
                 className={cn(
-                  "h-5 w-5 transition-transform duration-200 group-hover:scale-110",
-                  isActive && "text-primary"
+                  "h-5 w-5 transition-transform duration-200 group-hover:scale-110 shrink-0",
+                  isActive && "text-primary",
                 )}
               />
-              <span className="flex-1">{item.name}</span>
-              {isActive && (
+              {!collapsed && <span className="flex-1">{item.name}</span>}
+              {!collapsed && isActive && (
                 <ChevronRight className="h-4 w-4 animate-fade-in text-primary/60" />
               )}
             </Link>
           );
+
+          return collapsed ? (
+            <Tooltip key={item.name}>
+              <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                {item.name}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            linkContent
+          );
         })}
       </nav>
 
-      {/* Plan Card */}
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="rounded-xl bg-gradient-to-br from-primary/10 to-teal-500/10 p-4 border border-border">
-          <p className="text-xs text-muted-foreground mb-2 font-medium">
-            Plano Pro
+      {/* Footer */}
+      {!collapsed && (
+        <div className="p-4 border-t border-sidebar-border">
+          <p className="text-xs text-muted-foreground text-center">
+            ConfirmaAí · v0.1
           </p>
-          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-primary to-teal-400 w-[75%] rounded-full transition-all duration-500" />
-          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

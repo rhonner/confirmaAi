@@ -16,7 +16,7 @@ export default function DashboardLayout({
   const { data: session, status } = useSession();
   const router = useRouter();
   const pathname = usePathname();
-  const { isOpen, setOpen } = useSidebarStore();
+  const { isOpen, setOpen, collapsed, toggleCollapsed } = useSidebarStore();
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -47,8 +47,12 @@ export default function DashboardLayout({
       </div>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden w-72 border-r border-border bg-sidebar/80 backdrop-blur-xl lg:block z-20 animate-slide-in-left">
-        <AppSidebar pathname={pathname} />
+      <aside
+        className={`hidden border-r border-border bg-sidebar/80 backdrop-blur-xl lg:block z-20 animate-slide-in-left transition-[width] duration-200 ${
+          collapsed ? "w-20" : "w-72"
+        }`}
+      >
+        <AppSidebar pathname={pathname} collapsed={collapsed} />
       </aside>
 
       {/* Mobile Sidebar */}
@@ -69,6 +73,8 @@ export default function DashboardLayout({
         <AppHeader
           clinicName={clinicName}
           onMenuClick={() => setOpen(true)}
+          onToggleCollapsed={toggleCollapsed}
+          collapsed={collapsed}
         />
 
         {/* Page Content */}
