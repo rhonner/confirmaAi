@@ -444,9 +444,10 @@ export default function PacientesPage() {
               Tem certeza que deseja excluir <strong>{deleteTarget?.name}</strong>?
               {deleteTarget && deleteTarget.appointmentsCount > 0 && (
                 <>
-                  {" "}Isso também excluirá <strong>{deleteTarget.appointmentsCount}</strong>{" "}
-                  agendamento{deleteTarget.appointmentsCount !== 1 ? "s" : ""} relacionado
-                  {deleteTarget.appointmentsCount !== 1 ? "s" : ""}.
+                  {" "}Os <strong>{deleteTarget.appointmentsCount}</strong>{" "}
+                  agendamento{deleteTarget.appointmentsCount !== 1 ? "s" : ""} passado
+                  {deleteTarget.appointmentsCount !== 1 ? "s" : ""} também serão removidos.
+                  Se houver agendamentos futuros ativos, a exclusão será bloqueada.
                 </>
               )}{" "}
               Esta ação não pode ser desfeita.

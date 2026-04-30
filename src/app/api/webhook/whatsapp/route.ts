@@ -2,40 +2,53 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResponse } from "@/lib/services/webhook-parser";
 
+// WAHA webhook payload (event=message):
+// {
+//   event: "message",
+//   session: "default",
+//   payload: {
+//     id: "false_5511...@c.us_AAA",
+//     from: "5511999999999@c.us",
+//     fromMe: false,
+//     body: "Sim",
+//     hasMedia: false,
+//     timestamp: 1700000000,
+//     ...
+//   }
+// }
+//
+// Auth: WAHA optionally signs the request via X-Api-Key (we require it).
+
 export async function POST(request: NextRequest) {
   try {
-    const apiKey =
-      request.headers.get("apikey") || request.headers.get("x-api-key");
-    if (!apiKey || apiKey !== process.env.EVOLUTION_API_KEY) {
+    const apiKey = request.headers.get("x-api-key") || request.headers.get("apikey");
+    const expected = process.env.WAHA_API_KEY;
+    if (!expected || !apiKey || apiKey !== expected) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body) return NextResponse.json({ received: true });
 
-    const remoteJid = body?.data?.key?.remoteJid;
-    if (!remoteJid) {
+    // Only process inbound text messages.
+    if (body.event && body.event !== "message") {
       return NextResponse.json({ received: true });
     }
+    const payload = body.payload ?? body;
+    if (payload?.fromMe) return NextResponse.json({ received: true });
 
-    const rawPhone = remoteJid.replace("@s.whatsapp.net", "");
+    const from: string | undefined = payload?.from;
+    const messageText: string | undefined = payload?.body;
+    if (!from || !messageText) return NextResponse.json({ received: true });
+
+    // "5511999999999@c.us" -> "+5511999999999"
+    const rawPhone = from.split("@")[0];
+    if (!rawPhone) return NextResponse.json({ received: true });
     const phone = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
 
-    const messageText =
-      body?.data?.message?.conversation ||
-      body?.data?.message?.extendedTextMessage?.text;
-
-    if (!messageText) {
-      return NextResponse.json({ received: true });
-    }
-
     const responseType = parseResponse(messageText);
-    if (!responseType) {
-      return NextResponse.json({ received: true });
-    }
+    if (!responseType) return NextResponse.json({ received: true });
 
-    // Find the appointment most recently sent a confirmation for this phone.
-    // Order by confirmationSentAt desc to match the appointment the patient
-    // is most likely responding to. Also verify tenant consistency.
     const appointment = await prisma.appointment.findFirst({
       where: {
         patient: { phone },
@@ -54,10 +67,7 @@ export async function POST(request: NextRequest) {
     if (responseType === "CONFIRMED") {
       await prisma.appointment.update({
         where: { id: appointment.id },
-        data: {
-          status: "CONFIRMED",
-          confirmedAt: new Date(),
-        },
+        data: { status: "CONFIRMED", confirmedAt: new Date() },
       });
     } else if (responseType === "CANCELED") {
       await prisma.appointment.update({
@@ -68,15 +78,12 @@ export async function POST(request: NextRequest) {
 
     await prisma.messageLog.updateMany({
       where: { appointmentId: appointment.id },
-      data: {
-        response: messageText,
-        respondedAt: new Date(),
-      },
+      data: { response: messageText, respondedAt: new Date() },
     });
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("Error in WhatsApp webhook:", error);
+    console.error("Error in WAHA webhook:", error);
     return NextResponse.json({ received: true });
   }
 }

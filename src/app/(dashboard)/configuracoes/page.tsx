@@ -29,14 +29,22 @@ import { PageHeader } from "@/components/layout/page-header";
 
 const MESSAGE_MAX_LENGTH = 1000;
 
-const settingsSchema = z.object({
-  clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200),
-  confirmationHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
-  reminderHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
-  confirmationMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
-  reminderMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
-  avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo"),
-});
+const settingsSchema = z
+  .object({
+    clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200),
+    confirmationHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
+    reminderHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
+    confirmationMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
+    reminderMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
+    avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo"),
+  })
+  .refine(
+    (d) => d.reminderHoursBefore < d.confirmationHoursBefore,
+    {
+      message: "O lembrete deve ser enviado depois da confirmação (use uma antecedência menor)",
+      path: ["reminderHoursBefore"],
+    },
+  );
 
 type SettingsForm = z.infer<typeof settingsSchema>;
 
@@ -433,26 +441,45 @@ export default function ConfiguracoesPage() {
       </form>
 
       <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Conectar WhatsApp</DialogTitle>
+            <DialogTitle>Conectar WhatsApp via WAHA</DialogTitle>
             <DialogDescription>
-              Integração via Evolution API ou Z-API.
+              Integração com WAHA (WhatsApp HTTP API).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <p>
-              A conexão real exige credenciais da sua conta no provedor de WhatsApp.
-              Esta etapa será disponibilizada em breve.
+              O ConfirmaAí envia mensagens chamando{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                POST {"{WAHA_API_URL}"}/api/sendText
+              </code>{" "}
+              com o header <code className="rounded bg-muted px-1 py-0.5 text-xs">X-Api-Key</code>.
             </p>
             <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
-              <li>Crie uma instância no Evolution API ou Z-API</li>
-              <li>Copie a API Key gerada</li>
-              <li>Cole aqui — vamos validar e conectar automaticamente</li>
+              <li>
+                Suba o WAHA (Docker):{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  docker run -p 3001:3000 devlikeapro/waha
+                </code>
+              </li>
+              <li>Acesse o dashboard e faça o pareamento via QR code da sessão</li>
+              <li>
+                Defina <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_API_URL</code>,{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_API_KEY</code> e{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_SESSION</code> no{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code>
+              </li>
+              <li>
+                Configure o webhook do WAHA para{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                  {"{NEXT_PUBLIC_APP_URL}"}/api/webhook/whatsapp
+                </code>{" "}
+                com o mesmo <code className="rounded bg-muted px-1 py-0.5 text-xs">X-Api-Key</code>
+              </li>
             </ol>
             <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-              💡 Enquanto isso, você pode editar as mensagens e horários acima — elas
-              já estão prontas para o envio quando a conexão for ativada.
+              💡 As mensagens e horários acima já ficam ativos assim que o WAHA estiver pareado.
             </div>
           </div>
           <DialogFooter>

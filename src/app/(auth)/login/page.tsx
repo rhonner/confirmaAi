@@ -10,7 +10,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
@@ -24,7 +23,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [remember, setRemember] = useState(true);
 
   const {
     register,
@@ -46,14 +44,6 @@ export default function LoginPage() {
       if (result?.error) {
         toast.error("Email ou senha incorretos");
       } else if (result?.ok) {
-        // Persist the user's "remember me" preference. When unchecked we'll sign out
-        // automatically on tab close (logic lives in components/layout/session-watch.tsx).
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(
-            "confirmaai:remember-me",
-            remember ? "1" : "0",
-          );
-        }
         toast.success("Login realizado com sucesso");
         router.push("/dashboard");
       }
@@ -115,20 +105,6 @@ export default function LoginPage() {
               {errors.password.message}
             </p>
           )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="remember"
-            checked={remember}
-            onCheckedChange={(v) => setRemember(v === true)}
-          />
-          <Label
-            htmlFor="remember"
-            className="text-sm font-normal text-muted-foreground cursor-pointer"
-          >
-            Manter conectado neste dispositivo
-          </Label>
         </div>
 
         <Button type="submit" className="w-full" disabled={isLoading}>

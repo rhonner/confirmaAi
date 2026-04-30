@@ -64,10 +64,10 @@ export async function GET(request: NextRequest) {
     const notConfirmed = notConfirmedCount + pendingCount
 
     const confirmationRate = totalAppointments > 0
-      ? Math.round((confirmed / totalAppointments) * 100)
+      ? Number(((confirmed / totalAppointments) * 100).toFixed(1))
       : 0
     const noShowRate = totalAppointments > 0
-      ? Math.round((noShow / totalAppointments) * 100)
+      ? Number(((noShow / totalAppointments) * 100).toFixed(1))
       : 0
     const avgValue = Number(user.avgAppointmentValue)
     const estimatedLoss = Number((noShow * avgValue).toFixed(2))

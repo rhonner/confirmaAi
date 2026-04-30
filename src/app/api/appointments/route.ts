@@ -26,29 +26,28 @@ export async function GET(request: NextRequest) {
       userId: session.user.id,
     }
 
-    if (date) {
-      const startOfDay = new Date(date)
-      startOfDay.setHours(0, 0, 0, 0)
-      const endOfDay = new Date(date)
-      endOfDay.setHours(23, 59, 59, 999)
+    // Treat bare date strings ("yyyy-MM-dd") as a full LOCAL day so we don't
+    // drop appointments after midnight UTC for timezones west of UTC.
+    const bareDate = /^(\d{4})-(\d{2})-(\d{2})$/
+    const startOf = (v: string) => {
+      const m = v.match(bareDate)
+      if (m) return new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0)
+      return new Date(v)
+    }
+    const endOf = (v: string) => {
+      const m = v.match(bareDate)
+      if (m) return new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999)
+      return new Date(v)
+    }
 
-      where.dateTime = {
-        gte: startOfDay,
-        lte: endOfDay,
-      }
+    if (date) {
+      where.dateTime = { gte: startOf(date), lte: endOf(date) }
     } else if (startDate && endDate) {
-      where.dateTime = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      }
+      where.dateTime = { gte: startOf(startDate), lte: endOf(endDate) }
     } else if (startDate) {
-      where.dateTime = {
-        gte: new Date(startDate),
-      }
+      where.dateTime = { gte: startOf(startDate) }
     } else if (endDate) {
-      where.dateTime = {
-        lte: new Date(endDate),
-      }
+      where.dateTime = { lte: endOf(endDate) }
     }
 
     if (status && Object.values(AppointmentStatus).includes(status as AppointmentStatus)) {

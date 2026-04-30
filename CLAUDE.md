@@ -30,7 +30,7 @@ SaaS para clínicas, psicólogos, dentistas, estética e salões que resolve o p
 **Infraestrutura:**
 - **Deploy Backend**: Railway ou Render
 - **Deploy Frontend**: Vercel
-- **WhatsApp API**: Evolution API (self-hosted) ou Z-API
+- **WhatsApp API**: WAHA (WhatsApp HTTP API, self-hosted)
 - **Cron/Scheduler**: BullMQ com Redis
 
 ### Estrutura de Pastas
@@ -189,8 +189,9 @@ DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 JWT_SECRET=
 JWT_REFRESH_SECRET=
-WHATSAPP_API_URL=
-WHATSAPP_API_KEY=
+WAHA_API_URL=
+WAHA_API_KEY=
+WAHA_SESSION=default
 PORT=3333
 NODE_ENV=development
 ```
