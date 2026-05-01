@@ -14,6 +14,7 @@ async function sendConfirmations(): Promise<void> {
       where: {
         confirmationSentAt: null,
         status: "PENDING",
+        user: { whatsappStatus: "CONNECTED" },
       },
       include: {
         patient: true,
@@ -43,6 +44,7 @@ async function sendConfirmations(): Promise<void> {
       });
 
       const success = await sendWhatsAppMessage(
+        appointment.user.evolutionInstanceName,
         appointment.patient.phone,
         message
       );
@@ -76,6 +78,7 @@ async function sendReminders(): Promise<void> {
         confirmationSentAt: { not: null },
         reminderSentAt: null,
         status: "PENDING",
+        user: { whatsappStatus: "CONNECTED" },
       },
       include: {
         patient: true,
@@ -105,6 +108,7 @@ async function sendReminders(): Promise<void> {
       });
 
       const success = await sendWhatsAppMessage(
+        appointment.user.evolutionInstanceName,
         appointment.patient.phone,
         message
       );

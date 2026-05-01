@@ -1,15 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useSettings, useUpdateSettings } from "@/hooks/use-api";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { AlertCircle, DollarSign, Save } from "lucide-react";
+import { DollarSign, Save } from "lucide-react";
+import { WhatsappConnection } from "@/components/settings/whatsapp-connection";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -98,7 +91,6 @@ export default function ConfiguracoesPage() {
   const activeMessageRef = useRef<"confirmationMessage" | "reminderMessage">(
     "confirmationMessage",
   );
-  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
 
   const {
     register,
@@ -394,38 +386,7 @@ export default function ConfiguracoesPage() {
           </CardContent>
         </Card>
 
-        {/* WhatsApp Connection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Conexão WhatsApp</CardTitle>
-            <CardDescription>
-              Status da integração com WhatsApp
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-600" />
-                <div>
-                  <p className="font-medium">Conexão não configurada</p>
-                  <p className="text-sm text-muted-foreground">
-                    Configure a API do WhatsApp para enviar notificações
-                  </p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setWhatsappDialogOpen(true);
-                }}
-              >
-                Configurar WhatsApp
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <WhatsappConnection />
 
         {/* Submit Button */}
         <div className="flex justify-end">
@@ -439,56 +400,6 @@ export default function ConfiguracoesPage() {
           </Button>
         </div>
       </form>
-
-      <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Conectar WhatsApp via WAHA</DialogTitle>
-            <DialogDescription>
-              Integração com WAHA (WhatsApp HTTP API).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p>
-              O ConfirmaAí envia mensagens chamando{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                POST {"{WAHA_API_URL}"}/api/sendText
-              </code>{" "}
-              com o header <code className="rounded bg-muted px-1 py-0.5 text-xs">X-Api-Key</code>.
-            </p>
-            <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
-              <li>
-                Suba o WAHA (Docker):{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                  docker run -p 3001:3000 devlikeapro/waha
-                </code>
-              </li>
-              <li>Acesse o dashboard e faça o pareamento via QR code da sessão</li>
-              <li>
-                Defina <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_API_URL</code>,{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_API_KEY</code> e{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">WAHA_SESSION</code> no{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code>
-              </li>
-              <li>
-                Configure o webhook do WAHA para{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                  {"{NEXT_PUBLIC_APP_URL}"}/api/webhook/whatsapp
-                </code>{" "}
-                com o mesmo <code className="rounded bg-muted px-1 py-0.5 text-xs">X-Api-Key</code>
-              </li>
-            </ol>
-            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-              💡 As mensagens e horários acima já ficam ativos assim que o WAHA estiver pareado.
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWhatsappDialogOpen(false)}>
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

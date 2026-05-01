@@ -299,6 +299,58 @@ export function useDashboard(range: "7d" | "30d" | "month" = "month") {
   });
 }
 
+// WhatsApp connection (Evolution API)
+type WhatsappStatusResponse = {
+  status: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "FAILED";
+  phoneNumber: string | null;
+  connectedAt: string | null;
+};
+
+type WhatsappConnectResponse = {
+  instanceName: string;
+  qrcodeBase64: string | null;
+  status: "CONNECTING" | "CONNECTED";
+};
+
+export function useWhatsappStatus(refetchInterval: number | false = false) {
+  return useQuery({
+    queryKey: ["whatsapp-status"],
+    queryFn: () => fetchApi<WhatsappStatusResponse>("/api/whatsapp/status"),
+    refetchInterval,
+  });
+}
+
+export function useWhatsappConnect() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchApi<WhatsappConnectResponse>("/api/whatsapp/connect", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-status"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useWhatsappDisconnect() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchApi<{ ok: true }>("/api/whatsapp/disconnect", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-status"] });
+      toast.success("WhatsApp desconectado");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
 // Settings
 export function useSettings() {
   return useQuery({

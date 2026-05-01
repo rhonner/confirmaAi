@@ -34,6 +34,13 @@ enum MessageStatus {
   FAILED
 }
 
+enum WhatsappStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  FAILED
+}
+
 // Models
 model User {
   id                   String        @id @default(cuid())
@@ -42,6 +49,10 @@ model User {
   password             String
   clinicName           String
   avgAppointmentValue  Decimal       @default(0) @db.Decimal(10, 2)
+  evolutionInstanceName String?      @unique
+  whatsappStatus       WhatsappStatus @default(DISCONNECTED)
+  whatsappPhoneNumber  String?
+  whatsappConnectedAt  DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
