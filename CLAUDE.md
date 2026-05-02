@@ -1,5 +1,15 @@
 # ConfirmaAí - Sistema de Controle de Faltas + Confirmação Automática
 
+> ## ⚡ Orquestrador de contexto — LEIA ANTES DE QUALQUER TAREFA
+>
+> Antes de desenvolver, alterar ou debugar qualquer coisa, **leia [`.context/README.md`](.context/README.md)**.
+> É o índice mestre de todas as features registradas (em `.context/features/`) e fluxos cruzados (em `.context/flows/`).
+>
+> Regra do orquestrador:
+> - Toda nova funcionalidade DEVE ser registrada em `.context/features/<nome>.md` (use `_TEMPLATE.md`).
+> - Alterações estruturais em features existentes DEVEM atualizar o `.md` correspondente.
+> - Em caso de conflito entre `CLAUDE.md` e `.context/`, o `.context/` é a fonte de verdade operacional.
+
 ## Sobre o Projeto
 
 SaaS para clínicas, psicólogos, dentistas, estética e salões que resolve o problema de **faltas e no-shows** em agendamentos. O sistema envia confirmações automáticas via WhatsApp, rastreia taxas de faltas e ajuda profissionais a reduzirem prejuízos.
