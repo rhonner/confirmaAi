@@ -67,7 +67,12 @@ export async function POST(
     });
     if (!user) return NextResponse.json({ received: true });
 
-    const eventName = (body.event ?? "").toLowerCase().replace(/_/g, ".");
+    // Aceita tanto SCREAMING_SNAKE quanto camelCase ("QRCODE_UPDATED",
+    // "qrcode.updated", "qrcodeUpdated") — Evolution varia entre versões.
+    const eventName = (body.event ?? "")
+      .replace(/([a-z])([A-Z])/g, "$1.$2")
+      .toLowerCase()
+      .replace(/_/g, ".");
     const data = body.data ?? {};
 
     if (eventName === "qrcode.updated") {
