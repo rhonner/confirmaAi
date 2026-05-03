@@ -20,6 +20,8 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 3. Se a tarefa alterar uma feature existente de forma estrutural (novo endpoint, nova entidade, mudança de fluxo), **atualize o arquivo da feature** ao final do trabalho.
 
 > Memória do agente (`~/.claude/.../memory`) é para preferências do usuário. **`.context/` é a fonte de verdade do projeto.** Quando houver conflito, o `.context/` vence.
+>
+> Existe também a **wiki** em [`.wiki/`](../.wiki/README.md) — base de conhecimento sintetizado e cumulativo (decisões com seu “porquê”, padrões descobertos, sumários cruzados de sessões). Ela é **complementar**, não substitui o `.context/`. Regra: regras operacionais de feature → `.context/`; conhecimento de bastidor que acumula a cada sessão → `.wiki/`. O fluxo de ingestão é automático via hooks `SessionStart`/`SessionEnd` (ver `.wiki/AGENTS.md`).
 
 ---
 
@@ -64,6 +66,13 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | ----------------------------- | -------------------------------------------------------- |
 | Confirmação automática (E2E)  | [flows/confirmation-flow.md](flows/confirmation-flow.md) |
 | Multi-tenancy (isolamento)    | [flows/multi-tenancy.md](flows/multi-tenancy.md)         |
+
+## Planos e roadmaps
+
+| Plano                                | Arquivo                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| Monetização + Auditoria (roadmap)    | [plans/billing-and-audit-roadmap.md](plans/billing-and-audit-roadmap.md) |
+| Deployment status (stop & resume)    | [plans/deployment-status.md](plans/deployment-status.md)                 |
 
 ---
 

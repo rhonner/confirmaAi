@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Check, Circle, Sparkles, X } from "lucide-react"
 
-const DISMISS_KEY = "confirmaai:onboarding-dismissed"
+const DISMISS_KEY = "clinica-organizada:onboarding-dismissed"
 
 export function OnboardingBanner() {
   const { data: settings } = useSettings()

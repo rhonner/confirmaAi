@@ -39,7 +39,7 @@ export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSideb
         </div>
         {!collapsed && (
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
-            ConfirmaAí
+            Clínica Organizada
           </h1>
         )}
       </div>
@@ -96,7 +96,7 @@ export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSideb
       {!collapsed && (
         <div className="p-4 border-t border-sidebar-border">
           <p className="text-xs text-muted-foreground text-center">
-            ConfirmaAí · v0.1
+            Clínica Organizada · v0.1
           </p>
         </div>
       )}

@@ -20,7 +20,7 @@ export const useSidebarStore = create<SidebarStore>()(
         set((state) => ({ collapsed: !state.collapsed })),
     }),
     {
-      name: "confirmaai:sidebar",
+      name: "clinica-organizada:sidebar",
       partialize: (s) => ({ collapsed: s.collapsed }),
     },
   ),

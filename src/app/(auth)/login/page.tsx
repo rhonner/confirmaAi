@@ -57,7 +57,7 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-bold">Bem-vindo ao ConfirmaAí</h1>
+        <h1 className="text-2xl font-bold">Bem-vindo à Clínica Organizada</h1>
         <p className="text-muted-foreground">
           Entre com suas credenciais para acessar o sistema
         </p>

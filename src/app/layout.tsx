@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ConfirmaAí - Sistema de Controle de Faltas",
+  title: "Clínica Organizada - Sistema de Controle de Faltas",
   description:
     "Sistema de confirmação automática de agendamentos via WhatsApp para clínicas, psicólogos, dentistas, estética e salões",
 };

@@ -43,7 +43,7 @@ export default function AuthLayout({
             </div>
           </div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
-            ConfirmaAí
+            Clínica Organizada
           </h1>
         </div>
         <Card className="p-8 border-border shadow-xl backdrop-blur-md bg-card">
