@@ -304,6 +304,7 @@ type WhatsappStatusResponse = {
   status: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "FAILED";
   phoneNumber: string | null;
   connectedAt: string | null;
+  qrcodeBase64: string | null;
 };
 
 type WhatsappConnectResponse = {

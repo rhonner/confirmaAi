@@ -12,6 +12,7 @@ type StatusResponse = {
   status: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "FAILED";
   phoneNumber: string | null;
   connectedAt: string | null;
+  qrcodeBase64: string | null;
 };
 
 export async function GET() {
@@ -26,6 +27,7 @@ export async function GET() {
         whatsappStatus: true,
         whatsappPhoneNumber: true,
         whatsappConnectedAt: true,
+        lastQrcodeBase64: true,
       },
     });
     if (!user) return unauthorizedResponse();
@@ -36,6 +38,7 @@ export async function GET() {
           status: "DISCONNECTED",
           phoneNumber: null,
           connectedAt: null,
+          qrcodeBase64: null,
         },
       });
     }
@@ -78,6 +81,7 @@ export async function GET() {
         status: nextStatus,
         phoneNumber: nextPhone,
         connectedAt: nextConnectedAt ? nextConnectedAt.toISOString() : null,
+        qrcodeBase64: nextStatus === "CONNECTED" ? null : user.lastQrcodeBase64,
       },
     });
   } catch (error) {

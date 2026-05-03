@@ -53,6 +53,8 @@ model User {
   whatsappStatus       WhatsappStatus @default(DISCONNECTED)
   whatsappPhoneNumber  String?
   whatsappConnectedAt  DateTime?
+  lastQrcodeBase64     String?
+  lastQrcodeAt         DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 

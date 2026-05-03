@@ -28,7 +28,12 @@ type EvolutionEvent = {
       extendedTextMessage?: { text?: string };
     };
     pushName?: string;
+    // QRCODE_UPDATED — Evolution v2 envia QR async via webhook
+    qrcode?: { base64?: string; code?: string; count?: number };
+    // Em alguns formatos o QR vem direto em data
+    base64?: string;
   };
+  qrcode?: { base64?: string };
 };
 
 function extractMessageText(data: NonNullable<EvolutionEvent["data"]>): string | null {
@@ -65,6 +70,22 @@ export async function POST(
     const eventName = (body.event ?? "").toLowerCase().replace(/_/g, ".");
     const data = body.data ?? {};
 
+    if (eventName === "qrcode.updated") {
+      const base64 =
+        data.qrcode?.base64 ?? data.base64 ?? body.qrcode?.base64 ?? null;
+      if (base64) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            lastQrcodeBase64: base64,
+            lastQrcodeAt: new Date(),
+            whatsappStatus: "CONNECTING",
+          },
+        });
+      }
+      return NextResponse.json({ received: true });
+    }
+
     if (eventName === "connection.update") {
       const state = data.state;
       if (state === "open") {
@@ -74,6 +95,8 @@ export async function POST(
           data: {
             whatsappStatus: "CONNECTED",
             whatsappConnectedAt: new Date(),
+            lastQrcodeBase64: null,
+            lastQrcodeAt: null,
             ...(ownerPhone ? { whatsappPhoneNumber: ownerPhone } : {}),
           },
         });

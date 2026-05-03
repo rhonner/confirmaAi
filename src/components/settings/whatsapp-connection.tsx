@@ -39,6 +39,11 @@ export function WhatsappConnection() {
   const isConnected = status.data?.status === "CONNECTED";
   const dialogVisible = dialogOpen && !isConnected;
 
+  // Evolution v2 entrega QR via webhook async — preferimos o do polling de
+  // status quando disponível, e caímos no retorno do connect como fallback.
+  const liveQrcode = status.data?.qrcodeBase64 ?? null;
+  const displayQrcode = liveQrcode ?? qrcodeBase64;
+
   const handleConnect = async () => {
     setQrcodeBase64(null);
     setDialogOpen(true);
@@ -140,21 +145,22 @@ export function WhatsappConnection() {
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-4 py-2">
-            {connect.isPending && !qrcodeBase64 ? (
-              <div className="h-[260px] w-[260px] flex items-center justify-center border rounded-lg bg-muted/30">
+            {!displayQrcode ? (
+              <div className="h-[260px] w-[260px] flex items-center justify-center border rounded-lg bg-muted/30 flex-col gap-2 px-4 text-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {connect.isPending
+                    ? "Iniciando conexão..."
+                    : "Aguardando QR code da Evolution..."}
+                </span>
               </div>
-            ) : qrcodeBase64 ? (
+            ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={qrcodeBase64}
+                src={displayQrcode}
                 alt="QR code do WhatsApp"
                 className="h-[260px] w-[260px] border rounded-lg"
               />
-            ) : (
-              <div className="h-[260px] w-[260px] flex items-center justify-center border rounded-lg bg-muted/30 text-sm text-muted-foreground text-center px-4">
-                QR code não disponível.<br />Tente atualizar.
-              </div>
             )}
 
             <p className="text-xs text-muted-foreground text-center">
