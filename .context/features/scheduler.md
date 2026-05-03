@@ -25,7 +25,9 @@
 - `startScheduler()` registra `cron.schedule("*/30 * * * *", runSchedulerJobs)` (a cada 30 min, hora cheia e meia).
 - `runSchedulerJobs()` chama em sequência: `sendConfirmations()` → `sendReminders()` → `markNoShows()`.
 
-> **Implicação**: roda em todo processo Node de Next.js. Em deploy multi-instance (ex: Vercel serverless), pode multi-disparar — considerar mover para job worker dedicado em produção. Em dev/single-process funciona.
+> **Dev (local)**: o `instrumentation.ts` mantém o processo node ativo e o `node-cron` dispara a cada 30 min. Funciona desde que `npm run dev` esteja rodando.
+>
+> **Produção (Vercel)**: o `node-cron` NÃO dispara (Vercel é serverless — instâncias morrem entre requests). O agendador roda via **Vercel Cron Jobs** definido em `vercel.json`, que faz `GET /api/cron/run` a cada 30 min. O endpoint exige header `Authorization: Bearer ${CRON_SECRET}` (Vercel injeta automaticamente; chamadas externas retornam 401). Internamente chama o mesmo `runSchedulerJobs()`.
 
 ## `sendConfirmations`
 
