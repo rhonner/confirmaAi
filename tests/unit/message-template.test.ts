@@ -69,7 +69,7 @@ describe("formatMessage", () => {
 describe("formatAppointmentDate", () => {
   it("formats date in pt-BR with weekday and month name", () => {
     // Tuesday, February 17, 2026 at 14:30
-    const date = new Date("2026-02-17T14:30:00");
+    const date = new Date("2026-02-17T14:30:00-03:00");
 
     const result = formatAppointmentDate(date);
 
@@ -77,8 +77,8 @@ describe("formatAppointmentDate", () => {
   });
 
   it("handles different months correctly", () => {
-    // Friday, January 1, 2026
-    const date = new Date("2026-01-01T10:00:00");
+    // Thursday, January 1, 2026
+    const date = new Date("2026-01-01T10:00:00-03:00");
 
     const result = formatAppointmentDate(date);
 
@@ -86,8 +86,8 @@ describe("formatAppointmentDate", () => {
   });
 
   it("formats end of month date", () => {
-    // Saturday, December 31, 2025
-    const date = new Date("2025-12-31T23:59:00");
+    // Wednesday, December 31, 2025
+    const date = new Date("2025-12-31T23:59:00-03:00");
 
     const result = formatAppointmentDate(date);
 
@@ -97,7 +97,7 @@ describe("formatAppointmentDate", () => {
 
 describe("formatAppointmentTime", () => {
   it("formats time as HH:mm", () => {
-    const date = new Date("2026-02-17T14:30:00");
+    const date = new Date("2026-02-17T14:30:00-03:00");
 
     const result = formatAppointmentTime(date);
 
@@ -105,7 +105,7 @@ describe("formatAppointmentTime", () => {
   });
 
   it("handles morning times with leading zeros", () => {
-    const date = new Date("2026-02-17T09:05:00");
+    const date = new Date("2026-02-17T09:05:00-03:00");
 
     const result = formatAppointmentTime(date);
 
@@ -113,7 +113,7 @@ describe("formatAppointmentTime", () => {
   });
 
   it("handles midnight correctly", () => {
-    const date = new Date("2026-02-17T00:00:00");
+    const date = new Date("2026-02-17T00:00:00-03:00");
 
     const result = formatAppointmentTime(date);
 
@@ -121,10 +121,19 @@ describe("formatAppointmentTime", () => {
   });
 
   it("handles late evening times", () => {
-    const date = new Date("2026-02-17T23:45:00");
+    const date = new Date("2026-02-17T23:45:00-03:00");
 
     const result = formatAppointmentTime(date);
 
     expect(result).toBe("23:45");
+  });
+
+  // Regression: appointment stored as the UTC instant of "14:00 BRT"
+  // should render as "14:00", not "17:00" (which was the bug on Vercel UTC).
+  it("renders BRT wall-clock regardless of process timezone", () => {
+    const utcInstantOf14hBrt = new Date("2026-05-07T17:00:00Z");
+
+    expect(formatAppointmentTime(utcInstantOf14hBrt)).toBe("14:00");
+    expect(formatAppointmentDate(utcInstantOf14hBrt)).toBe("quinta-feira, 7 de maio");
   });
 });

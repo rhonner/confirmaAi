@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthSession, unauthorizedResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import { buildCsv } from "@/lib/csv"
+import { APP_TIMEZONE, formatInTimeZone, todayIsoInAppTz } from "@/lib/timezone"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendente",
@@ -27,8 +28,8 @@ export async function GET(_req: NextRequest) {
       appointments.map((a) => {
         const dt = new Date(a.dateTime)
         return [
-          dt.toLocaleDateString("pt-BR"),
-          dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+          formatInTimeZone(dt, APP_TIMEZONE, "dd/MM/yyyy"),
+          formatInTimeZone(dt, APP_TIMEZONE, "HH:mm"),
           a.durationMinutes,
           a.patient.name,
           a.patient.phone,
@@ -38,7 +39,7 @@ export async function GET(_req: NextRequest) {
       }),
     )
 
-    const filename = `agendamentos-${new Date().toISOString().slice(0, 10)}.csv`
+    const filename = `agendamentos-${todayIsoInAppTz()}.csv`
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",

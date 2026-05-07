@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { APP_TIMEZONE, formatInTimeZone } from "@/lib/timezone";
 
 type MessageData = {
   nome: string;
@@ -17,9 +17,11 @@ export function formatMessage(template: string, data: MessageData): string {
 }
 
 export function formatAppointmentDate(dateTime: Date): string {
-  return format(dateTime, "EEEE, d 'de' MMMM", { locale: ptBR });
+  return formatInTimeZone(dateTime, APP_TIMEZONE, "EEEE, d 'de' MMMM", {
+    locale: ptBR,
+  });
 }
 
 export function formatAppointmentTime(dateTime: Date): string {
-  return format(dateTime, "HH:mm");
+  return formatInTimeZone(dateTime, APP_TIMEZONE, "HH:mm");
 }

@@ -78,7 +78,7 @@ prisma.appointment.updateMany({
 - **WhatsApp obrigatório**: filtros incluem `user.whatsappStatus = CONNECTED`. Se desconectar no meio, mensagens param até reconectar.
 - **Sem retry**: se `sendWhatsAppMessage` retornar `false`, **não** marca `confirmationSentAt`. Próxima execução tenta de novo, indefinidamente, até `dateTime` passar e `markNoShows` tirar do filtro.
 - **Sem `MessageLog` em falha**: hoje só logamos sucesso. Para auditar falhas, criar log com `status: FAILED` no branch de erro.
-- **Locale**: `formatAppointmentDate` usa `date-fns/locale/ptBR` → "segunda-feira, 5 de maio". `formatAppointmentTime` → "HH:mm".
+- **Locale & timezone**: `formatAppointmentDate`/`formatAppointmentTime` usam `formatInTimeZone(..., "America/Sao_Paulo", ...)` (date-fns-tz) com locale ptBR. **Não** usar `format()` puro: o runtime do Vercel é UTC e o `Appointment.dateTime` é um instante UTC, então `format()` rendiza 3h adiantado (14h → "17:00"). `TZ` é env reservada no Vercel, por isso o fix é em código, não em env var.
 - **Settings ausentes**: o loop faz `if (!settings) continue` — pula silenciosamente. Em registro normal, settings é criado no signup, então isso só ocorre em dados manualmente inseridos.
 
 ## Como estender

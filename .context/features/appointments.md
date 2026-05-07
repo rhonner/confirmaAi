@@ -42,7 +42,8 @@
 
 ## Pontos sensíveis
 
-- **Date string `yyyy-MM-dd`** é interpretada como **dia LOCAL** (00:00:00 → 23:59:59.999), não UTC. Necessário para timezones a oeste de UTC (Brasil) — sem isso, agendamentos depois da meia-noite UTC eram perdidos.
+- **Date string `yyyy-MM-dd`** é interpretada como **dia em `America/Sao_Paulo`** (00:00:00 → 23:59:59.999 BRT), via `startOfDayInAppTz`/`endOfDayInAppTz` de `@/lib/timezone`. **Não** usar `new Date(y, m, d, 0, 0, 0, 0)` — em runtime UTC (Vercel) isso vira meia-noite UTC = 21:00 BRT do dia anterior, drift de 3h.
+- **Export CSV**: `dt.toLocaleDateString/Time` antigos não passavam `timeZone` e renderizavam em UTC no Vercel. Hoje usa `formatInTimeZone(dt, APP_TIMEZONE, ...)` para data e hora.
 - **`dateTime`** chega como ISO string (`z.string().datetime()`); convertido com `new Date(dateTime)`.
 - **Includes padrão**: `patient { id, name, phone }` e `messageLogs` (orderBy `sentAt: desc`).
 - **Multi-tenancy**: tudo filtrado por `userId: session.user.id`.

@@ -4,6 +4,7 @@ import { AppointmentStatus } from "@/generated/prisma/client"
 import { createAppointmentSchema } from "@/lib/validations/appointment"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import { findConflictingAppointment } from "@/lib/services/conflict"
+import { startOfDayInAppTz, endOfDayInAppTz } from "@/lib/timezone"
 import type { ApiResponse, PaginatedResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -26,17 +27,16 @@ export async function GET(request: NextRequest) {
       userId: session.user.id,
     }
 
-    // Treat bare date strings ("yyyy-MM-dd") as a full LOCAL day so we don't
-    // drop appointments after midnight UTC for timezones west of UTC.
+    // Treat bare date strings ("yyyy-MM-dd") as a full day in the app TZ
+    // (America/Sao_Paulo). On Vercel UTC the old new-Date(y,m,d,...) constructor
+    // produced midnight UTC, which is 21:00 BRT of the previous day → 3h drift.
     const bareDate = /^(\d{4})-(\d{2})-(\d{2})$/
     const startOf = (v: string) => {
-      const m = v.match(bareDate)
-      if (m) return new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0)
+      if (bareDate.test(v)) return startOfDayInAppTz(v)
       return new Date(v)
     }
     const endOf = (v: string) => {
-      const m = v.match(bareDate)
-      if (m) return new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999)
+      if (bareDate.test(v)) return endOfDayInAppTz(v)
       return new Date(v)
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthSession, unauthorizedResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import { buildCsv } from "@/lib/csv"
+import { APP_TIMEZONE, formatInTimeZone, todayIsoInAppTz } from "@/lib/timezone"
 
 export async function GET(_req: NextRequest) {
   try {
@@ -35,11 +36,11 @@ export async function GET(_req: NextRequest) {
         p._count.appointments,
         noShowMap.get(p.id) ?? 0,
         p.notes ?? "",
-        p.createdAt.toISOString(),
+        formatInTimeZone(p.createdAt, APP_TIMEZONE, "dd/MM/yyyy HH:mm"),
       ]),
     )
 
-    const filename = `pacientes-${new Date().toISOString().slice(0, 10)}.csv`
+    const filename = `pacientes-${todayIsoInAppTz()}.csv`
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",

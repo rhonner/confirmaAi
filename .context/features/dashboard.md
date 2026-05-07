@@ -25,6 +25,7 @@
   - `noShowRate` = `(noShow / total) * 100`, 1 casa decimal.
   - `estimatedLoss` = `noShow * user.avgAppointmentValue`, 2 casas decimais.
 - **`weeklyData`**: array por semana do período. Cada item: `{ week, total, noShow, confirmed }`. Semanas calculadas com `eachWeekOfInterval(..., { weekStartsOn: 0 })` (domingo). Label `"Sem d/MM"` em pt-BR.
+- **Timezone**: boundaries (`startOfMonth`/`endOfMonth`/`endOfWeek`) e label da semana são computados em `America/Sao_Paulo` via `toAppTz`/`fromAppTz`/`formatInTimeZone` de `@/lib/timezone`. Sem isso, em runtime UTC (Vercel) as semanas e o filtro do mês saem 3h adiantados.
 
 ## Endpoints
 
