@@ -5,6 +5,7 @@ import {
   formatAppointmentDate,
   formatAppointmentTime,
 } from "./message-template";
+import { audit } from "@/lib/audit";
 
 async function sendConfirmations(): Promise<void> {
   try {
@@ -61,6 +62,22 @@ async function sendConfirmations(): Promise<void> {
             type: "CONFIRMATION",
             status: "SENT",
           },
+        });
+
+        await audit({
+          action: "message.sent",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          tenantUserId: appointment.userId,
+          metadata: { type: "CONFIRMATION", instanceName: appointment.user.evolutionInstanceName },
+        });
+      } else {
+        await audit({
+          action: "message.send_failed",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          tenantUserId: appointment.userId,
+          metadata: { type: "CONFIRMATION" },
         });
       }
     }
@@ -126,6 +143,22 @@ async function sendReminders(): Promise<void> {
             status: "SENT",
           },
         });
+
+        await audit({
+          action: "message.sent",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          tenantUserId: appointment.userId,
+          metadata: { type: "REMINDER", instanceName: appointment.user.evolutionInstanceName },
+        });
+      } else {
+        await audit({
+          action: "message.send_failed",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          tenantUserId: appointment.userId,
+          metadata: { type: "REMINDER" },
+        });
       }
     }
   } catch (error) {
@@ -155,4 +188,15 @@ export async function runSchedulerJobs(): Promise<void> {
   await sendConfirmations();
   await sendReminders();
   await markNoShows();
+  // Billing maintenance (Sprint 5): defesa em profundidade contra webhooks
+  // perdidos. Roda no mesmo cron pra economizar invocações Vercel.
+  try {
+    const { runBillingMaintenance } = await import("./billing-maintenance");
+    const r = await runBillingMaintenance();
+    if (r.pastDueSuspended > 0 || r.canceledDowngraded > 0) {
+      console.info("[billing-maintenance]", r);
+    }
+  } catch (err) {
+    console.error("billing-maintenance failed:", err);
+  }
 }

@@ -5,6 +5,7 @@ import { createAppointmentSchema } from "@/lib/validations/appointment"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import { findConflictingAppointment } from "@/lib/services/conflict"
 import { startOfDayInAppTz, endOfDayInAppTz } from "@/lib/timezone"
+import { auditWrap } from "@/lib/audit"
 import type { ApiResponse, PaginatedResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = auditWrap(async (request: NextRequest) => {
   try {
     const session = await getAuthSession()
     if (!session?.user?.id) {
@@ -189,4 +190,4 @@ export async function POST(request: NextRequest) {
     console.error("POST appointment error:", error)
     return serverErrorResponse()
   }
-}
+})

@@ -58,6 +58,61 @@ serverErrorResponse(msg?)  // 500
 - **Não há roles/permissões**: cada usuário só vê seus próprios dados (multi-tenancy por `userId`).
 - **`forgot-password`** existe como rota mas a implementação é placeholder — verificar antes de usar.
 - **Frontend autoriza via `useSession`** em `(dashboard)/layout.tsx` (redireciona para `/login` se `unauthenticated`).
+- **Auditoria** (Sprint 1 — monetização v2): `authorize` emite `audit("auth.login.success" | "auth.login.failed" + reason)` com IP/UA capturados do `req` do NextAuth. `events.signOut` emite `auth.logout`. `register` emite `signup.attempt` (sempre) + `auth.register` (em sucesso) e cria `Subscription { plan: FREE, status: ACTIVE }` em transação atômica com User+Settings. `forgot-password` emite `auth.password_reset_requested`.
+- **Rate limit login** (Sprint 1 hardening, baseado em queries no `AuditLog`): bloqueia após **10 falhas em 5min** do mesmo IP (audit `auth.login.rate_limited`). Sem dependência de Redis.
+
+## Anti-fraude no signup (Sprint 4 — 2026-05-07)
+
+Fluxo do `POST /api/auth/register` em ordem:
+
+1. **Honeypot**: campo `website` invisível CSS-only no form. Se preenchido (bot), retorna 201 fake-success silencioso (não dá feedback ao atacante). Audit `signup.honeypot_triggered`.
+2. **Zod validation** com **CPF obrigatório** (validateCpf — DV módulo 11 + reject sequenciais).
+3. **Disposable email blocklist**: 70+ domínios em `src/lib/anti-fraud/disposable-emails.ts` (mailinator, yopmail, guerrillamail, tempmail, 10minutemail, etc). Reject 400 + audit `signup.disposable_email_blocked`.
+4. **Rate limit dedicado** (`src/lib/anti-fraud/signup-rate-limit.ts` — substitui o pattern AuditLog-based do Sprint 1):
+   - **3 attempts/24h por IP** (sucessos OU falhas)
+   - **5 attempts/24h por emailHash** (anti account-stuffing)
+   - Audit `signup.rate_limited` + 429.
+5. **reCAPTCHA v3** (`src/lib/anti-fraud/recaptcha.ts`):
+   - Site key + secret via `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` / `RECAPTCHA_SECRET_KEY`.
+   - Score `< 0.5` rejeita.
+   - **Dev sem chave**: bypass com warning. **Prod sem chave**: 503 `MISCONFIGURED`.
+6. **Email exists / CPF threshold**: já cadastrado → 409. Mais de 3 contas com mesmo `cpfHash` → bloqueia 4ª (audit `fraud.cpf_reused_owner` com `blocked: true`).
+7. **bcrypt** + transação atômica criando `User` + `Settings` + `Subscription { FREE, ACTIVE }`.
+8. **Cross-tenant CPF detection** (`src/lib/anti-fraud/owner-cpf-dedup.ts`): após criar a conta, conta usuários distintos com mesmo `cpfHash`. Se `>1` → audit `fraud.cpf_reused_owner` (revisão admin). Se `>3` → auto-suspende a conta mais nova (`subscription.status = SUSPENDED`).
+9. **Email verification token** (`src/lib/anti-fraud/email-verification.ts`):
+   - Token 64-hex random, hash SHA-256 persistido em `User.emailVerificationToken`. Expira em 24h.
+   - Envia via Resend (`RESEND_API_KEY`); **dev sem chave**: loga link no console.
+   - Endpoint `GET /api/auth/verify-email?token=` consome (single-use), seta `User.emailVerifiedAt = now`, redireciona pra `/verificar-email?status=ok|expired|not_found`.
+10. **`SignupAttempt` track**: cada tentativa (sucesso/falha) é registrada com `ipAddress`, `emailHash`, `cpfHash`, `failureReason`. Counter dos rate limits.
+11. **Resposta**: 201 + `{ data, message: "Conta criada. Verifique seu email para ativá-la." }`. Frontend redireciona pra `/verificar-email`.
+
+### Email não verificado bloqueia ações
+
+`entitlements.check(userId, "patient.create" | "patient.import" | "appointment.create")` retorna `EMAIL_NOT_VERIFIED` se `User.emailVerifiedAt === null`. Frontend captura via `PaywallError` + `<PaywallModal reason="EMAIL_NOT_VERIFIED" />`. Grandfathering: usuários pré-Sprint-4 (`rhonner.matheus@gmail.com` etc) recebem `emailVerifiedAt = createdAt` na migration.
+
+### CPF do dono — política
+
+Mesmo `cpfHash` em **N contas** é tratado em camadas:
+
+- `N == 1`: ok normal.
+- `1 < N <= 3`: permitido (caso legítimo: médico com 2 clínicas), apenas audit `fraud.cpf_reused_owner` para revisão admin futura.
+- `N > 3`: 4ª criação bloqueada (HTTP 409). Se chegou a criar (race ou via pre-existing), auto-suspend.
+
+`@unique` em `User.cpfHash` foi **removida** intencionalmente pra permitir o caso legítimo (≤3). Defesa fica no detector + threshold.
+
+### Validação manual no browser (Sprint 4)
+
+Confirmado em 2026-05-07 via Chrome MCP + API:
+
+1. ✅ `/registro` renderiza com campo CPF formatado (000.000.000-00) e hint "Necessário para anti-fraude. Não é compartilhado.".
+2. ✅ Hint "Obrigatório no plano Free" não aparece no signup (CPF é geral, não de paciente).
+3. ✅ `joao@mailinator.com` → backend retorna 400 "Email descartável não é permitido".
+4. ✅ Cadastro válido (`joao+...@clinicareal.com.br` + CPF `111.444.777-35`) → 201 + `emailVerificationPending: true` + console log com link.
+5. ✅ Click no link → `/verificar-email?status=ok` "Email confirmado!".
+6. ✅ Reuso do mesmo token → `/verificar-email?status=not_found` "Link inválido".
+7. ✅ CPF inválido (DV errado): backend retorna `"CPF inválido (dígito verificador)"`.
+8. ✅ CPF sequencial: backend retorna `"CPF inválido (sequência repetida)"`.
+9. ✅ Honeypot (campo `website` preenchido): backend retorna 201 fake-success "Cadastro recebido" silenciosamente, sem criar usuário.
 
 ## Como estender
 

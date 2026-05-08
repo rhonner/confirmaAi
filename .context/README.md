@@ -59,6 +59,9 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | WhatsApp (Evolution) | [features/whatsapp.md](features/whatsapp.md)         | Conexão, QR code, status, desconexão por usuário                   |
 | Webhook Evolution    | [features/webhook-evolution.md](features/webhook-evolution.md) | Recebe estados de conexão e respostas dos pacientes      |
 | Scheduler / Cron     | [features/scheduler.md](features/scheduler.md)       | Envio de confirmações, lembretes e marcação de no-show             |
+| Auditoria            | [features/audit.md](features/audit.md)               | Trilha de mutações (Prisma extension) + eventos de domínio (login, msg, webhook) |
+| Billing               | [features/billing.md](features/billing.md)        | Cobrança via provider (Asaas/Mock), checkout Pix/cartão, webhook idempotente com HMAC, lifecycle cron, portal + cancelar |
+| Plan Quota           | [features/plan-quota.md](features/plan-quota.md)     | Vagas vitalícias de paciente (Free=5), CPF como identifier primário, anti-fraude por slot ledger |
 
 ## Índice de fluxos cruzados
 
@@ -71,8 +74,23 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 
 | Plano                                | Arquivo                                                                  |
 | ------------------------------------ | ------------------------------------------------------------------------ |
-| Monetização + Auditoria (roadmap)    | [plans/billing-and-audit-roadmap.md](plans/billing-and-audit-roadmap.md) |
+| **Monetização v2 — pacientes únicos** (vigente) | [plans/monetization-v2.md](plans/monetization-v2.md)                 |
+| Monetização + Auditoria (roadmap antigo)    | [plans/billing-and-audit-roadmap.md](plans/billing-and-audit-roadmap.md) |
 | Deployment status (stop & resume)    | [plans/deployment-status.md](plans/deployment-status.md)                 |
+
+---
+
+## Definição de "feito" — checklist obrigatório
+
+> **Não declare uma sprint, feature ou fix concluída sem rodar TUDO abaixo.** Sem exceção.
+
+1. **`npx tsc --noEmit`** — sem erros de tipo.
+2. **`TZ=UTC npx vitest run`** — 100% verde.
+3. **`npm run build`** — build de produção limpo.
+4. **`npm run test:sprints`** — checklist E2E no DB local com 100% pass (script versionado em `scripts/test-sprints.ts`; **adicionar checks da nova sprint** sempre que fechar uma).
+5. **Teste manual no Chrome via MCP** — para qualquer mudança que toque UI, dev server + clicar pelo fluxo crítico do usuário **de verdade**, com screenshots como evidência. Cobrir golden path + 1-2 edge cases. NÃO confiar só em "componente existe + Playwright básico de renderização" — isso prova compilação, não comportamento.
+6. **Documentar a validação** — em `.context/features/<feature>.md` adicionar/atualizar seção "Validação manual no browser" com os passos confirmados (vira artefato de regressão para a próxima sprint).
+7. **Helpers de toggle de estado** — para fluxos dependentes de estado (ex: plano FREE vs PRO), criar helper em `scripts/` que alterna rápido em dev (ver `scripts/toggle-admin-plan.ts`). Sempre reverter ao estado original (PRO no caso do `rhonner.matheus@gmail.com`) ao fim do teste.
 
 ---
 
@@ -102,7 +120,7 @@ npm run test             # Vitest unit
 npm run test:e2e         # Playwright
 npm run db:migrate       # Prisma migrate dev
 npm run db:studio        # Prisma Studio
-npm run db:seed          # Seed (admin@teste.com / 123456)
+npm run db:seed          # Seed (rhonner.matheus@gmail.com / 123456)
 ```
 
 ## Variáveis de ambiente

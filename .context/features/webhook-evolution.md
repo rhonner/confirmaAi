@@ -13,7 +13,7 @@
 ## Regras de negócio
 
 - **Path identifica o tenant**: `/api/webhook/evolution/<instance>` → busca `User where { evolutionInstanceName: instance }`. Se não encontrar, retorna `200 { received: true }` silenciosamente (não vaza existência).
-- **Sem assinatura HMAC**: a Evolution não envia o admin key em webhooks. A "autenticação" depende do `instanceName` ser secreto (formato `clinic-<userId>`, conhecido só por Evolution + nosso DB).
+- **Shared secret opcional** (Sprint 1 hardening): se `EVOLUTION_WEBHOOK_SECRET` está setada, exige header `x-evolution-secret` ou `apikey` igual; caso contrário rejeita com 401 + audit `webhook.evolution.invalid_secret`. Sem a env var, mantém compat com Evolution (autenticação por `instanceName` secreto continua sendo o único guard). Configurar a env var no Evolution self-hosted no `webhook.headers`.
 - **Sempre responde 200** (`{ received: true }`) — Evolution faz retry agressivo em não-200. Erros são logados, nunca propagados.
 
 ### Eventos tratados

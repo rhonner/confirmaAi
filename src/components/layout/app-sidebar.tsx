@@ -7,6 +7,7 @@ import {
   Users,
   Settings,
   ChevronRight,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,6 +16,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agenda", href: "/agenda", icon: Calendar },
   { name: "Pacientes", href: "/pacientes", icon: Users },
+  { name: "Plano", href: "/billing", icon: CreditCard },
   { name: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 

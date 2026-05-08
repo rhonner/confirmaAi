@@ -9,6 +9,7 @@ import {
   serverErrorResponse
 } from "@/lib/auth-helpers"
 import { findConflictingAppointment } from "@/lib/services/conflict"
+import { auditWrap } from "@/lib/audit"
 import type { ApiResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(
@@ -54,10 +55,10 @@ export async function GET(
   }
 }
 
-export async function PUT(
+export const PUT = auditWrap(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const { id } = await params
     const session = await getAuthSession()
@@ -155,12 +156,12 @@ export async function PUT(
     console.error("PUT appointment error:", error)
     return serverErrorResponse()
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = auditWrap(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const { id } = await params
     const session = await getAuthSession()
@@ -192,4 +193,4 @@ export async function DELETE(
     console.error("DELETE appointment error:", error)
     return serverErrorResponse()
   }
-}
+})

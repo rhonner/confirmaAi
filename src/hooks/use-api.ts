@@ -69,6 +69,23 @@ type Settings = {
   clinicName: string;
 };
 
+/**
+ * Erro de paywall (HTTP 402): plano atual não permite a ação. UI captura via
+ * `if (err instanceof PaywallError)` e abre modal de upgrade (Sprint 3).
+ */
+export class PaywallError extends Error {
+  constructor(
+    public reason: "QUOTA_EXCEEDED" | "PLAN_REQUIRED" | "PAYMENT_PAST_DUE" | "SUSPENDED" | "CPF_REQUIRED" | "EMAIL_NOT_VERIFIED",
+    public upgrade: "PRO" | "PREMIUM",
+    public uiMessage: string,
+    public current?: number,
+    public limit?: number,
+  ) {
+    super(uiMessage);
+    this.name = "PaywallError";
+  }
+}
+
 // Helper to unwrap ApiResponse
 async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -78,6 +95,17 @@ async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error("Sessão expirada");
   }
   const json = await res.json().catch(() => ({}));
+  if (res.status === 402) {
+    const reason = json?.error as PaywallError["reason"];
+    const upgrade = (json?.data?.upgrade ?? "PRO") as PaywallError["upgrade"];
+    throw new PaywallError(
+      reason,
+      upgrade,
+      json?.message ?? "Recurso bloqueado pelo plano",
+      json?.data?.current,
+      json?.data?.limit,
+    );
+  }
   if (!res.ok) {
     throw new Error(json?.error || json?.message || "Erro na requisição");
   }
@@ -358,6 +386,69 @@ export function useSettings() {
     queryKey: ["settings"],
     queryFn: () => fetchApi<Settings>("/api/settings"),
   });
+}
+
+// Billing / Subscription
+export type Subscription = {
+  plan: "FREE" | "PRO" | "PREMIUM";
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "SUSPENDED";
+  patientSlotCount: number;
+  patientSlotLimit: number | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+};
+
+export function useSubscription() {
+  return useQuery({
+    queryKey: ["subscription"],
+    queryFn: () => fetchApi<Subscription>("/api/billing/subscription"),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Visão focada em uso, derivada de useSubscription. Mantém uma única chamada
+ * de rede mas expõe campos prontos para UI (cor, %, isUnlimited).
+ */
+export type UsageInfo = {
+  plan: Subscription["plan"];
+  status: Subscription["status"];
+  count: number;
+  limit: number | null;
+  isUnlimited: boolean;
+  percentage: number; // 0–100. Em ilimitado, sempre 0.
+  level: "ok" | "warning" | "alert" | "blocked";
+  isLoading: boolean;
+};
+
+export function useUsage(): UsageInfo {
+  const q = useSubscription();
+  const data = q.data;
+  const count = data?.patientSlotCount ?? 0;
+  const limit = data?.patientSlotLimit ?? null;
+  const isUnlimited = limit === null;
+  const percentage = isUnlimited
+    ? 0
+    : Math.min(100, Math.round((count / Math.max(1, limit)) * 100));
+  const level: UsageInfo["level"] = isUnlimited
+    ? "ok"
+    : percentage >= 100
+      ? "blocked"
+      : percentage >= 80
+        ? "alert"
+        : percentage >= 60
+          ? "warning"
+          : "ok";
+  return {
+    plan: data?.plan ?? "FREE",
+    status: data?.status ?? "ACTIVE",
+    count,
+    limit,
+    isUnlimited,
+    percentage,
+    level,
+    isLoading: q.isLoading,
+  };
 }
 
 export function useUpdateSettings() {

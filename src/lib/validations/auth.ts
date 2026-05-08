@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { validateCpf } from "@/lib/anti-fraud/cpf-validator"
 
 export const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -11,6 +12,28 @@ export const registerSchema = z.object({
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres").max(128, "Senha deve ter no máximo 128 caracteres"),
   clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200, "Nome da clínica deve ter no máximo 200 caracteres"),
   avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo").optional().default(0),
+  cpf: z
+    .string()
+    .min(11, "CPF deve ter 11 dígitos")
+    .max(14, "CPF inválido")
+    .superRefine((value, ctx) => {
+      const r = validateCpf(value)
+      if (!r.valid) {
+        const message =
+          r.reason === "sequential"
+            ? "CPF inválido (sequência repetida)"
+            : r.reason === "checksum"
+              ? "CPF inválido (dígito verificador)"
+              : "CPF inválido"
+        ctx.addIssue({ code: "custom", message })
+      }
+    }),
+  /** Honeypot — DEVE estar vazio. Se preenchido, é bot. */
+  website: z.string().optional().nullable(),
+  /** Token reCAPTCHA v3 do front (se configurado). `null` em dev sem chave. */
+  recaptchaToken: z.string().optional().nullable(),
+  /** Aceite dos Termos — checkbox no front. Backend é tolerante (frontend valida). */
+  acceptedTerms: z.unknown().optional(),
 })
 
 export type LoginInput = z.infer<typeof loginSchema>

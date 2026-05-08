@@ -21,7 +21,7 @@ test.describe("Authentication", () => {
 
   test("should login with valid credentials and redirect to dashboard", async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[id="email"]', "admin@teste.com");
+    await page.fill('input[id="email"]', "rhonner.matheus@gmail.com");
     await page.fill('input[id="password"]', "123456");
     await page.click('button[type="submit"]');
 

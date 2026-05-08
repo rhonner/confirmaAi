@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResponse } from "@/lib/services/webhook-parser";
+import { audit, maskPhone, truncateMessage, withFixedActor } from "@/lib/audit";
 
 // Evolution API webhook — one webhook URL per instance, so the [instance]
 // path segment identifies the tenant.
@@ -51,12 +52,29 @@ function jidToPhone(jid: string | undefined): string | null {
   return raw.startsWith("+") ? raw : `+${raw}`;
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ instance: string }> },
-) {
+export const POST = withFixedActor(
+  { actorType: "WEBHOOK", actorId: "evolution" },
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ instance: string }> },
+  ) => {
   try {
     const { instance } = await params;
+
+    // Shared secret opcional. Se EVOLUTION_WEBHOOK_SECRET estiver setada,
+    // exige header `x-evolution-secret` ou `apikey` igual. Sem isso, qualquer
+    // um que descubra o instanceName pode forjar eventos.
+    const expectedSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
+    if (expectedSecret) {
+      const got = request.headers.get("x-evolution-secret") ?? request.headers.get("apikey");
+      if (got !== expectedSecret) {
+        await audit({
+          action: "webhook.evolution.invalid_secret",
+          metadata: { instance, hasHeader: !!got },
+        });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
 
     const body = (await request.json().catch(() => null)) as EvolutionEvent | null;
     if (!body) return NextResponse.json({ received: true });
@@ -152,10 +170,24 @@ export async function POST(
         where: { id: appointment.id },
         data: { status: "CONFIRMED", confirmedAt: new Date() },
       });
+      await audit({
+        action: "appointment.confirmed_by_patient",
+        entityType: "Appointment",
+        entityId: appointment.id,
+        tenantUserId: user.id,
+        metadata: { phone: maskPhone(phone), messageText: truncateMessage(messageText) },
+      });
     } else if (responseType === "CANCELED") {
       await prisma.appointment.update({
         where: { id: appointment.id },
         data: { status: "CANCELED" },
+      });
+      await audit({
+        action: "appointment.canceled_by_patient",
+        entityType: "Appointment",
+        entityId: appointment.id,
+        tenantUserId: user.id,
+        metadata: { phone: maskPhone(phone), messageText: truncateMessage(messageText) },
       });
     }
 
@@ -169,4 +201,5 @@ export async function POST(
     console.error("Error in Evolution webhook:", error);
     return NextResponse.json({ received: true });
   }
-}
+  },
+)

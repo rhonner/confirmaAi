@@ -4,19 +4,9 @@ import * as React from "react";
 import { useState } from "react";
 import {
   usePatientsPaginated,
-  useCreatePatient,
-  useUpdatePatient,
   useDeletePatient,
 } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,8 +18,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -40,33 +28,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/page-header";
-import { PhoneInput } from "@/components/ui/phone-input";
-import { formatPhoneDisplay, PHONE_REGEX } from "@/lib/phone";
-
-const patientSchema = z.object({
-  name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
-  phone: z.string().regex(PHONE_REGEX, "Informe um celular válido com DDD"),
-  email: z.string().email("Email inválido").optional().or(z.literal("")),
-  notes: z.string().optional(),
-});
-
-type PatientForm = z.infer<typeof patientSchema>;
+import { formatPhoneDisplay } from "@/lib/phone";
+import { PatientFormDialog, type ExistingPatient } from "@/components/forms/patient-form-dialog";
+import { QuotaBanner } from "@/components/billing/quota-banner";
 
 export default function PacientesPage() {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<{
-    id: string;
-    name: string;
-    phone: string;
-    email?: string | null;
-    notes?: string | null;
-  } | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<ExistingPatient | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
@@ -83,74 +54,15 @@ export default function PacientesPage() {
   });
   const patients = paginated?.data;
   const meta = paginated?.meta;
-  const createMutation = useCreatePatient();
-  const updateMutation = useUpdatePatient();
   const deleteMutation = useDeletePatient();
 
-  // Reset to page 1 whenever search changes.
   React.useEffect(() => {
     setPage(1);
   }, [debouncedSearch]);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    control,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm<PatientForm>({
-    resolver: zodResolver(patientSchema),
-    defaultValues: { name: "", phone: "", email: "", notes: "" },
-  });
-
-  const handleOpenDialog = (patient?: typeof selectedPatient) => {
-    if (patient) {
-      setSelectedPatient(patient);
-      reset({
-        name: patient.name,
-        phone: patient.phone,
-        email: patient.email || "",
-        notes: patient.notes || "",
-      });
-    } else {
-      setSelectedPatient(null);
-      reset({
-        name: "",
-        phone: "",
-        email: "",
-        notes: "",
-      });
-    }
+  const handleOpenDialog = (patient?: ExistingPatient | null) => {
+    setSelectedPatient(patient ?? null);
     setDialogOpen(true);
-  };
-
-  const onSubmit = async (data: PatientForm) => {
-    try {
-      const cleanedData = {
-        ...data,
-        email: data.email || undefined,
-        notes: data.notes || undefined,
-      };
-
-      if (selectedPatient) {
-        await updateMutation.mutateAsync({
-          ...cleanedData,
-          id: selectedPatient.id,
-        });
-      } else {
-        await createMutation.mutateAsync(cleanedData);
-      }
-      setDialogOpen(false);
-      reset();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (/telefone/i.test(message)) {
-        setError("phone", { type: "server", message });
-      } else if (/email/i.test(message)) {
-        setError("email", { type: "server", message });
-      }
-    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -174,7 +86,7 @@ export default function PacientesPage() {
                 <span className="sm:hidden">CSV</span>
               </a>
             </Button>
-            <Button onClick={() => handleOpenDialog()}>
+            <Button onClick={() => handleOpenDialog()} data-testid="patients-create-trigger">
               <Plus className="mr-2 h-4 w-4" />
               Novo Paciente
             </Button>
@@ -182,105 +94,13 @@ export default function PacientesPage() {
         }
       />
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedPatient ? "Editar" : "Novo"} Paciente
-              </DialogTitle>
-              <DialogDescription>
-                {selectedPatient
-                  ? "Atualize as informações do paciente"
-                  : "Preencha os dados para cadastrar um novo paciente"}
-              </DialogDescription>
-            </DialogHeader>
+      <QuotaBanner />
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
-                <Input
-                  id="name"
-                  placeholder="João Silva"
-                  {...register("name")}
-                />
-                {errors.name && (
-                  <p className="text-sm text-destructive">
-                    {errors.name.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone (WhatsApp)</Label>
-                <Controller
-                  name="phone"
-                  control={control}
-                  render={({ field }) => (
-                    <PhoneInput
-                      id="phone"
-                      placeholder="(11) 99999-9999"
-                      value={field.value}
-                      onChange={field.onChange}
-                      invalid={!!errors.phone}
-                    />
-                  )}
-                />
-                {errors.phone ? (
-                  <p className="text-sm text-destructive">
-                    {errors.phone.message}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Será usado para enviar a confirmação automática.
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email (opcional)</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="paciente@email.com"
-                  {...register("email")}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive">
-                    {errors.email.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Observações (opcional)</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Informações adicionais sobre o paciente..."
-                  rows={3}
-                  {...register("notes")}
-                />
-              </div>
-
-              <DialogFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                  disabled={isSubmitting}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting
-                    ? "Salvando..."
-                    : selectedPatient
-                    ? "Atualizar"
-                    : "Criar"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+      <PatientFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        patient={selectedPatient}
+      />
 
       {/* Search */}
       <div className="relative">
@@ -353,7 +173,7 @@ export default function PacientesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleOpenDialog(patient)}
+                        onClick={() => handleOpenDialog(patient as ExistingPatient)}
                       >
                         <Pencil className="h-4 w-4" />
                         <span className="sr-only">Editar</span>

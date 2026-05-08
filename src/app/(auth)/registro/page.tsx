@@ -1,9 +1,8 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
@@ -11,13 +10,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator";
+import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 const registerSchema = z.object({
   name: z.string().min(3, "O nome deve ter no mínimo 3 caracteres"),
   clinicName: z.string().min(3, "O nome da clínica deve ter no mínimo 3 caracteres"),
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+  cpf: z
+    .string()
+    .min(11, "CPF é obrigatório")
+    .refine((v) => validateCpf(v).valid, { message: "CPF inválido" }),
+  acceptedTerms: z.literal(true, { message: "É necessário aceitar os termos" }),
+  // Honeypot — invisível, deve ficar vazio.
+  website: z.string().optional(),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -25,44 +34,60 @@ type RegisterForm = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const recaptcha = useRecaptcha();
 
   const {
     register,
     handleSubmit,
+    control,
+    setError,
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: "",
+      cpf: "",
+      clinicName: "",
+      email: "",
+      password: "",
+      website: "",
+    } as Partial<RegisterForm> as RegisterForm,
   });
 
   const onSubmit = async (data: RegisterForm) => {
     setIsLoading(true);
     try {
+      const recaptchaToken = await recaptcha.getToken("signup");
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          cpf: canonicalizeCpf(data.cpf),
+          // Explicit: garantir que vai como boolean true (Controller pode
+          // não incluir no `data` spread em alguns casos)
+          acceptedTerms: data.acceptedTerms === true,
+          recaptchaToken,
+        }),
       });
 
       const result = await res.json();
 
       if (!res.ok) {
-        toast.error(result.error || "Erro ao criar conta");
+        const msg = result.error || result.message || "Erro ao criar conta";
+        toast.error(msg);
+        if (/cpf/i.test(msg)) setError("cpf", { type: "server", message: msg });
+        if (/email/i.test(msg)) setError("email", { type: "server", message: msg });
         return;
       }
 
-      toast.success("Conta criada com sucesso");
-
-      // Auto login after registration
-      const signInResult = await signIn("credentials", {
-        email: data.email,
-        password: data.password,
-        redirect: false,
-      });
-
-      if (signInResult?.ok) {
-        router.push("/dashboard");
-      }
+      toast.success(result.message ?? "Conta criada");
+      // Sprint 4: usuário precisa verificar email antes de logar plenamente.
+      // Direciona pra página de "verifique seu email" — auto-login só após verificação.
+      router.push("/verificar-email");
     } catch (error) {
+      console.error("register error:", error);
       toast.error("Erro ao criar conta. Tente novamente.");
     } finally {
       setIsLoading(false);
@@ -95,6 +120,36 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="cpf">Seu CPF</Label>
+          <Controller
+            name="cpf"
+            control={control}
+            render={({ field }) => (
+              <Input
+                id="cpf"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="000.000.000-00"
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const digits = canonicalizeCpf(e.target.value).slice(0, 11);
+                  field.onChange(digits.length === 11 ? formatCpf(digits) : digits);
+                }}
+                disabled={isLoading}
+                aria-invalid={!!errors.cpf}
+              />
+            )}
+          />
+          {errors.cpf ? (
+            <p className="text-sm text-destructive">{errors.cpf.message}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Necessário para anti-fraude. Não é compartilhado.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="clinicName">Nome da Clínica</Label>
           <Input
             id="clinicName"
@@ -105,9 +160,7 @@ export default function RegisterPage() {
             aria-invalid={!!errors.clinicName}
           />
           {errors.clinicName && (
-            <p className="text-sm text-destructive">
-              {errors.clinicName.message}
-            </p>
+            <p className="text-sm text-destructive">{errors.clinicName.message}</p>
           )}
         </div>
 
@@ -139,10 +192,61 @@ export default function RegisterPage() {
             aria-invalid={!!errors.password}
           />
           {errors.password && (
-            <p className="text-sm text-destructive">
-              {errors.password.message}
-            </p>
+            <p className="text-sm text-destructive">{errors.password.message}</p>
           )}
+        </div>
+
+        <div className="flex items-start gap-2">
+          <Controller
+            name="acceptedTerms"
+            control={control}
+            render={({ field }) => (
+              <Checkbox
+                id="acceptedTerms"
+                checked={field.value === true}
+                onCheckedChange={(checked) => field.onChange(checked === true)}
+                disabled={isLoading}
+                aria-invalid={!!errors.acceptedTerms}
+              />
+            )}
+          />
+          <div className="grid gap-1.5 leading-none">
+            <label htmlFor="acceptedTerms" className="text-sm font-medium leading-none">
+              Aceito os{" "}
+              <Link href="/precos" className="underline">
+                Termos de Uso
+              </Link>{" "}
+              e{" "}
+              <Link href="/precos" className="underline">
+                Política de Privacidade
+              </Link>
+            </label>
+            {errors.acceptedTerms && (
+              <p className="text-sm text-destructive">{errors.acceptedTerms.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Honeypot — escondido visualmente e por aria. Bots preenchem; humanos não. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: "-9999px",
+            width: 0,
+            height: 0,
+            overflow: "hidden",
+          }}
+        >
+          <label htmlFor="website-hp">Website (não preencher)</label>
+          <input
+            id="website-hp"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            {...register("website")}
+          />
         </div>
 
         <Button type="submit" className="w-full" disabled={isLoading}>
@@ -152,10 +256,7 @@ export default function RegisterPage() {
 
       <div className="text-center text-sm">
         <span className="text-muted-foreground">Já tem uma conta? </span>
-        <Link
-          href="/login"
-          className="font-medium text-primary hover:underline"
-        >
+        <Link href="/login" className="font-medium text-primary hover:underline">
           Fazer login
         </Link>
       </div>

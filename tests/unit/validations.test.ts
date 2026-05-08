@@ -306,6 +306,7 @@ describe("Auth validations", () => {
         password: "senha123",
         clinicName: "Clínica Vida",
         avgAppointmentValue: 150,
+        cpf: "111.444.777-35",
       };
 
       const result = registerSchema.safeParse(validData);
@@ -359,6 +360,7 @@ describe("Auth validations", () => {
         email: "joao@example.com",
         password: "senha123",
         clinicName: "Clínica Vida",
+        cpf: "111.444.777-35",
       };
 
       const result = registerSchema.safeParse(validData);
