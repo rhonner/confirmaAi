@@ -2,10 +2,11 @@
 title: Asaas — gateway de cobrança brasileiro
 type: entity
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-10
 tags: [asaas, billing, pagamento, pix, brasil]
 sources:
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
+  - raw/sessions/2026-06-10-sprint6-and-golive.md
 related:
   - .context/features/billing.md
 status: stable
@@ -40,9 +41,17 @@ Em produção: configurar URL `https://clinicaorganizada.com/api/billing/webhook
 
 Asaas não oferece um portal hospedado equivalente ao da Stripe. Nossa `createPortalSession` retorna a URL pública do customer (`/c/{customerId}`) — mas funcionalidade limitada. Em produção, considerar página interna que use a API direto pra cancel/troca de método.
 
-## NF-e
+## NF-e e Pessoa Física (decisão 2026-06-10)
 
-Ativada no painel Asaas: emissão automática a cada `PAYMENT_RECEIVED`. Inclui razão social, CNPJ do tenant — configurado uma vez por conta Asaas (não por subscription nossa). Sprint 8 (LGPD/legal) finaliza essa parte.
+- **Asaas aceita conta PF** (CPF) — receber Pix/cartão recorrente funciona sem CNPJ. Decisão: **começar a vender como PF** pra validar; IR via carnê-leão.
+- **NF-e exige CNPJ** — indisponível até abrir empresa. Ok pros primeiros clientes; gargalo pra escalar B2B (clínicas pedem nota). Quando houver CNPJ: ativar no painel (emissão automática a cada `PAYMENT_RECEIVED`), 1 config, zero código. Sprint 11 (LGPD/legal) finaliza.
+- **MEI provavelmente não cobre SaaS** (CNAEs de software fora da lista) — caminho provável é ME no Simples; confirmar com contador.
+
+## Estado da conta de produção (2026-06-10)
+
+- Conta criada pelo usuário. `ASAAS_WEBHOOK_SECRET` já gerada e na Vercel (cópia em `/tmp/claude-501/asaas_webhook_secret.txt` da sessão).
+- Pendente (manual do usuário): gerar `ASAAS_API_KEY` e configurar o webhook no painel.
+- ⚠️ Painel Asaas **não é automatizável** pelo agente — ver [[../concepts/claude-chrome-sensitive-domains]].
 
 ## Configuração de env (prod)
 

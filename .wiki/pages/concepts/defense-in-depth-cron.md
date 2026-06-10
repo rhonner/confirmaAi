@@ -2,15 +2,19 @@
 title: Defesa em profundidade via cron diário
 type: concept
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-10
 tags: [cron, defense-in-depth, billing, reliability, pattern]
 sources:
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
 related:
   - .context/features/billing.md
   - .context/features/scheduler.md
+  - pages/concepts/vercel-hobby-cron-workaround.md
+  - pages/concepts/lazy-period-usage-counter.md
 status: stable
 ---
+
+> 2026-06-10: este pattern é sobre o **conteúdo** do job (reconciliar estado). O **disparo** do cron em produção tem pattern próprio — [[vercel-hobby-cron-workaround]] (crontab da VPS 30/30min + Vercel diário como redundância). A quota de mensagens usa variação sem job: [[lazy-period-usage-counter]].
 
 > Pattern: cron diário que **reconcilia estado** baseado em invariantes temporais, servindo como backstop contra eventos perdidos do gateway. Aplicado em `runBillingMaintenance()` (Sprint 5) — mas o pattern é genérico.
 

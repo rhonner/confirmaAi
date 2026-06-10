@@ -61,3 +61,9 @@ Premissa do fundador formalizada: "deixar o projeto rodando e vendendo sozinho, 
 - **Descoberta**: produção JÁ está no ar — `clinicaorganizada.com` (Vercel, main = v1 sem monetização) e `evolution.clinicaorganizada.com` (Hetzner, HTTPS ok). `deployment-status.md` estava 5 semanas desatualizado.
 - **Gotcha de produção**: `vercel.json` cron = `0 3 * * *` (Vercel **Hobby limita a 1×/dia**) — scheduler.md dizia 30min. Lembretes de 2h não funcionam com cron diário. Fix planejado (Sprint 7): disparo externo 15-30min no `POST /api/cron/run` com Bearer CRON_SECRET (crontab da VPS Hetzner = opção sem custo).
 - Branch: `v2.0.0` = main + 1 commit gigante (sprints 1-6). Merge → main é o ato final do go-live (junto com `prisma migrate deploy` em prod).
+
+## [2026-06-10 19:30] ingest | Go-live Sprint 7 (~90%) + decisões PF/CNPJ — 4 páginas novas + 4 atualizadas + raw
+
+Páginas novas: concepts/lazy-period-usage-counter, concepts/neon-pooled-vs-direct-url, concepts/vercel-hobby-cron-workaround, concepts/claude-chrome-sensitive-domains.
+Atualizadas: entities/asaas-integration (PF sem CNPJ ok, NF-e só com CNPJ, MEI provavelmente não cobre SaaS, painel não-automatizável), concepts/defense-in-depth-cron (cross-links disparo vs conteúdo), synthesis/monetization-v2-state (Sprint 7 ~90%, 4 patterns novos), index.
+Raw: raw/sessions/2026-06-10-sprint6-and-golive.md (sessão completa: re-sequenciamento + Sprint 6 + execução go-live em prod: pooled URL, 7 migrations, backfill 14 slots, envs v2, sshd key-only).

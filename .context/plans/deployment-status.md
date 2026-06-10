@@ -22,18 +22,19 @@ A v1 **JÁ ESTÁ EM PRODUÇÃO** — boa parte deste documento foi executada em 
 Existem (v1): `CRON_SECRET`, `EVOLUTION_API_KEY`, `EVOLUTION_API_URL`, `EVOLUTION_WEBHOOK_BASE_URL`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`.
 
 ### 🔴 Pendências do go-live v2 (Sprint 7)
-| # | Item | Quem | Detalhe |
-| - | ---- | ---- | ------- |
-| 1 | `DATABASE_URL` → **pooled** | dev (CLI) | Neon `ep-divine-recipe-acbdf1sw.sa-east-1` está **sem `-pooler`** — serverless esgota conexões diretas. Trocar host para `...-pooler...`. Migrations continuam na URL direta. |
-| 2 | Conta **Asaas produção** | **usuário** | Criar conta, gerar `ASAAS_API_KEY`, configurar webhook `https://clinicaorganizada.com/api/billing/webhook` com header `asaas-access-token: <ASAAS_WEBHOOK_SECRET>`, ativar NF-e. |
-| 3 | **reCAPTCHA v3** | **usuário** | Criar site key/secret no admin do Google para `clinicaorganizada.com`. Sem isso, signup v2 retorna 503 em prod. |
-| 4 | **Resend** | **usuário** | Conta + API key + verificar domínio (DKIM/SPF na Cloudflare). Sem isso, verificação de email do signup não envia. |
-| 5 | Envs v2 na Vercel | dev (CLI, após `vercel login`) | `CPF_HASH_PEPPER` (gerar), `BILLING_PROVIDER=ASAAS`, `ASAAS_API_URL=https://api.asaas.com/v3`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_SECRET` (gerar), `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`, `RECAPTCHA_SECRET_KEY`, `RESEND_API_KEY`. |
-| 6 | Migrations v2 em prod | dev | `npx prisma migrate deploy` com a URL direta (7 migrations da v2). |
-| 7 | Merge `v2.0.0` → `main` | **usuário** (gh) | Dispara o deploy v2. Fazer APÓS 1-6. |
+| # | Item | Quem | Status / Detalhe |
+| - | ---- | ---- | ---------------- |
+| 1 | `DATABASE_URL` → **pooled** | dev (CLI) | ✅ 2026-06-10 — host trocado para `ep-divine-recipe-acbdf1sw-pooler...` via `vercel env`. Migrations continuam na URL direta. |
+| 2 | Conta **Asaas produção** | **usuário** | 🟡 conta criada. Falta: gerar `ASAAS_API_KEY` (Integrações → Chave de API) e configurar webhook `https://clinicaorganizada.com/api/billing/webhook` com header `asaas-access-token` = valor de `ASAAS_WEBHOOK_SECRET` (já na Vercel; cópia local em `/tmp/claude-501/asaas_webhook_secret.txt`). Eventos: PAYMENT_RECEIVED/CONFIRMED/OVERDUE + cancelamento de assinatura. Ativar NF-e **quando houver CNPJ** (decisão: começar como PF; NF-e indisponível até lá). **Nota**: extensão Claude/Chrome bloqueia sites financeiros — passos do Asaas são manuais. |
+| 3 | **reCAPTCHA v3** | **usuário** | Criar site v3 para `clinicaorganizada.com` em google.com/recaptcha/admin. Sem isso, signup v2 retorna 503 em prod. Depois: `npx vercel env add NEXT_PUBLIC_RECAPTCHA_SITE_KEY production` + `RECAPTCHA_SECRET_KEY`. |
+| 4 | **Resend** | **usuário** | Conta + API key (`RESEND_API_KEY`) + verificar domínio (DKIM/SPF na Cloudflare). Sem isso, email de verificação do signup não envia. |
+| 5 | Envs v2 na Vercel | dev (CLI) | ✅ parcial 2026-06-10 — adicionadas: `CPF_HASH_PEPPER` (gerada, cópia em `/tmp/claude-501/cpf_pepper.txt`), `BILLING_PROVIDER=ASAAS`, `ASAAS_API_URL=https://www.asaas.com/api/v3`, `ASAAS_WEBHOOK_SECRET`. Faltam as 4 dos itens 2-4. |
+| 6 | Migrations v2 em prod | dev | ✅ 2026-06-10 — 7 migrations aplicadas via `migrate deploy` (URL direta) + backfill `backfill-quota-slots.ts` com pepper de prod: 14 patients → 14 slots PHONE, 6 users atualizados, 8/8 users com Subscription FREE/ACTIVE. Users atuais são contas de teste (nenhum WA conectado). |
+| 7 | Merge `v2.0.0` → `main` | **usuário** (gh) | Dispara o deploy v2. Fazer APÓS 2-4. |
 | 8 | Smoke test E2E | dev + usuário | Signup → verify email → QR WhatsApp → paciente → agendamento → confirmação no celular → responder. |
 
 > ⚠️ Ordem importa: merge (7) por último — a v2 em produção sem reCAPTCHA/Resend/Asaas quebra signup e billing.
+> ⚠️ `CPF_HASH_PEPPER` de produção é **imutável** (rotacionar exige rehash da base toda). Valor está na Vercel; não regenerar.
 
 ---
 

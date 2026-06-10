@@ -45,7 +45,7 @@ status: stable
 | 4 | Anti-fraude signup | ✅ 2026-05-07 | reCAPTCHA, email verify (Resend), disposable blocklist, honeypot, cross-tenant CPF dono, SignupAttempt purpose-built |
 | 5 | Cobrança Asaas | ✅ 2026-05-07 | BillingProvider interface, Mock+Asaas, webhook idempotente HMAC, lifecycle cron, /billing/checkout completo |
 | 6 | Mensagens + gates + hardening escala scheduler | ✅ 2026-06-10 | `usage.ts` lazy-period, gate dedup `QUOTA_BLOCKED`, chunking 200/45s, índices compostos, audit `cron.run`, badge ≥50% |
-| 7 | Go-live (deploy produção) | 🟡 ~85% pronto | Infra toda no ar (domínio, DNS, app v1, Evolution HTTPS, VPS hardened, **cron 30min já roda via crontab da VPS**, sshd key-only). Falta: contas Asaas/reCAPTCHA/Resend (usuário), envs v2 + pooled DATABASE_URL (CLI), migrations + merge. Checklist vivo em `deployment-status.md` § Estado Real |
+| 7 | Go-live (deploy produção) | 🟡 ~90% pronto | Infra no ar + **DATABASE_URL pooled ✅ + 7 migrations v2 aplicadas em prod ✅ + backfill (14 slots, 8/8 subs) ✅ + 4 envs v2 ✅** (2026-06-10). Falta: `ASAAS_API_KEY` + webhook no painel, reCAPTCHA keys, `RESEND_API_KEY` (usuário) → merge `v2.0.0`→`main` → smoke E2E. Checklist vivo em `deployment-status.md` § Estado Real |
 | 8 | Resiliência WhatsApp **[nova]** | ⏳ | Anti-churn silencioso: email ao tenant quando instância desconecta, banner, health-check Evolution |
 | 9 | Observabilidade **[nova]** | ⏳ | Sentry + `GET /api/health` agregador (cron morto, BillingEvent travado, Evolution down) + uptime monitor externo |
 | 10 | Receita passiva: emails + admin (ex-7) | ⏳ | Dunning 1/3/7, transacionais, `/admin/audit`, retention 90d AuditLog |
@@ -80,6 +80,10 @@ status: stable
 - [[../concepts/dev-fallback-without-secrets]] — recaptcha/Resend/Asaas com bypass dev
 - [[../concepts/defense-in-depth-cron]] — backstop de webhooks perdidos
 - [[../concepts/rhf-radix-gotcha]] — bugs UI só pegáveis em Chrome MCP real
+- [[../concepts/lazy-period-usage-counter]] — quota de mensagens sem job de reset (Sprint 6)
+- [[../concepts/neon-pooled-vs-direct-url]] — pooled no runtime, direta nas migrations
+- [[../concepts/vercel-hobby-cron-workaround]] — crontab da VPS dispara o scheduler 30/30min
+- [[../concepts/claude-chrome-sensitive-domains]] — painel Asaas é sempre manual
 - [[../entities/prisma-v7-extensions]] — `$extends` p/ auditoria automática
 - [[../entities/radix-popover-and-dialog]] — programmatic click não dispara
 - [[../entities/asaas-integration]] — endpoints, gotchas, config
