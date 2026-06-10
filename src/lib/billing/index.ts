@@ -28,6 +28,14 @@ export {
   type ParsedEvent,
   eventToSubscriptionPatch,
 } from "./provider";
+export {
+  getCurrentUsage,
+  incrementMessagesSent,
+  hasMessageQuota,
+  currentPeriodFor,
+  type MessageUsage,
+  type UsagePeriod,
+} from "./usage";
 export { MockProvider } from "./mock";
 export { AsaasProvider } from "./asaas";
 export { getBillingProvider } from "./factory";

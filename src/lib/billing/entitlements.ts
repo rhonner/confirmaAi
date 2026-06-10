@@ -99,8 +99,17 @@ export async function check(
     }
 
     case "message.send": {
-      // Implementado em Sprint 6. Por hora, plano Free e seus 50 msgs continuam
-      // permissivos (sem UsageCounter ainda); o gate volta restritivo lá.
+      const { getCurrentUsage } = await import("./usage");
+      const usage = await getCurrentUsage(userId);
+      if (usage.messagesSent >= usage.messagesIncluded) {
+        return {
+          allowed: false,
+          reason: "QUOTA_EXCEEDED",
+          upgrade: planTier === "FREE" ? "PRO" : "PREMIUM",
+          current: usage.messagesSent,
+          limit: usage.messagesIncluded,
+        };
+      }
       return { allowed: true };
     }
 

@@ -6,38 +6,151 @@ import {
   formatAppointmentTime,
 } from "./message-template";
 import { audit } from "@/lib/audit";
+import { getCurrentUsage, incrementMessagesSent } from "@/lib/billing/usage";
+import type { MessageType, Prisma } from "@/generated/prisma/client";
 
-async function sendConfirmations(): Promise<void> {
-  try {
-    const now = new Date();
+export type SchedulerStats = {
+  confirmationsSent: number;
+  remindersSent: number;
+  sendFailures: number;
+  quotaBlocked: number;
+  noShowsMarked: number;
+  /** True se o time-budget estourou antes de varrer tudo (próximo run continua). */
+  truncated: boolean;
+  durationMs: number;
+};
 
+// A rota /api/cron/run tem maxDuration = 60s; paramos a varredura em 45s
+// para sobrar margem pro billing-maintenance e pra resposta HTTP.
+const TIME_BUDGET_MS = 45_000;
+// Tamanho do lote por query — limita memória por invocação serverless.
+const BATCH_SIZE = 200;
+
+type QuotaCache = Map<string, number>; // userId → mensagens restantes no período
+
+async function remainingMessages(cache: QuotaCache, userId: string): Promise<number> {
+  const cached = cache.get(userId);
+  if (cached !== undefined) return cached;
+  const usage = await getCurrentUsage(userId);
+  const remaining = Math.max(0, usage.messagesIncluded - usage.messagesSent);
+  cache.set(userId, remaining);
+  return remaining;
+}
+
+/**
+ * Registra o bloqueio por quota UMA vez por (appointment, type) — o
+ * appointment continua matching o filtro a cada run enquanto bloqueado, e sem
+ * dedup isso viraria spam de MessageLog/AuditLog a cada 30 min.
+ */
+async function logQuotaBlockedOnce(
+  appointmentId: string,
+  userId: string,
+  type: MessageType,
+): Promise<void> {
+  const existing = await prisma.messageLog.findFirst({
+    where: { appointmentId, type, status: "QUOTA_BLOCKED" },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  await prisma.messageLog.create({
+    data: { appointmentId, type, status: "QUOTA_BLOCKED" },
+  });
+  await audit({
+    action: "quota.message_blocked",
+    entityType: "Appointment",
+    entityId: appointmentId,
+    tenantUserId: userId,
+    metadata: { type },
+  });
+}
+
+type SendKind = {
+  type: MessageType;
+  where: Prisma.AppointmentWhereInput;
+  hoursBeforeOf: (s: { confirmationHoursBefore: number; reminderHoursBefore: number }) => number;
+  messageOf: (s: { confirmationMessage: string; reminderMessage: string }) => string;
+  sentAtField: "confirmationSentAt" | "reminderSentAt";
+};
+
+const CONFIRMATION: SendKind = {
+  type: "CONFIRMATION",
+  where: { confirmationSentAt: null, status: "PENDING", user: { whatsappStatus: "CONNECTED" } },
+  hoursBeforeOf: (s) => s.confirmationHoursBefore,
+  messageOf: (s) => s.confirmationMessage,
+  sentAtField: "confirmationSentAt",
+};
+
+const REMINDER: SendKind = {
+  type: "REMINDER",
+  where: {
+    confirmationSentAt: { not: null },
+    reminderSentAt: null,
+    status: "PENDING",
+    user: { whatsappStatus: "CONNECTED" },
+  },
+  hoursBeforeOf: (s) => s.reminderHoursBefore,
+  messageOf: (s) => s.reminderMessage,
+  sentAtField: "reminderSentAt",
+};
+
+/**
+ * Varre appointments elegíveis em lotes, priorizando os horários mais
+ * próximos, até esgotar a fila ou estourar `deadline`.
+ *
+ * Paginação: appointments enviados saem do filtro sozinhos (sentAt deixa de
+ * ser null); os pulados (cedo demais, sem quota, falha de envio) entram em
+ * `skippedIds` para não repetir dentro do mesmo run.
+ */
+async function processSends(
+  kind: SendKind,
+  deadline: number,
+  quotaCache: QuotaCache,
+  stats: SchedulerStats,
+): Promise<void> {
+  const skippedIds: string[] = [];
+
+  while (Date.now() < deadline) {
     const appointments = await prisma.appointment.findMany({
-      where: {
-        confirmationSentAt: null,
-        status: "PENDING",
-        user: { whatsappStatus: "CONNECTED" },
-      },
-      include: {
-        patient: true,
-        user: {
-          include: {
-            settings: true,
-          },
-        },
-      },
+      where: { ...kind.where, ...(skippedIds.length ? { id: { notIn: skippedIds } } : {}) },
+      include: { patient: true, user: { include: { settings: true } } },
+      orderBy: { dateTime: "asc" },
+      take: BATCH_SIZE,
     });
+    if (appointments.length === 0) return;
 
     for (const appointment of appointments) {
+      if (Date.now() >= deadline) {
+        stats.truncated = true;
+        return;
+      }
+
+      const now = new Date();
       const settings = appointment.user.settings;
-      if (!settings) continue;
+      if (!settings) {
+        skippedIds.push(appointment.id);
+        continue;
+      }
 
-      const hoursBefore = settings.confirmationHoursBefore;
       const sendTime = new Date(appointment.dateTime);
-      sendTime.setHours(sendTime.getHours() - hoursBefore);
+      sendTime.setHours(sendTime.getHours() - kind.hoursBeforeOf(settings));
+      if (now < sendTime || now > appointment.dateTime) {
+        skippedIds.push(appointment.id);
+        continue;
+      }
 
-      if (now < sendTime || now > appointment.dateTime) continue;
+      // Gate de quota de mensagens (Sprint 6). Bloqueado ≠ enviado: o
+      // appointment fica PENDING e volta a ser elegível se o tenant fizer
+      // upgrade antes do horário.
+      const remaining = await remainingMessages(quotaCache, appointment.userId);
+      if (remaining <= 0) {
+        await logQuotaBlockedOnce(appointment.id, appointment.userId, kind.type);
+        stats.quotaBlocked++;
+        skippedIds.push(appointment.id);
+        continue;
+      }
 
-      const message = formatMessage(settings.confirmationMessage, {
+      const message = formatMessage(kind.messageOf(settings), {
         nome: appointment.patient.name,
         data: formatAppointmentDate(appointment.dateTime),
         hora: formatAppointmentTime(appointment.dateTime),
@@ -47,147 +160,85 @@ async function sendConfirmations(): Promise<void> {
       const success = await sendWhatsAppMessage(
         appointment.user.evolutionInstanceName,
         appointment.patient.phone,
-        message
+        message,
       );
 
       if (success) {
         await prisma.appointment.update({
           where: { id: appointment.id },
-          data: { confirmationSentAt: new Date() },
+          data: { [kind.sentAtField]: new Date() },
         });
-
         await prisma.messageLog.create({
-          data: {
-            appointmentId: appointment.id,
-            type: "CONFIRMATION",
-            status: "SENT",
-          },
+          data: { appointmentId: appointment.id, type: kind.type, status: "SENT" },
         });
+        await incrementMessagesSent(appointment.userId);
+        quotaCache.set(appointment.userId, remaining - 1);
+        if (kind.type === "CONFIRMATION") stats.confirmationsSent++;
+        else stats.remindersSent++;
 
         await audit({
           action: "message.sent",
           entityType: "Appointment",
           entityId: appointment.id,
           tenantUserId: appointment.userId,
-          metadata: { type: "CONFIRMATION", instanceName: appointment.user.evolutionInstanceName },
+          metadata: { type: kind.type, instanceName: appointment.user.evolutionInstanceName },
         });
       } else {
+        stats.sendFailures++;
+        skippedIds.push(appointment.id);
         await audit({
           action: "message.send_failed",
           entityType: "Appointment",
           entityId: appointment.id,
           tenantUserId: appointment.userId,
-          metadata: { type: "CONFIRMATION" },
+          metadata: { type: kind.type },
         });
       }
     }
-  } catch (error) {
-    console.error("Error in sendConfirmations:", error);
+
+    if (appointments.length < BATCH_SIZE) return;
   }
+  stats.truncated = true;
 }
 
-async function sendReminders(): Promise<void> {
+async function markNoShows(stats: SchedulerStats): Promise<void> {
   try {
-    const now = new Date();
-
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        confirmationSentAt: { not: null },
-        reminderSentAt: null,
-        status: "PENDING",
-        user: { whatsappStatus: "CONNECTED" },
-      },
-      include: {
-        patient: true,
-        user: {
-          include: {
-            settings: true,
-          },
-        },
-      },
+    const result = await prisma.appointment.updateMany({
+      where: { dateTime: { lt: new Date() }, status: "PENDING" },
+      data: { status: "NO_SHOW" },
     });
-
-    for (const appointment of appointments) {
-      const settings = appointment.user.settings;
-      if (!settings) continue;
-
-      const hoursBefore = settings.reminderHoursBefore;
-      const sendTime = new Date(appointment.dateTime);
-      sendTime.setHours(sendTime.getHours() - hoursBefore);
-
-      if (now < sendTime || now > appointment.dateTime) continue;
-
-      const message = formatMessage(settings.reminderMessage, {
-        nome: appointment.patient.name,
-        data: formatAppointmentDate(appointment.dateTime),
-        hora: formatAppointmentTime(appointment.dateTime),
-        clinica: appointment.user.clinicName,
-      });
-
-      const success = await sendWhatsAppMessage(
-        appointment.user.evolutionInstanceName,
-        appointment.patient.phone,
-        message
-      );
-
-      if (success) {
-        await prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { reminderSentAt: new Date() },
-        });
-
-        await prisma.messageLog.create({
-          data: {
-            appointmentId: appointment.id,
-            type: "REMINDER",
-            status: "SENT",
-          },
-        });
-
-        await audit({
-          action: "message.sent",
-          entityType: "Appointment",
-          entityId: appointment.id,
-          tenantUserId: appointment.userId,
-          metadata: { type: "REMINDER", instanceName: appointment.user.evolutionInstanceName },
-        });
-      } else {
-        await audit({
-          action: "message.send_failed",
-          entityType: "Appointment",
-          entityId: appointment.id,
-          tenantUserId: appointment.userId,
-          metadata: { type: "REMINDER" },
-        });
-      }
-    }
-  } catch (error) {
-    console.error("Error in sendReminders:", error);
-  }
-}
-
-async function markNoShows(): Promise<void> {
-  try {
-    const now = new Date();
-
-    await prisma.appointment.updateMany({
-      where: {
-        dateTime: { lt: now },
-        status: "PENDING",
-      },
-      data: {
-        status: "NO_SHOW",
-      },
-    });
+    stats.noShowsMarked = result.count;
   } catch (error) {
     console.error("Error in markNoShows:", error);
   }
 }
 
-export async function runSchedulerJobs(): Promise<void> {
-  await sendConfirmations();
-  await sendReminders();
-  await markNoShows();
+export async function runSchedulerJobs(): Promise<SchedulerStats> {
+  const startedAt = Date.now();
+  const deadline = startedAt + TIME_BUDGET_MS;
+  const quotaCache: QuotaCache = new Map();
+  const stats: SchedulerStats = {
+    confirmationsSent: 0,
+    remindersSent: 0,
+    sendFailures: 0,
+    quotaBlocked: 0,
+    noShowsMarked: 0,
+    truncated: false,
+    durationMs: 0,
+  };
+
+  try {
+    await processSends(CONFIRMATION, deadline, quotaCache, stats);
+  } catch (error) {
+    console.error("Error in sendConfirmations:", error);
+  }
+  try {
+    await processSends(REMINDER, deadline, quotaCache, stats);
+  } catch (error) {
+    console.error("Error in sendReminders:", error);
+  }
+  await markNoShows(stats);
+
   // Billing maintenance (Sprint 5): defesa em profundidade contra webhooks
   // perdidos. Roda no mesmo cron pra economizar invocações Vercel.
   try {
@@ -199,4 +250,7 @@ export async function runSchedulerJobs(): Promise<void> {
   } catch (err) {
     console.error("billing-maintenance failed:", err);
   }
+
+  stats.durationMs = Date.now() - startedAt;
+  return stats;
 }

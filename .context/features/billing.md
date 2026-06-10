@@ -20,7 +20,7 @@
 | **Páginas `/billing/checkout` + `/billing/sucesso`** | ✅ Sprint 5 |
 | **Lifecycle states + cron diário (`runBillingMaintenance`)** | ✅ Sprint 5 |
 | **`POST /api/billing/mock-trigger` (dev-only)** | ✅ Sprint 5 |
-| `UsageCounter` + gate `message.send` no scheduler | ❌ Sprint 6 |
+| **`UsageCounter` operacional (`usage.ts`) + gate `message.send` no scheduler + badge msgs** | ✅ Sprint 6 — ver [`scheduler.md`](scheduler.md) |
 
 ## Fluxo de cobrança (Sprint 5)
 

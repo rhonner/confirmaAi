@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   "whatsapp.connect_failed": "Falha ao conectar WhatsApp",
 
   // Mensageria automática
+  "cron.run": "Execução do agendador (cron)",
   "message.sent": "Mensagem enviada",
   "message.send_failed": "Falha no envio de mensagem",
   "appointment.confirmed_by_patient": "Paciente confirmou pelo WhatsApp",

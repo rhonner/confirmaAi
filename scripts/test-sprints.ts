@@ -24,14 +24,14 @@ import {
   PLANS,
 } from "../src/lib/billing";
 import { canonicalizeCpf, validateCpf } from "../src/lib/anti-fraud/cpf-validator";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("não rodar em produção");
 }
 
-type Sprint = 1 | 2 | 3 | 4 | 5;
+type Sprint = 1 | 2 | 3 | 4 | 5 | 6;
 const results: Array<{ id: string; sprint: Sprint; pass: boolean; detail: string }> = [];
 function check(id: string, sprint: Sprint, pass: boolean, detail = "") {
   results.push({ id, sprint, pass, detail });
@@ -919,6 +919,110 @@ async function main() {
   await prisma.billingEvent.deleteMany({ where: { providerEventId: { contains: "test-evt-" } } });
 
   // ====================================================================
+  // SPRINT 6 — Quota de mensagens + hardening do scheduler
+  // ====================================================================
+  console.log("\n━━━ SPRINT 6 ━━━\n");
+
+  const { getCurrentUsage, incrementMessagesSent, currentPeriodFor } =
+    await import("../src/lib/billing");
+
+  // 6.1 Enum MessageStatus tem QUOTA_BLOCKED
+  const enumRows = await prisma.$queryRawUnsafe<{ v: string }[]>(
+    `SELECT unnest(enum_range(NULL::"MessageStatus"))::text AS v`,
+  );
+  check(
+    "6.1 MessageStatus inclui QUOTA_BLOCKED",
+    6,
+    enumRows.some((r) => r.v === "QUOTA_BLOCKED"),
+  );
+
+  // 6.2 UsageCounter lazy: primeira leitura cria a linha do período (FREE = mês calendário, 50 msgs)
+  const usageUser = await prisma.user.create({
+    data: { name: "Usage Test", email: `usage-${Date.now()}@t.local`, password: "x", clinicName: "Usage", emailVerifiedAt: new Date() },
+  });
+  const firstUsage = await getCurrentUsage(usageUser.id);
+  const counterRow = await prisma.usageCounter.findFirst({ where: { userId: usageUser.id } });
+  check(
+    "6.2 getCurrentUsage cria UsageCounter lazy (FREE: 50 incluídas, 0 enviadas)",
+    6,
+    firstUsage.messagesSent === 0 && firstUsage.messagesIncluded === 50 && !!counterRow,
+  );
+
+  // 6.3 incrementMessagesSent é atômico e acumula
+  await incrementMessagesSent(usageUser.id);
+  await incrementMessagesSent(usageUser.id);
+  const afterInc = await getCurrentUsage(usageUser.id);
+  check("6.3 incrementMessagesSent acumula (2 envios → messagesSent = 2)", 6, afterInc.messagesSent === 2);
+
+  // 6.4 Gate message.send: permite sob o limite, bloqueia no limite com 402 semântico
+  const allowedUnder = await checkEntitlement(usageUser.id, "message.send");
+  await prisma.usageCounter.updateMany({
+    where: { userId: usageUser.id },
+    data: { messagesSent: 50 },
+  });
+  const deniedAt = await checkEntitlement(usageUser.id, "message.send");
+  check(
+    "6.4 entitlements message.send: allow < limite, deny QUOTA_EXCEEDED no limite (upgrade PRO)",
+    6,
+    allowedUnder.allowed === true &&
+      deniedAt.allowed === false &&
+      deniedAt.reason === "QUOTA_EXCEEDED" &&
+      deniedAt.upgrade === "PRO",
+  );
+
+  // 6.5 currentPeriodFor: ciclo pago válido vs fallback mês calendário (webhook perdido)
+  const nowRef = new Date("2026-06-10T12:00:00Z");
+  const paidPeriod = currentPeriodFor(
+    {
+      currentPeriodStart: new Date("2026-06-05T00:00:00Z"),
+      currentPeriodEnd: new Date("2026-07-05T00:00:00Z"),
+    } as Parameters<typeof currentPeriodFor>[0],
+    nowRef,
+  );
+  const stalePeriod = currentPeriodFor(
+    {
+      currentPeriodStart: new Date("2026-04-05T00:00:00Z"),
+      currentPeriodEnd: new Date("2026-05-05T00:00:00Z"),
+    } as Parameters<typeof currentPeriodFor>[0],
+    nowRef,
+  );
+  check(
+    "6.5 currentPeriodFor: usa ciclo pago válido; ciclo expirado cai pro mês calendário",
+    6,
+    paidPeriod.periodStart.toISOString() === "2026-06-05T00:00:00.000Z" &&
+      stalePeriod.periodStart.toISOString() === "2026-06-01T00:00:00.000Z",
+  );
+
+  // 6.6 Índices compostos do scheduler existem no banco
+  const idxRows = await prisma.$queryRawUnsafe<{ indexname: string }[]>(
+    `SELECT indexname FROM pg_indexes WHERE tablename = 'Appointment'`,
+  );
+  const idxNames = idxRows.map((r) => r.indexname).join(",");
+  check(
+    "6.6 índices Appointment(status, confirmationSentAt) e (status, dateTime) criados",
+    6,
+    idxNames.includes("status_confirmationSentAt") && idxNames.includes("status_dateTime"),
+  );
+
+  // 6.7 Artefatos da sprint existem (usage.ts, stats no scheduler, badge, endpoint)
+  const schedulerSrc = readFileSync("src/lib/services/scheduler.ts", "utf-8");
+  const subscriptionRouteSrc = readFileSync("src/app/api/billing/subscription/route.ts", "utf-8");
+  const badgeSrc = readFileSync("src/components/billing/usage-badge.tsx", "utf-8");
+  check(
+    "6.7 usage.ts + gate/stats no scheduler + messagesSent no endpoint + badge msgs",
+    6,
+    exists("src/lib/billing/usage.ts") &&
+      schedulerSrc.includes("quotaBlocked") &&
+      schedulerSrc.includes("QUOTA_BLOCKED") &&
+      schedulerSrc.includes("TIME_BUDGET_MS") &&
+      subscriptionRouteSrc.includes("messagesSent") &&
+      badgeSrc.includes("message-usage-badge"),
+  );
+
+  // Cleanup Sprint 6
+  await prisma.user.deleteMany({ where: { id: usageUser.id } });
+
+  // ====================================================================
   // CLEANUP
   // ====================================================================
   console.log("\n━━━ Limpando dados de teste ━━━");
@@ -940,12 +1044,14 @@ async function main() {
   const sprint3 = results.filter((r) => r.sprint === 3);
   const sprint4 = results.filter((r) => r.sprint === 4);
   const sprint5 = results.filter((r) => r.sprint === 5);
+  const sprint6 = results.filter((r) => r.sprint === 6);
   const failed = results.filter((r) => !r.pass);
   console.log(`Sprint 1: ${sprint1.filter((r) => r.pass).length}/${sprint1.length}`);
   console.log(`Sprint 2: ${sprint2.filter((r) => r.pass).length}/${sprint2.length}`);
   console.log(`Sprint 3: ${sprint3.filter((r) => r.pass).length}/${sprint3.length}`);
   console.log(`Sprint 4: ${sprint4.filter((r) => r.pass).length}/${sprint4.length}`);
   console.log(`Sprint 5: ${sprint5.filter((r) => r.pass).length}/${sprint5.length}`);
+  console.log(`Sprint 6: ${sprint6.filter((r) => r.pass).length}/${sprint6.length}`);
   console.log(`Total:    ${results.filter((r) => r.pass).length}/${results.length}`);
   if (failed.length > 0) {
     console.log("\n❌ FAILED:");

@@ -1,7 +1,39 @@
 # Deployment Status — Stop & Resume Snapshot
 
 > Snapshot do progresso de subir a infraestrutura de produção do ConfirmaAí.
-> **Última atualização**: 2026-05-02 (sessão pausada para definir nome/domínio com sócio).
+> **Última atualização**: 2026-06-10 (Sprint 7 em andamento — auditoria completa do estado real).
+
+---
+
+## 📊 ESTADO REAL (auditado em 2026-06-10)
+
+A v1 **JÁ ESTÁ EM PRODUÇÃO** — boa parte deste documento foi executada em sessões de maio. Auditoria via SSH + Cloudflare + Vercel:
+
+### ✅ Funcionando em produção
+- **Domínio**: `clinicaorganizada.com` (Cloudflare, conta rhonner.matheus@gmail.com).
+- **DNS**: raiz A `76.76.21.21` (Vercel) + `www` CNAME `cname.vercel-dns.com` + `evolution` A `49.13.202.135` — todos DNS-only (cinza).
+- **App**: Vercel projeto `saas1` (team `besenacis-projects`, plano Hobby), deploy da branch `main` (v1 sem monetização).
+- **Evolution API**: `evoapicloud/evolution-api:v2.3.7` + Postgres 16 + Redis 7 via Docker, up 5+ semanas. Caddy com HTTPS válido em `evolution.clinicaorganizada.com` → `127.0.0.1:8080`.
+- **VPS hardening**: UFW (22/80/443), fail2ban ativo, swap 2GB, unattended-upgrades, **sshd key-only** (`PasswordAuthentication no` aplicado em 2026-06-10 via `/etc/ssh/sshd_config.d/99-hardening.conf`).
+- **Cadência do cron RESOLVIDA**: crontab root na VPS `*/30 * * * * /usr/local/bin/clinica-cron.sh` → `GET https://clinicaorganizada.com/api/cron/run` com Bearer CRON_SECRET. Log em `/var/log/clinica-cron.log`, respostas `{"ok":true}` consistentes. (Vercel Cron `0 3 * * *` continua como redundância diária.)
+- **Disco**: 26% usado (9/38 GB). RAM: ~1GB/3.7GB usados.
+
+### Envs de produção na Vercel (inventário 2026-06-10)
+Existem (v1): `CRON_SECRET`, `EVOLUTION_API_KEY`, `EVOLUTION_API_URL`, `EVOLUTION_WEBHOOK_BASE_URL`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`.
+
+### 🔴 Pendências do go-live v2 (Sprint 7)
+| # | Item | Quem | Detalhe |
+| - | ---- | ---- | ------- |
+| 1 | `DATABASE_URL` → **pooled** | dev (CLI) | Neon `ep-divine-recipe-acbdf1sw.sa-east-1` está **sem `-pooler`** — serverless esgota conexões diretas. Trocar host para `...-pooler...`. Migrations continuam na URL direta. |
+| 2 | Conta **Asaas produção** | **usuário** | Criar conta, gerar `ASAAS_API_KEY`, configurar webhook `https://clinicaorganizada.com/api/billing/webhook` com header `asaas-access-token: <ASAAS_WEBHOOK_SECRET>`, ativar NF-e. |
+| 3 | **reCAPTCHA v3** | **usuário** | Criar site key/secret no admin do Google para `clinicaorganizada.com`. Sem isso, signup v2 retorna 503 em prod. |
+| 4 | **Resend** | **usuário** | Conta + API key + verificar domínio (DKIM/SPF na Cloudflare). Sem isso, verificação de email do signup não envia. |
+| 5 | Envs v2 na Vercel | dev (CLI, após `vercel login`) | `CPF_HASH_PEPPER` (gerar), `BILLING_PROVIDER=ASAAS`, `ASAAS_API_URL=https://api.asaas.com/v3`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_SECRET` (gerar), `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`, `RECAPTCHA_SECRET_KEY`, `RESEND_API_KEY`. |
+| 6 | Migrations v2 em prod | dev | `npx prisma migrate deploy` com a URL direta (7 migrations da v2). |
+| 7 | Merge `v2.0.0` → `main` | **usuário** (gh) | Dispara o deploy v2. Fazer APÓS 1-6. |
+| 8 | Smoke test E2E | dev + usuário | Signup → verify email → QR WhatsApp → paciente → agendamento → confirmação no celular → responder. |
+
+> ⚠️ Ordem importa: merge (7) por último — a v2 em produção sem reCAPTCHA/Resend/Asaas quebra signup e billing.
 
 ---
 

@@ -2,7 +2,7 @@
 title: Estado da monetização v2 — snapshot 2026-05-07 (pós-Sprint 5)
 type: synthesis
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-10
 tags: [billing, monetization, snapshot, roadmap]
 sources:
   - .context/plans/monetization-v2.md
@@ -33,7 +33,9 @@ status: stable
 - **Cross-tenant detection de CPF de paciente** — descartado (paciente em N clínicas é legítimo). Detecção fica só pro **dono** (`User.cpfHash`).
 - **`User.cpfHash @unique`** — removida. Permite caso médico-com-2-clínicas (≤3); 4ª criação bloqueada via threshold em `owner-cpf-dedup`.
 
-## Sprints (5/8 fechadas, 62%)
+## Sprints (6/11 fechadas — re-sequenciado 2026-06-10)
+
+> **Re-sequenciamento 2026-06-10**: premissa do fundador "rodar e vender sozinho, sem trocar banco/arquitetura depois". Entraram 3 sprints novas (7, 8, 9); antigas 7/8 viraram 10/11. Análise de invariantes de escala em `monetization-v2.md` §9.4 — conclusão: a stack atual escala sem rewrite; os riscos reais são operacionais e silenciosos (WhatsApp desconectado, cron morto, webhook travado), cada um com sprint própria.
 
 | # | Tema | Status | Notas |
 | - | ---- | ------ | ----- |
@@ -42,9 +44,12 @@ status: stable
 | 3 | UX paywall | ✅ 2026-05-07 | UsageBadge, PaywallModal hard/soft, /billing, /precos |
 | 4 | Anti-fraude signup | ✅ 2026-05-07 | reCAPTCHA, email verify (Resend), disposable blocklist, honeypot, cross-tenant CPF dono, SignupAttempt purpose-built |
 | 5 | Cobrança Asaas | ✅ 2026-05-07 | BillingProvider interface, Mock+Asaas, webhook idempotente HMAC, lifecycle cron, /billing/checkout completo |
-| 6 | Mensagens + gates scheduler | ⏳ próximo | UsageCounter operacional, gate `message.send`, badge mensagens |
-| 7 | UX final + admin | ⏳ | `/configuracoes/atividade`, `/admin/audit`, **retention 90d AuditLog**, emails transacionais |
-| 8 | LGPD + legal | ⏳ | Termos/privacidade, export, delete account, NF-e, CNPJ no rodapé |
+| 6 | Mensagens + gates + hardening escala scheduler | ✅ 2026-06-10 | `usage.ts` lazy-period, gate dedup `QUOTA_BLOCKED`, chunking 200/45s, índices compostos, audit `cron.run`, badge ≥50% |
+| 7 | Go-live (deploy produção) | 🟡 ~85% pronto | Infra toda no ar (domínio, DNS, app v1, Evolution HTTPS, VPS hardened, **cron 30min já roda via crontab da VPS**, sshd key-only). Falta: contas Asaas/reCAPTCHA/Resend (usuário), envs v2 + pooled DATABASE_URL (CLI), migrations + merge. Checklist vivo em `deployment-status.md` § Estado Real |
+| 8 | Resiliência WhatsApp **[nova]** | ⏳ | Anti-churn silencioso: email ao tenant quando instância desconecta, banner, health-check Evolution |
+| 9 | Observabilidade **[nova]** | ⏳ | Sentry + `GET /api/health` agregador (cron morto, BillingEvent travado, Evolution down) + uptime monitor externo |
+| 10 | Receita passiva: emails + admin (ex-7) | ⏳ | Dunning 1/3/7, transacionais, `/admin/audit`, retention 90d AuditLog |
+| 11 | LGPD + legal (ex-8) | ⏳ pré-marketing | Termos/privacidade, export, delete account, NF-e, CNPJ no rodapé |
 
 ## Dívidas técnicas (estado atual)
 
@@ -60,8 +65,8 @@ status: stable
 
 ## Validação automatizada
 
-- `npm run test:sprints` cobre Sprints 1-5 → **72/72** checks.
-- `npm run test` (vitest) → **149/149** unit.
+- `npm run test:sprints` cobre Sprints 1-6 → **79/79** checks.
+- `npm run test` (vitest) → **155/155** unit.
 - Chrome MCP walk-through (regra obrigatória DoD): 38+ cenários validados acumulados.
 
 ## Patterns que emergiram (wikis)
@@ -88,4 +93,4 @@ Quando billing real estiver no ar (pós-Sprint 5 em prod):
 - Churn por plano
 - Taxa de email verify (≤24h tras signup)
 
-> Próxima sprint: **6 (mensagens + gates do scheduler)**. Status atual: pronto pra começar.
+> Próxima sprint: **7 (go-live)** — domínio destravado (`clinicaorganizada.com`); faltam Asaas prod, envs/pooled URL, cadência do cron e merge `v2.0.0`→`main`. Em paralelo, Sprint 8 (resiliência WhatsApp) não depende de nada externo.

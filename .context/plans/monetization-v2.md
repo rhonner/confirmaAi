@@ -19,7 +19,7 @@
 | ~~Disposable email blocklist~~ | ✅ Sprint 4 | — |
 | ~~Cross-tenant CPF detection (dono da clínica)~~ | ✅ Sprint 4 | — |
 | ~~HMAC explícito do webhook do gateway~~ | ✅ Sprint 5 | — |
-| Retention 90d do AuditLog (usa GUC bypass `app.allow_audit_mutation`) | Sprint 1 hardening | [Sprint 7](#sprint-7--ux-final--admin-1-semana) |
+| Retention 90d do AuditLog (usa GUC bypass `app.allow_audit_mutation`) | Sprint 1 hardening | [Sprint 10](#sprint-10--receita-passiva-emails-transacionais--admin-1-semana) |
 | AuditLog em tx com rollback (trail persiste) | Sprint 1 | **Trade-off aceito** — não vira code change. Documentado em `.context/features/audit.md`. |
 
 ---
@@ -806,6 +806,29 @@ Riscos de **percepção**, não técnicos:
 - "Sistema ladrão" se bloquear sem aviso. Mitigação: alertas em 60/80/100%, copy positivo.
 - "Eu apaguei o paciente, por que ainda conta?" Mitigação: tooltip explícito ao deletar: "A vaga não é liberada. [Saiba mais]".
 
+### 9.4 Escala — invariantes de arquitetura (adicionado 2026-06-10)
+
+> **Premissa do fundador**: "quero vender e vender sem depois precisar mudar banco/arquitetura". Análise por camada do que a stack atual aguenta e qual é o "botão de escala" de cada uma — **nenhum exige rewrite ou migração de dados**.
+
+| Camada | Hoje | Aguenta até | Botão de escala (sem rewrite) |
+| ------ | ---- | ----------- | ------------------------------ |
+| App (Next.js monolito) | Vercel serverless | indefinido (stateless, escala horizontal automática) | Plano Vercel Pro quando estourar limites do Hobby. Zero mudança de código. |
+| Banco (Postgres + Prisma) | Neon/Supabase, multi-tenant por `userId` em DB único | dezenas de milhares de tenants (volume por tenant é minúsculo: centenas de rows/mês) | **Connection pooling obrigatório** (pooled string do Neon/PgBouncer — serverless esgota conexões diretas; vai pro go-live, Sprint 7). Depois: upgrade de tier do Postgres. Schema não muda. |
+| Scheduler | Vercel Cron 30min → `GET /api/cron/run` serial | ~centenas de tenants por invocação (limite = timeout da function) | Chunking + time-budget (Sprint 6). Se um dia estourar: disparar o **mesmo endpoint** a partir da VPS Hetzner ou QStash — muda quem chama, não o código de domínio. |
+| WhatsApp (Evolution) | 1 VPS CX23 (4GB) multi-instância | ~15-30 instâncias conectadas | Upgrade CX23→CX32→CX42 no painel Hetzner (resize, sem migração). Horizonte distante: 2ª VPS com routing por tenant (coluna `evolutionBaseUrl` nullable no User — migration aditiva trivial quando precisar, não antecipar). |
+| Billing | Asaas atrás de `BillingProvider` interface | indefinido | Trocar/adicionar provider = 1 arquivo (`factory.ts`). Já desenhado assim. |
+| Auditoria | `AuditLog` append-only no mesmo Postgres | ~10k tenants | Retention 90d (Sprint 10) já segura o crescimento; depois, arquivar em R2/S3 antes do delete. |
+
+**Conclusão**: a arquitetura atual NÃO precisa mudar para escalar com a venda. Os riscos reais de "vender e quebrar" não são de arquitetura — são **operacionais e silenciosos**, e cada um tem sprint própria:
+
+| Risco operacional | Por que ameaça o "rodar sozinho" | Resolve em |
+| ----------------- | -------------------------------- | ---------- |
+| WhatsApp do tenant desconecta e o scheduler o filtra pra fora **silenciosamente** | Cliente paga, produto não faz nada, ninguém sabe → churn + reputação | **Sprint 8** |
+| Mensagens sem gate de quota | Free consome envio ilimitado → custo/abuso cresce com escala, receita não | **Sprint 6** |
+| Zero observabilidade (erros, uptime, cron falho, webhook não processado) | Fundador descobre problema pelo cliente cancelando | **Sprint 9** |
+| Conexões Postgres esgotadas em serverless | App cai justamente quando o tráfego (vendas) cresce | **Sprint 7** (pooled URL) |
+| Churn involuntário (cartão falhou, ninguém cobra) | Receita vaza sem ação humana de recuperação | **Sprint 10** (dunning) |
+
 ---
 
 ## 10. Sequenciamento (MVP → v2)
@@ -827,7 +850,7 @@ Riscos de **percepção**, não técnicos:
 - [x] Testes: 113/113 (16 novos para audit-context/diff/labels/pii) passam em `TZ=UTC` e `TZ=America/Sao_Paulo`.
 
 **Dívidas técnicas registradas em sprints futuras** (todas marcadas com 🔒 (DÍVIDA SPRINT 1) no checklist da sprint que vai resolver — *não esquecer*):
-- Retention 90d do AuditLog → **Sprint 7**.
+- Retention 90d do AuditLog → **Sprint 10** (ex-Sprint 7, re-sequenciamento 2026-06-10).
 - Cross-tenant CPF detection (paciente) → **Sprint 2**.
 - Cross-tenant CPF detection (dono da clínica) + reCAPTCHA + email verification + disposable blocklist → **Sprint 4**.
 - HMAC explícito do webhook do gateway de pagamento → **Sprint 5**.
@@ -897,33 +920,86 @@ Riscos de **percepção**, não técnicos:
 - [x] Tests: 11 unit (provider) + 8 sprint checks. **72/72** total no `test:sprints`.
 - [x] **Chrome MCP walk-through**: 8 cenários — checkout Pix, mock pay, redirect sucesso, badge muda pra Pro, /billing reflete Pro com próxima cobrança, cancelar com AlertDialog, status pós-cancel.
 
-### Sprint 6 — Mensagens e gates do scheduler (3 dias)
+> **Re-sequenciamento 2026-06-10**: as antigas Sprints 6-8 viraram 6, 10 e 11. Entraram 3 sprints novas (7: go-live, 8: resiliência WhatsApp, 9: observabilidade) motivadas pela premissa "rodar e vender sozinho" — ver análise em [§9.4](#94-escala--invariantes-de-arquitetura-adicionado-2026-06-10). Regra de ouro da ordem: **proteger custo (6) → existir em produção (7) → não falhar silenciosamente (8 e 9) → recuperar receita sozinho (10) → blindagem legal antes de marketing pesado (11)**.
 
-- [ ] `src/lib/billing/usage.ts`: `incrementUsage` em `MessageLog.create`.
-- [ ] Gate `message.send` no scheduler.
-- [ ] Migration `UsageCounter`.
-- [ ] UI badge mensagens.
-- [ ] Atualizar `.context/features/scheduler.md`.
+### Sprint 6 — Mensagens, gates e hardening de escala do scheduler ✅ (2026-06-10)
 
-### Sprint 7 — UX final + admin (1 semana)
+- [x] `src/lib/billing/usage.ts`: `getCurrentUsage` (lazy create por período) + `incrementMessagesSent` (atômico) + `currentPeriodFor` (ciclo pago válido → ciclo; FREE/ciclo expirado → mês calendário UTC).
+- [x] Gate `message.send` no scheduler: sem saldo → **não** envia, `MessageLog { status: QUOTA_BLOCKED }` (novo valor do enum) + audit `quota.message_blocked`, **deduplicado** por (appointment, type). Gate também real em `entitlements.check` (402 com current/limit/upgrade).
+- [x] Rollover do `UsageCounter`: lazy por design — virada de período = criação de nova linha keyed por `@@unique([userId, periodStart])`; ciclo pago expirado (webhook perdido) cai no fallback de mês calendário, contador nunca congela. Sem job de reset.
+- [x] UI badge de mensagens no header (`MessageUsagePill`, só aparece ≥ 50% do limite) + linha de mensagens no popover + `messagesSent/messagesIncluded` no `GET /api/billing/subscription` e `useUsage()`.
+- [x] **Escala**: chunking do scheduler — lotes de 200 ordenados por `dateTime asc`, time-budget de 45s (`maxDuration = 60` na rota), `stats.truncated` quando estoura; run seguinte continua.
+- [x] **Escala**: índices compostos `Appointment(status, confirmationSentAt)` e `(status, dateTime)` — migration `20260610213959_sprint6_message_quota_and_scheduler_indexes`.
+- [x] **Escala**: audit `cron.run` com `SchedulerStats` completo (durationMs, sent, blocked, truncated) a cada execução — heartbeat pro alerta da Sprint 9.
+- [x] Helper dev `scripts/set-message-usage.ts` (DoD regra 7).
+- [x] Testes: 6 unit (`usage-period.test.ts`) + 7 checks no `test:sprints` (**79/79** total). tsc/vitest/build limpos. Chrome MCP walk-through 6 cenários (ver `scheduler.md` § Validação manual).
+- [x] `.context/features/scheduler.md` + `billing.md` atualizados.
 
+### Sprint 7 — Go-live: deploy de produção (2-3 dias de execução)
+
+> **Pré-requisito externo**: decisão de nome/domínio com o sócio (bloqueada desde 2026-05-02). Passo-a-passo completo já escrito em [`deployment-status.md`](deployment-status.md) — esta sprint é executá-lo. **Nada das sprints seguintes vende sem esta.**
+
+- [ ] Comprar domínio + DNS (`evolution.<dominio>` → 49.13.202.135).
+- [ ] Hardening da VPS Hetzner (UFW, fail2ban, swap 2GB, unattended-upgrades, SSH sem senha).
+- [ ] Stack Evolution: Docker compose (Evolution API + Postgres dedicado + Redis), `EVOLUTION_API_KEY` gerada, Caddy + Let's Encrypt.
+- [ ] Conta Asaas **produção**: chaves, webhook URL + `asaas-access-token` no painel, NF-e ativada.
+- [ ] Vercel: envs de produção (`BILLING_PROVIDER=ASAAS`, NEXTAUTH, Evolution, etc.).
+- [ ] **Escala (crítico)**: `DATABASE_URL` com **pooled connection string** (pooler do Neon/PgBouncer). Conexão direta + serverless = esgotamento de conexões exatamente quando o tráfego cresce. Validar `connection_limit` adequado no Prisma.
+- [ ] `npx prisma migrate deploy` contra o DB de produção.
+- [ ] **Cadência do cron**: Vercel Hobby limita cron a 1×/dia (`0 3 * * *` atual) — lembretes com janela de 2h não funcionam assim. Configurar disparo externo a cada 15-30 min em `POST /api/cron/run` com `Authorization: Bearer CRON_SECRET` (crontab da VPS Hetzner é a opção sem custo/dependência nova; alternativas: cron-job.org, Vercel Pro).
+- [ ] Smoke test E2E real: signup → verificar email → conectar WhatsApp (QR) → paciente → agendamento → confirmação chega no celular → responder "1" → status `CONFIRMED`.
+- [ ] Atualizar `deployment-status.md` ao final.
+
+> **Status 2026-06-10**: domínio `clinicaorganizada.com` comprado (Cloudflare), DNS configurado (raiz/www → Vercel, `evolution.` → 49.13.202.135), app v1 no ar na Vercel e Evolution API respondendo com HTTPS. Restante: Asaas prod, envs, pooled DATABASE_URL, cadência do cron, migrations v2 + merge `v2.0.0` → `main`.
+
+### Sprint 8 — Resiliência WhatsApp: anti-churn silencioso (3-4 dias) **[NOVA]**
+
+> **Maior ameaça ao "rodar sozinho"**: a instância Evolution do tenant desconecta → o scheduler filtra `whatsappStatus != CONNECTED` pra fora → as confirmações **param silenciosamente** → cliente paga por um produto que não faz nada → churn. Hoje ninguém é avisado.
+
+- [ ] Detecção: webhook Evolution já recebe `connection.update` — ao transicionar para desconectado, gravar `User.whatsappDisconnectedAt` + audit `whatsapp.disconnected`.
+- [ ] **Notificação ao cliente por email** (Resend, infra da Sprint 4): "Seu WhatsApp desconectou — suas confirmações estão pausadas. Reconecte em /configuracoes" — imediato + reforço em 24h se continuar desconectado.
+- [ ] Banner vermelho persistente no dashboard enquanto desconectado, CTA direto pro QR code.
+- [ ] Job no cron diário: tenants desconectados **com agendamentos futuros** → renotificar + audit `whatsapp.disconnected_with_pending` (são os que estão perdendo valor agora).
+- [ ] Health-check da Evolution API no cron: ping no endpoint de instâncias; falha → audit `evolution.health_failed` (consumido pelo `/api/health` da Sprint 9).
+- [ ] Métrica agregada: % de tenants conectados (exposta no admin, Sprint 10).
+- [ ] Atualizar `.context/features/whatsapp.md` + `webhook-evolution.md` + `scheduler.md`.
+
+### Sprint 9 — Observabilidade: só ser interrompido quando quebra (2 dias) **[NOVA]**
+
+> "Não me preocupar" ≠ não olhar; = **ser alertado apenas quando algo quebra**. Sem isso, o canal de descoberta de incidente é o cliente cancelando.
+
+- [ ] Sentry (free tier) no Next.js: erros de rotas API, scheduler e webhooks com contexto de tenant.
+- [ ] Rota **`GET /api/health`** que agrega checks e retorna 500 se qualquer um falhar:
+  - último `cron.run` (audit) há mais de 90 min → cron morto;
+  - `BillingEvent.processedAt = null` há mais de 1h → webhook de pagamento travado;
+  - health-check Evolution (Sprint 8) falhando → VPS/Evolution down.
+- [ ] Uptime monitor externo gratuito (UptimeRobot/BetterStack) em: app Vercel, `https://evolution.<dominio>`, e `GET /api/health` — o monitor vira o sistema de alerta (email/push) sem infra própria.
+- [ ] Criar `.context/features/observability.md` com runbook curto de incidentes (cron morto → onde olhar; Evolution down → como reiniciar; webhook travado → como reconciliar `BillingEvent`).
+
+### Sprint 10 — Receita passiva: emails transacionais + admin (1 semana)
+
+> Ex-Sprint 7. Dunning automático é motor de receita, não cosmético: recupera churn involuntário (cartão falhou) sem ação humana.
+
+- [ ] **Dunning**: pagamento falhou → emails nos dias 1/3/7 + aviso de suspensão iminente (lifecycle PAST_DUE → SUSPENDED já existe; isto é a camada de comunicação).
+- [ ] Emails transacionais (Resend): boas-vindas, pagamento confirmado, cancelamento, próximo do limite (3/5 e 5/5).
 - [ ] `/configuracoes/atividade` (audit do próprio user).
-- [ ] `/admin/audit` (allowlist).
-- [ ] Email transacional (Resend): boas-vindas, pagamento ok, falha, cancelamento, próximo do limite.
+- [ ] `/admin/audit` (allowlist) + painel com % de tenants WhatsApp-conectados (métrica da Sprint 8) e casos `fraud.cpf_reused_owner`.
 - [ ] Reset de conta Free (1×, com check de zero agendamentos).
 - [ ] Onboarding banner com upgrade CTA.
 - [ ] 🔒 **(DÍVIDA SPRINT 1)** Retention 90d do `AuditLog`: cron job diário que faz `BEGIN; SET LOCAL app.allow_audit_mutation = 'true'; DELETE FROM "AuditLog" WHERE "createdAt" < now() - INTERVAL '90 days'; COMMIT;` (o GUC bypass-aware foi feito no hardening — ver migration `20260507170554_audit_append_only`). Adicionar como nova função em `src/lib/services/scheduler.ts` `runRetentionJob()` ou cron separado. Métricas: log do número de linhas apagadas. Quando volume justificar (>10k tenants), arquivar em R2/S3 antes do delete.
 
-### Sprint 8 — LGPD e legal (3 dias)
+### Sprint 11 — LGPD e legal (3 dias)
+
+> Ex-Sprint 8. **Pré-requisito para campanha de marketing ativa** — não escalar aquisição antes disto (CPF de paciente sem termos/privacidade publicados é passivo jurídico em saúde).
 
 - [ ] `/termos` e `/privacidade`.
 - [ ] Checkbox separado no signup.
 - [ ] `GET /api/account/export`.
 - [ ] `DELETE /api/account` com redaction.
-- [ ] NF-e via Asaas (config no painel).
-- [ ] Razão social, CNPJ, endereço no rodapé.
+- [ ] NF-e via Asaas (validar emissão automática em produção — config feita na Sprint 7).
+- [ ] Razão social, CNPJ, endereço no rodapé (depende de abrir MEI — ver nota em `deployment-status.md`).
 
-### Total: ~6-7 semanas de execução focada
+### Total: ~8-9 semanas de execução focada (5 concluídas + 6 sprints restantes)
 
 ---
 
@@ -1000,5 +1076,6 @@ Riscos de **percepção**, não técnicos:
 
 ---
 
-> Plano fechado em `2026-05-07`. Branch: `v2.0.0`.
-> Próximo passo após aprovação: começar pelo Sprint 1 (Fundação — auditoria + Subscription + migrations 0001/0002).
+> Plano fechado em `2026-05-07`. Branch: `v2.0.0`. Sprints 1-5 concluídas em 2026-05-07.
+> **Revisão 2026-06-10**: re-sequenciamento orientado à premissa "rodar e vender sozinho, sem trocar banco/arquitetura depois" — adicionadas Sprints 7 (go-live), 8 (resiliência WhatsApp) e 9 (observabilidade); antigas 7/8 viraram 10/11; §9.4 documenta os invariantes de escala.
+> Próximo passo: **Sprint 6** (gates de mensagem + hardening de escala do scheduler) — não depende do domínio, pode começar já. Sprint 7 destrava quando o domínio for decidido com o sócio.

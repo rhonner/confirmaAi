@@ -5,7 +5,7 @@ import {
   unauthorizedResponse,
   serverErrorResponse,
 } from "@/lib/auth-helpers";
-import { PLANS } from "@/lib/billing";
+import { PLANS, getCurrentUsage } from "@/lib/billing";
 import type { ApiResponse } from "@/lib/types/api";
 
 export type SubscriptionResponse = {
@@ -15,6 +15,8 @@ export type SubscriptionResponse = {
   patientSlotLimit: number | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  messagesSent: number;
+  messagesIncluded: number;
 };
 
 export async function GET() {
@@ -22,12 +24,13 @@ export async function GET() {
     const session = await getAuthSession();
     if (!session?.user?.id) return unauthorizedResponse();
 
-    const [sub, user] = await Promise.all([
+    const [sub, user, usage] = await Promise.all([
       prisma.subscription.findUnique({ where: { userId: session.user.id } }),
       prisma.user.findUnique({
         where: { id: session.user.id },
         select: { patientSlotCount: true },
       }),
+      getCurrentUsage(session.user.id),
     ]);
 
     const plan = sub?.plan ?? "FREE";
@@ -40,6 +43,8 @@ export async function GET() {
       patientSlotLimit: planConfig.patientSlots,
       currentPeriodEnd: sub?.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
+      messagesSent: usage.messagesSent,
+      messagesIncluded: usage.messagesIncluded,
     };
 
     return NextResponse.json<ApiResponse<SubscriptionResponse>>({ data });

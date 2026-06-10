@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useUsage } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
-import { Sparkles, Users } from "lucide-react";
+import { MessageCircle, Sparkles, Users } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -49,22 +49,27 @@ export function UsageBadge() {
 
   if (usage.isUnlimited) {
     return (
-      <Link
-        href="/billing"
-        className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
-        aria-label={`Plano ${PLAN_LABELS[usage.plan]}`}
-        data-testid="usage-badge-paid"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {PLAN_LABELS[usage.plan]}
-      </Link>
+      <div className="inline-flex items-center gap-2">
+        <MessageUsagePill usage={usage} />
+        <Link
+          href="/billing"
+          className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+          aria-label={`Plano ${PLAN_LABELS[usage.plan]}`}
+          data-testid="usage-badge-paid"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {PLAN_LABELS[usage.plan]}
+        </Link>
+      </div>
     );
   }
 
   const styles = LEVEL_STYLES[usage.level];
 
   return (
-    <Popover>
+    <div className="inline-flex items-center gap-2">
+      <MessageUsagePill usage={usage} />
+      <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -117,6 +122,16 @@ export function UsageBadge() {
               Limite atingido — não é possível cadastrar novos pacientes.
             </p>
           )}
+          <p className="text-xs text-muted-foreground">
+            Mensagens no mês: <strong>{usage.messagesSent}</strong> de{" "}
+            <strong>{usage.messagesIncluded}</strong>.
+          </p>
+          {usage.messagesLevel === "blocked" && (
+            <p className="text-xs text-red-600 dark:text-red-400">
+              Limite de mensagens atingido — confirmações pausadas até o
+              próximo ciclo ou upgrade.
+            </p>
+          )}
           <Link
             href="/billing"
             className="block text-xs font-medium text-primary hover:underline"
@@ -125,6 +140,35 @@ export function UsageBadge() {
           </Link>
         </div>
       </PopoverContent>
-    </Popover>
+      </Popover>
+    </div>
+  );
+}
+
+/**
+ * Pill de uso de mensagens (Sprint 6). Só aparece a partir de 50% do limite
+ * do período — abaixo disso é ruído.
+ */
+function MessageUsagePill({ usage }: { usage: ReturnType<typeof useUsage> }) {
+  if (usage.messagesIncluded <= 0 || usage.messagesPercentage < 50) return null;
+
+  const styles = LEVEL_STYLES[usage.messagesLevel];
+  return (
+    <Link
+      href="/billing"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1.5 text-xs font-medium ring-1 transition-all",
+        styles.ring,
+      )}
+      aria-label={`Mensagens: ${usage.messagesSent} de ${usage.messagesIncluded}`}
+      data-testid="message-usage-badge"
+      data-usage-level={usage.messagesLevel}
+    >
+      <MessageCircle className={cn("h-3.5 w-3.5", styles.text)} />
+      <span className={cn("tabular-nums font-semibold", styles.text)}>
+        {usage.messagesSent}/{usage.messagesIncluded}
+      </span>
+      <span className="hidden sm:inline text-muted-foreground">msgs</span>
+    </Link>
   );
 }

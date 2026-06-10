@@ -32,6 +32,7 @@ enum MessageStatus {
   DELIVERED
   READ
   FAILED
+  QUOTA_BLOCKED
 }
 
 enum WhatsappStatus {
@@ -167,6 +168,10 @@ model Appointment {
   @@index([patientId])
   @@index([dateTime])
   @@index([status])
+  // Índices compostos das queries cross-tenant do scheduler (Sprint 6):
+  // sendConfirmations filtra (status, confirmationSentAt); markNoShows (status, dateTime).
+  @@index([status, confirmationSentAt])
+  @@index([status, dateTime])
 }
 
 model MessageLog {

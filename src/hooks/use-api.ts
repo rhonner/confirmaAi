@@ -396,6 +396,8 @@ export type Subscription = {
   patientSlotLimit: number | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  messagesSent: number;
+  messagesIncluded: number;
 };
 
 export function useSubscription() {
@@ -418,6 +420,11 @@ export type UsageInfo = {
   isUnlimited: boolean;
   percentage: number; // 0–100. Em ilimitado, sempre 0.
   level: "ok" | "warning" | "alert" | "blocked";
+  /** Uso de mensagens WhatsApp no período corrente (Sprint 6). */
+  messagesSent: number;
+  messagesIncluded: number;
+  messagesPercentage: number; // 0–100
+  messagesLevel: "ok" | "warning" | "alert" | "blocked";
   isLoading: boolean;
 };
 
@@ -439,6 +446,20 @@ export function useUsage(): UsageInfo {
         : percentage >= 60
           ? "warning"
           : "ok";
+  const messagesSent = data?.messagesSent ?? 0;
+  const messagesIncluded = data?.messagesIncluded ?? 0;
+  const messagesPercentage =
+    messagesIncluded > 0
+      ? Math.min(100, Math.round((messagesSent / messagesIncluded) * 100))
+      : 0;
+  const messagesLevel: UsageInfo["messagesLevel"] =
+    messagesPercentage >= 100
+      ? "blocked"
+      : messagesPercentage >= 80
+        ? "alert"
+        : messagesPercentage >= 60
+          ? "warning"
+          : "ok";
   return {
     plan: data?.plan ?? "FREE",
     status: data?.status ?? "ACTIVE",
@@ -447,6 +468,10 @@ export function useUsage(): UsageInfo {
     isUnlimited,
     percentage,
     level,
+    messagesSent,
+    messagesIncluded,
+    messagesPercentage,
+    messagesLevel,
     isLoading: q.isLoading,
   };
 }
