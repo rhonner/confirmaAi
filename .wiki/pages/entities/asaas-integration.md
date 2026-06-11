@@ -47,6 +47,15 @@ Asaas não oferece um portal hospedado equivalente ao da Stripe. Nossa `createPo
 - **NF-e exige CNPJ** — indisponível até abrir empresa. Ok pros primeiros clientes; gargalo pra escalar B2B (clínicas pedem nota). Quando houver CNPJ: ativar no painel (emissão automática a cada `PAYMENT_RECEIVED`), 1 config, zero código. Sprint 11 (LGPD/legal) finaliza.
 - **MEI provavelmente não cobre SaaS** (CNAEs de software fora da lista) — caminho provável é ME no Simples; confirmar com contador.
 
+## Sandbox (2026-06-10)
+
+- Conta sandbox criada a partir da prod (Integrações → Início → "Criar conta Sandbox"); login compartilhado, dados isolados.
+- Chave `confirmaai-dev-local` no `.env` local. **Gotcha**: chaves Asaas começam com `$aact_` — no `.env` de projeto Next, **aspas simples obrigatórias** (dotenv-expand trataria `$aact...` como variável e o valor viraria string vazia no runtime).
+- Gerar chave exige **2FA por SMS** mesmo na sandbox (celular do dono).
+- `https://sandbox.asaas.com/api/v3` — mesma API; chaves sandbox não funcionam em prod e vice-versa. Chaves sem uso por 3 meses são desabilitadas.
+- Webhook sandbox: pendente — exige URL pública (túnel) quando formos testar.
+- **Guia operacional completo** (rodar local contra Mock/Sandbox/Prod, matriz de envs, túnel, pareamento banco×provider): `.context/features/billing.md` § "Rodando local: Mock vs Sandbox vs Produção".
+
 ## Estado da conta de produção (2026-06-10)
 
 - Conta criada pelo usuário. `ASAAS_WEBHOOK_SECRET` já gerada e na Vercel (cópia em `/tmp/claude-501/asaas_webhook_secret.txt` da sessão).

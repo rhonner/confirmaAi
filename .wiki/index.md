@@ -33,7 +33,7 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [lazy-period-usage-counter](pages/concepts/lazy-period-usage-counter.md) | Quota de msgs sem job de reset: virada de período = linha nova lazy; fallback p/ webhook perdido | 2026-06-10 |
 | [neon-pooled-vs-direct-url](pages/concepts/neon-pooled-vs-direct-url.md) | Pooled (`-pooler`) no runtime serverless, direta nas migrations; PrismaPg dispensa `pgbouncer=true` | 2026-06-10 |
 | [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer | 2026-06-10 |
-| [claude-chrome-sensitive-domains](pages/concepts/claude-chrome-sensitive-domains.md) | Extensão bloqueia sites financeiros (Asaas) — passos de painel são manuais; workflow de secrets sem chat | 2026-06-10 |
+| [claude-chrome-sensitive-domains](pages/concepts/claude-chrome-sensitive-domains.md) | `Permission denied` em site sensível = prompt da extensão (aprovável), não bloqueio duro; protocolo de retry + workflow de secrets | 2026-06-10 |
 
 ## Synthesis (`pages/synthesis/`)
 

@@ -95,6 +95,62 @@ Confirmado em 2026-05-07 via Chrome MCP, fluxo end-to-end:
 7. ✅ `/billing` mostra "Plano atual: Pro / ACTIVE / Ilimitado / Próxima cobrança em 05/06/2026".
 8. ✅ "Cancelar assinatura" → AlertDialog → confirma → toast verde + texto laranja "Assinatura cancelada. Você mantém o acesso até 05/06/2026" + botão "Cancelar" some.
 
+## Rodando local: Mock vs Sandbox vs Produção
+
+> Como apontar o `npm run dev` local para cada ambiente de cobrança. O seletor é o `factory.ts`: lê `BILLING_PROVIDER` (`ASAAS` | `MOCK`) com fallback por `NODE_ENV` (dev → Mock, production → Asaas).
+
+### Matriz de configuração (`.env` local)
+
+| Modo | `BILLING_PROVIDER` | `ASAAS_API_URL` | `ASAAS_API_KEY` | Webhook |
+| ---- | ------------------ | ---------------- | ---------------- | ------- |
+| **Mock** (default dev) | *(ausente/comentado)* | — | — | `POST /api/billing/mock-trigger` simula tudo |
+| **Sandbox** | `ASAAS` | `https://sandbox.asaas.com/api/v3` | chave `$aact_hmlg_...` (já no `.env`, gerada 2026-06-10) | precisa de túnel público (ver abaixo) |
+| **Produção** ⚠️ | `ASAAS` | `https://www.asaas.com/api/v3` | chave prod (na Vercel; NÃO copiar pro `.env` sem necessidade real) | já aponta pra Vercel — local NÃO recebe eventos |
+
+### ⚠️ Gotcha das aspas (vale pra qualquer chave Asaas no `.env`)
+
+Chaves Asaas começam com `$aact_`. O Next carrega `.env` com **dotenv-expand**, que trata `$aact...` como variável indefinida → valor vira **string vazia silenciosamente**. Sempre:
+
+```bash
+ASAAS_API_KEY='$aact_hmlg_...'   # aspas SIMPLES, obrigatório
+```
+
+(Scripts `tsx` com `dotenv` puro também leem certo com aspas simples.)
+
+### Modo Mock (dia-a-dia)
+
+1. `.env` sem `BILLING_PROVIDER` → `MockProvider` ativo.
+2. Fluxo: `/billing/checkout` → QR fake → botão "[DEV] Simular pagamento recebido" (ou `POST /api/billing/mock-trigger { event }`) → webhook interno com HMAC mock → subscription ativa.
+3. Não toca rede externa. É o modo dos testes `test:sprints`.
+
+### Modo Sandbox (testar AsaasProvider real)
+
+1. No `.env`, descomente `BILLING_PROVIDER=ASAAS` (as outras 2 vars já estão lá).
+2. Reinicie o dev server (env só carrega no boot).
+3. Checkout cria **customer/assinatura reais na sandbox** — confira em `sandbox.asaas.com` → Cobranças. Pagamento Pix sandbox é simulável pelo próprio painel.
+4. **Webhook**: o retorno (`PAYMENT_RECEIVED` → ativar subscription) só chega se a sandbox alcançar seu localhost:
+   ```bash
+   cloudflared tunnel --url http://localhost:3000   # gera https://<aleatorio>.trycloudflare.com
+   ```
+   Depois cadastre em `sandbox.asaas.com` → Integrações → Webhooks: URL `https://<tunel>/api/billing/webhook`, token = o MESMO valor de `ASAAS_WEBHOOK_SECRET` do seu `.env` local, v3, sequencial + fila. Sem túnel, o pagamento sandbox acontece mas a subscription local não ativa (alternativa: simular a ativação via `mock-trigger`... não — ele assina com HMAC do Mock; com `BILLING_PROVIDER=ASAAS` a verificação rejeita. Use o túnel.)
+5. **Reverter ao fim**: re-comentar `BILLING_PROVIDER` e reiniciar.
+
+### Modo Produção a partir do local (raro — use com medo)
+
+Cenário legítimo: debugar um problema de billing de prod sem fazer deploy.
+
+1. Copie a chave prod TEMPORARIAMENTE: `npx vercel env pull --environment=production /tmp/prod.env` e exporte só a var necessária na sessão do shell (não grave no `.env`).
+2. **Riscos reais**: customers/assinaturas/cobranças criados são REAIS (dinheiro de verdade); se o `DATABASE_URL` local apontar pro banco local, os IDs Asaas criados ficam órfãos do banco de prod.
+3. O webhook de prod aponta pra `clinicaorganizada.com` — seu local **nunca** recebe os eventos; ativações dependeriam do cron de reconciliação de prod.
+4. Regra prática: leitura/debug ok; **não criar checkout** apontando pra prod a partir do local. Pra testar cobrança real, use a própria produção com um Pix de R$ 1 e estorne.
+
+### Pareamento banco × provider (não misturar)
+
+| App local apontando pra | `DATABASE_URL` local deve ser | Por quê |
+| ----------------------- | ----------------------------- | ------- |
+| Mock / Sandbox | Postgres local (Docker `confirmaai-pg`) | dados de teste isolados |
+| Produção (leitura/debug) | Neon prod **direta** (via env da sessão, nunca `.env`) | senão IDs Asaas e Subscriptions divergem entre bancos |
+
 ## Configuração de produção (Asaas)
 
 Vars de env (Vercel):

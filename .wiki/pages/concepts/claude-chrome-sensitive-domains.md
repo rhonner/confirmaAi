@@ -1,5 +1,5 @@
 ---
-title: Claude no Chrome bloqueia sites financeiros (Asaas)
+title: Claude no Chrome — "Permission denied" em sites sensíveis é prompt, não bloqueio duro
 type: concept
 created: 2026-06-10
 updated: 2026-06-10
@@ -11,18 +11,18 @@ related:
 status: stable
 ---
 
-> Gotcha de processo: a automação de browser do Claude (extensão Chrome) **nega ações em sites de categoria financeira** — no nosso caso, o painel do Asaas (`www.asaas.com`). É bloqueio de produto; autorização do usuário no chat **não** sobrepõe.
+> Gotcha de processo: ações da automação de browser em sites sensíveis (financeiros como o Asaas, admin consoles do Google) retornam `Permission denied by user`. **CORREÇÃO (mesma sessão)**: na primeira análise parecia bloqueio duro de produto — mas era **prompt de permissão da extensão** no Chrome do usuário. Quando o usuário aprovou o prompt (após "tenta de volta"), a automação no painel do Asaas funcionou normalmente (webhook foi configurado fim-a-fim pelo agente).
 
-## Sintoma
+## Sintoma e diagnóstico
 
-Qualquer ação (`screenshot`, `navigate`, click) na aba do Asaas retorna `Permission denied by user`, mesmo com o usuário mandando seguir. Também observado em `google.com/recaptcha/admin` na mesma sessão (admin console).
+- Erro `Permission denied by user` em `screenshot`/`navigate`/click — **idêntico** para "prompt negado/perdido" e "site bloqueado por categoria". O agente não consegue distinguir os dois casos.
+- Protocolo: **não martelar**; avisar o usuário pra olhar o prompt da extensão e tentar 1× de novo com ele assistindo. Se negar de novo com o usuário olhando → aí sim é bloqueio de categoria, vira passo manual.
 
-## Consequência prática pro projeto
+## O que continua sendo sempre manual do usuário (guardrails do próprio agente)
 
-Passos do painel Asaas são **sempre manuais do usuário**:
-- Gerar/rotacionar `ASAAS_API_KEY`.
-- Configurar/alterar webhook (URL + token `asaas-access-token`).
-- Ativar NF-e, ver cobranças, estornos.
+- Senhas, dados bancários, KYC (dados pessoais/faturamento no cadastro Asaas).
+- Qualquer ação que movimente dinheiro (transferências, estornos, antecipações).
+- Criação de contas em serviços novos.
 
 ## Workflow que funcionou (sem secrets no chat)
 
