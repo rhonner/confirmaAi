@@ -956,12 +956,14 @@ Riscos de **percepção**, não técnicos:
 
 > **Decisão do founder (2026-06-13)**: o ambiente local deve testar billing contra o **sandbox do Asaas**, não contra o Mock. Motivo comprovado no go-live: Mock passou em tudo e o Asaas real revelou 5 bugs (shape do `externalReference`, chave Pix ausente, assinatura duplicada...). Mock fica como fallback offline e para os testes automatizados; o fluxo manual de billing em dev passa a exercitar a API real.
 
-Escopo (~meio dia):
-- [ ] `.env` local: descomentar `BILLING_PROVIDER=ASAAS` (credenciais sandbox já estão lá desde 2026-06-10 — chave `confirmaai-dev-local`, aspas simples obrigatórias).
-- [ ] **Script `scripts/dev-tunnel.sh`**: sobe `cloudflared tunnel --url http://localhost:3000`, captura a URL gerada e **registra/atualiza o webhook no sandbox via API** (`POST/PUT /webhook` com a chave sandbox — token = `ASAAS_WEBHOOK_SECRET` local, eventos de Cobranças, v3, sequencial). Sem passo manual no painel a cada sessão.
-- [ ] Validar ciclo completo local: checkout → QR sandbox → "pagar" pelo painel sandbox → webhook chega no túnel → plano ativa localmente.
-- [ ] Documentar em `.context/features/billing.md` § "Rodando local" (Sandbox vira o modo recomendado; Mock = offline/CI).
-- [ ] **Não quebrar**: `test:sprints` e vitest usam `MockProvider` importado direto (independem da env) ✓; o botão dev "Simular pagamento" (`mock-trigger`) só funciona em modo Mock — documentar que em modo Sandbox o pagamento se simula pelo painel do Asaas.
+Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
+- [x] `.env` local: `BILLING_PROVIDER=ASAAS` ativo + `ASAAS_WEBHOOK_SECRET` local gerado. **Gotcha novo**: aspas simples NÃO protegem o `$aact_` no loader do Next 16 — o escape obrigatório é `\$` (ver `billing.md` § gotcha do `$`).
+- [x] **Script `scripts/dev-tunnel.sh`**: sobe cloudflared, captura a URL e registra/atualiza o webhook "confirmaai-dev-tunnel" na sandbox via API. No exit (Ctrl+C), desabilita o webhook (evita fila sequencial pausada por entregas contra túnel morto).
+- [x] Validado ciclo completo local: checkout → QR Pix REAL da sandbox → `receiveInCash` via API → webhook no túnel → HMAC + idempotência → plano PRO/ACTIVE → `/billing/sucesso`. Setup one-time: chave Pix EVP criada na conta sandbox (mesmo `invalid_action` do go-live).
+- [x] Documentado em `.context/features/billing.md` § "Rodando local" + § "Validação manual (Sandbox)".
+- [x] **Não quebrou**: 167/167 vitest, 79/79 test:sprints, tsc e build limpos.
+- [x] **🐛 Bug real achado e corrigido**: `payment.nextDueDate` não existe no payload do Asaas → `currentPeriodEnd` ficava null na ativação → **cancelamento nunca expiraria no cron** (afetava produção). Fix: `deriveNextDueDate` (fallback `payment.dueDate + 1 mês`) + 3 testes de regressão com payload real. **Pendente: commit+push pra produção.**
+- [x] **🐛 Bug de UI corrigido**: checkout mostrava "[DEV] MockProvider" + botão "Simular pagamento" mesmo em modo Asaas (gate era `NODE_ENV`). Agora a resposta do checkout traz `provider` e a UI gateia nisso.
 
 ### Sprint 8 — Resiliência WhatsApp: anti-churn silencioso (3-4 dias) **[NOVA]**
 

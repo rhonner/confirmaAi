@@ -143,3 +143,48 @@ describe("planTierFromPayload (bug do go-live: externalReference em payment)", (
     expect(planTierFromPayload({ payment: { externalReference: "user_abc" } })).toBeNull();
   });
 });
+
+import { AsaasProvider } from "@/lib/billing/asaas";
+
+describe("AsaasProvider.parseEvent (bug do sandbox: nextDueDate ausente no payment)", () => {
+  const provider = new AsaasProvider();
+
+  it("deriva nextDueDate de payment.dueDate + 1 mês (shape real do PAYMENT_RECEIVED)", () => {
+    // Payload capturado do sandbox em 2026-06-13: payment.nextDueDate vem null,
+    // o campo só existe na subscription (que não vem em eventos PAYMENT_*).
+    const raw = JSON.stringify({
+      id: "evt_sandbox_1",
+      event: "PAYMENT_RECEIVED",
+      payment: {
+        id: "pay_7vn97fjqc2m5y6eu",
+        customer: "cus_x",
+        subscription: "sub_kvi25tl4ajbbm5i0",
+        status: "RECEIVED_IN_CASH",
+        value: 65,
+        dueDate: "2026-06-15",
+        nextDueDate: null,
+        externalReference: "user_abc:PRO",
+      },
+    });
+    const e = provider.parseEvent(raw);
+    expect(e.nextDueDate).toEqual(new Date("2026-07-15"));
+    // E o patch resultante precisa fechar o ciclo (sem isso, CANCELED nunca expira no cron).
+    const patch = eventToSubscriptionPatch(e);
+    expect(patch.status).toBe("ACTIVE");
+    expect(patch.currentPeriodEnd).toEqual(new Date("2026-07-15"));
+  });
+
+  it("usa payment.nextDueDate explícito quando presente (não regride o Mock)", () => {
+    const raw = JSON.stringify({
+      id: "evt_sandbox_2",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1", dueDate: "2026-06-15", nextDueDate: "2026-07-01" },
+    });
+    expect(provider.parseEvent(raw).nextDueDate).toEqual(new Date("2026-07-01"));
+  });
+
+  it("retorna null sem dueDate nem nextDueDate (evento não-pagamento)", () => {
+    const raw = JSON.stringify({ id: "evt_3", event: "SUBSCRIPTION_DELETED", subscription: { id: "sub_1" } });
+    expect(provider.parseEvent(raw).nextDueDate).toBeNull();
+  });
+});

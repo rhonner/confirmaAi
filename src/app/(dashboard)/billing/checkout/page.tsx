@@ -20,6 +20,7 @@ type CheckoutResponse = {
   expiresAt: string | null;
   plan: "PRO" | "PREMIUM";
   method: "PIX" | "CREDIT_CARD";
+  provider: string;
 };
 
 export default function CheckoutPage() {
@@ -92,7 +93,10 @@ export default function CheckoutPage() {
   };
 
   const plan = PLANS[planParam];
-  const isMock = process.env.NODE_ENV !== "production";
+  // Atalho de simulação só quando o checkout veio do MockProvider. Em dev com
+  // BILLING_PROVIDER=ASAAS (sandbox), o mock-trigger falharia no HMAC — o
+  // pagamento sandbox se confirma pelo painel/API do Asaas.
+  const isMock = checkout?.provider === "MOCK";
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

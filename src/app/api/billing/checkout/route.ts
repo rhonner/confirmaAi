@@ -25,6 +25,9 @@ export type CheckoutResponse = {
   expiresAt: string | null;
   plan: PlanTier;
   method: "PIX" | "CREDIT_CARD";
+  /** Provider real usado ("MOCK" | "ASAAS"). Em dev com sandbox, NODE_ENV
+   * não diz qual provider está ativo — a UI gateia o atalho de simulação nisto. */
+  provider: string;
 };
 
 export const POST = auditWrap(async (request: NextRequest) => {
@@ -123,6 +126,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
         expiresAt: checkout.expiresAt?.toISOString() ?? null,
         plan,
         method,
+        provider: provider.name,
       },
     });
   } catch (error) {

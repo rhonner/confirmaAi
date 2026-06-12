@@ -2,7 +2,7 @@
 title: Asaas — gateway de cobrança brasileiro
 type: entity
 created: 2026-05-07
-updated: 2026-06-10
+updated: 2026-06-13
 tags: [asaas, billing, pagamento, pix, brasil]
 sources:
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
@@ -47,14 +47,22 @@ Asaas não oferece um portal hospedado equivalente ao da Stripe. Nossa `createPo
 - **NF-e exige CNPJ** — indisponível até abrir empresa. Ok pros primeiros clientes; gargalo pra escalar B2B (clínicas pedem nota). Quando houver CNPJ: ativar no painel (emissão automática a cada `PAYMENT_RECEIVED`), 1 config, zero código. Sprint 11 (LGPD/legal) finaliza.
 - **MEI provavelmente não cobre SaaS** (CNAEs de software fora da lista) — caminho provável é ME no Simples; confirmar com contador.
 
-## Sandbox (2026-06-10)
+## Sandbox (2026-06-10, operacional desde 2026-06-13)
 
 - Conta sandbox criada a partir da prod (Integrações → Início → "Criar conta Sandbox"); login compartilhado, dados isolados.
-- Chave `confirmaai-dev-local` no `.env` local. **Gotcha**: chaves Asaas começam com `$aact_` — no `.env` de projeto Next, **aspas simples obrigatórias** (dotenv-expand trataria `$aact...` como variável e o valor viraria string vazia no runtime).
+- Chave `confirmaai-dev-local` no `.env` local. **Gotcha (SUPERSEDE 2026-06-13)**: chaves Asaas começam com `$aact_` — aspas simples **NÃO bastam** no runtime do Next 16 (`@next/env`/dotenv-expand expande mesmo entre aspas simples → string vazia silenciosa, sintoma `ASAAS_API_KEY ausente`). O escape obrigatório é `\$aact_...`. A claim anterior ("aspas simples obrigatórias") só valia pra `tsx`/dotenv puro e nunca tinha sido testada no Next — consumidores fora do Next agora precisam remover a `\` ao ler (o `dev-tunnel.sh` faz).
 - Gerar chave exige **2FA por SMS** mesmo na sandbox (celular do dono).
 - `https://sandbox.asaas.com/api/v3` — mesma API; chaves sandbox não funcionam em prod e vice-versa. Chaves sem uso por 3 meses são desabilitadas.
-- Webhook sandbox: pendente — exige URL pública (túnel) quando formos testar.
+- **Webhook sandbox AUTOMATIZADO** (2026-06-13): `./scripts/dev-tunnel.sh` sobe cloudflared e registra/atualiza o webhook "confirmaai-dev-tunnel" via `POST/PUT /webhooks` (token = `ASAAS_WEBHOOK_SECRET` local); no exit, desabilita (`enabled:false`) pra fila sequencial não pausar contra túnel morto.
+- **Chave Pix obrigatória na conta** (one-time): sem ela, `pixQrCode` → `400 invalid_action` (mesmo bug do go-live). Criada via API: `POST /pix/addressKeys {"type":"EVP"}`.
+- **"Pagar" cobrança sandbox via API**: `POST /payments/{id}/receiveInCash` → status `RECEIVED_IN_CASH` → dispara `PAYMENT_RECEIVED` real no webhook (o `mapPaymentStatus` precisa tratar `RECEIVED_IN_CASH`... na prática o handler keia pelo eventType, então funciona).
+- **Fila de entrega é lenta/sequencial**: entregas podem atrasar minutos (retry/backoff), especialmente após o dev server reiniciar com túnel ativo. Checar `GET /webhooks` → `interrupted`.
 - **Guia operacional completo** (rodar local contra Mock/Sandbox/Prod, matriz de envs, túnel, pareamento banco×provider): `.context/features/billing.md` § "Rodando local: Mock vs Sandbox vs Produção".
+
+## Shape real dos webhooks de pagamento (bugs que o Mock mascarou)
+
+1. `externalReference` vem em `payment.externalReference`, não em `subscription`/topo — ver [[../concepts/asaas-external-reference-in-payment]] (bug do go-live).
+2. **`nextDueDate` NÃO existe no objeto `payment`** (vive na subscription, que não vem no webhook). Sem fallback, `currentPeriodEnd` ficava null na ativação → cancelamento nunca expiraria no cron. Fix 2026-06-13: `deriveNextDueDate` = `payment.dueDate + 1 mês`. Achado no primeiro teste sandbox — terceira confirmação de que o Mock esconde bugs de shape.
 
 ## Estado da conta de produção (2026-06-10)
 

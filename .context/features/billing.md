@@ -54,6 +54,7 @@ UI: `src/app/(dashboard)/billing/checkout/page.tsx` mostra QR + botão "Copiar c
 3. Resolve `userId` via `providerSubscriptionId` ou `providerCustomerId`.
 4. Aplica `eventToSubscriptionPatch(event)` em `Subscription`:
    - `PAYMENT_RECEIVED|CONFIRMED` → `status=ACTIVE`, `currentPeriodEnd = nextDueDate`.
+     **⚠️ Shape real do Asaas (fix 2026-06-13)**: o payload de eventos `PAYMENT_*` NÃO traz `nextDueDate` no objeto `payment` (o campo vive na subscription, que não vem no webhook). Sem fallback, `currentPeriodEnd` ficava null → cancelamento nunca expiraria no cron (`CANCELED + currentPeriodEnd < now`). `deriveNextDueDate` em `asaas.ts` usa `payment.dueDate + 1 mês` como fallback. Regressão em `tests/unit/billing-provider.test.ts` com payload real capturado da sandbox.
    - `PAYMENT_OVERDUE` → `status=PAST_DUE`.
    - `SUBSCRIPTION_DELETED|CANCELLED` → `status=CANCELED`, `cancelAtPeriodEnd=true`.
 5. Se evento é PAYMENT e `payload.subscription.externalReference = "userId:plan"`, atualiza `Subscription.plan` para o tier comprado.
@@ -82,6 +83,18 @@ Defende contra webhooks perdidos / atrasados.
 
 Permite exercitar todo o lifecycle sem chave Asaas.
 
+### Validação manual no browser (Sandbox Asaas, 2026-06-13)
+
+Ciclo completo validado em dev contra a sandbox real, via Chrome MCP:
+
+1. ✅ `BILLING_PROVIDER=ASAAS` no `.env` + `./scripts/dev-tunnel.sh` (webhook registrado automaticamente na sandbox, túnel trycloudflare).
+2. ✅ Seed user em FREE → `/billing/checkout?plan=PRO` → "Continuar com Pix" → **QR Pix real da sandbox** renderizado, SEM aviso "[DEV] MockProvider" (gate por `provider` na resposta).
+3. ✅ Pagamento confirmado via `receiveInCash` na API sandbox → webhook `PAYMENT_RECEIVED` chegou pelo túnel → HMAC ok → idempotência ok → plano **PRO/ACTIVE** com `currentPeriodEnd = dueDate+1mês` → polling redirecionou pra `/billing/sucesso` ("Pagamento confirmado! Bem-vindo(a) ao plano Pro") → badge "Pro" no header.
+4. ✅ Webhook sem token pelo túnel → 401 (gate HMAC).
+5. ✅ Pagamento de assinatura órfã → `BillingEvent` com `userId null`, sem patch (reconciliação).
+
+Bugs reais achados e corrigidos neste setup: (a) `$aact_` zerado pelo loader do Next mesmo com aspas simples → escape `\$`; (b) `currentPeriodEnd` null por `nextDueDate` ausente no payment → `deriveNextDueDate`; (c) aviso MockProvider em modo sandbox → gate por `provider`.
+
 ### Validação manual no browser (Sprint 5)
 
 Confirmado em 2026-05-07 via Chrome MCP, fluxo end-to-end:
@@ -99,43 +112,51 @@ Confirmado em 2026-05-07 via Chrome MCP, fluxo end-to-end:
 
 > Como apontar o `npm run dev` local para cada ambiente de cobrança. O seletor é o `factory.ts`: lê `BILLING_PROVIDER` (`ASAAS` | `MOCK`) com fallback por `NODE_ENV` (dev → Mock, production → Asaas).
 >
-> **🥇 DECISÃO 2026-06-13 (prioridade nº 1 do roadmap)**: o modo recomendado para teste manual de billing em dev é **SANDBOX**, não Mock. O go-live provou que Mock passa em tudo e a API real revela bugs de shape (5 achados em 1 dia). Mock fica para: trabalho offline, `test:sprints`/vitest (importam `MockProvider` direto, independem da env) e o botão "Simular pagamento" (`mock-trigger`, que só funciona em modo Mock). Setup do túnel+webhook: ver item prioridade nº 1 em `../plans/monetization-v2.md`.
+> **🥇 DECISÃO 2026-06-13 (prioridade nº 1 do roadmap — IMPLEMENTADA)**: o modo recomendado para teste manual de billing em dev é **SANDBOX**, não Mock. O go-live provou que Mock passa em tudo e a API real revela bugs de shape (5 achados em 1 dia; +2 no próprio setup do sandbox, ver "Validação manual" abaixo). Mock fica para: trabalho offline, `test:sprints`/vitest (importam `MockProvider` direto, independem da env) e o botão "Simular pagamento" (`mock-trigger`, que só funciona em modo Mock). O `.env` local já fica com `BILLING_PROVIDER=ASAAS` por padrão.
 
 ### Matriz de configuração (`.env` local)
 
 | Modo | `BILLING_PROVIDER` | `ASAAS_API_URL` | `ASAAS_API_KEY` | Webhook |
 | ---- | ------------------ | ---------------- | ---------------- | ------- |
-| **Sandbox** (recomendado p/ teste manual) | `ASAAS` | `https://sandbox.asaas.com/api/v3` | chave `$aact_hmlg_...` (já no `.env`, gerada 2026-06-10) | túnel público + webhook sandbox (script `dev-tunnel.sh`, a criar — prioridade nº 1) |
-| **Mock** (offline/CI/mock-trigger) | *(ausente/comentado)* | — | — | `POST /api/billing/mock-trigger` simula tudo |
+| **Sandbox** (recomendado p/ teste manual — default atual) | `ASAAS` | `https://sandbox.asaas.com/api/v3` | chave `$aact_hmlg_...` (no `.env`, gerada 2026-06-10) | `./scripts/dev-tunnel.sh` (cloudflared + registro automático) |
+| **Mock** (offline/CI/mock-trigger) | comentar a linha + reiniciar dev | — | — | `POST /api/billing/mock-trigger` simula tudo |
 | **Produção** ⚠️ | `ASAAS` | `https://www.asaas.com/api/v3` | chave prod (na Vercel; NÃO copiar pro `.env` sem necessidade real) | já aponta pra Vercel — local NÃO recebe eventos |
 
-### ⚠️ Gotcha das aspas (vale pra qualquer chave Asaas no `.env`)
+### ⚠️ Gotcha do `$` no `.env` (CORRIGIDO 2026-06-13 — aspas simples NÃO bastam)
 
-Chaves Asaas começam com `$aact_`. O Next carrega `.env` com **dotenv-expand**, que trata `$aact...` como variável indefinida → valor vira **string vazia silenciosamente**. Sempre:
+Chaves Asaas começam com `$aact_`. O loader do Next (`@next/env` com dotenv-expand) expande `$aact...` como variável indefinida → valor vira **string vazia silenciosamente** — **MESMO entre aspas simples** (validado empiricamente no Next 16.1.6; a crença anterior de que aspas simples protegiam valia só pra `tsx`/dotenv puro, nunca foi testada no runtime do Next). O único escape que funciona no Next:
 
 ```bash
-ASAAS_API_KEY='$aact_hmlg_...'   # aspas SIMPLES, obrigatório
+ASAAS_API_KEY='\$aact_hmlg_...'   # barra invertida antes do $, obrigatório
 ```
 
-(Scripts `tsx` com `dotenv` puro também leem certo com aspas simples.)
+Consumidores fora do Next precisam remover a `\` ao ler (o `dev-tunnel.sh` já faz; sintoma do erro: `Error: ASAAS_API_KEY ausente` no checkout).
 
-### Modo Mock (dia-a-dia)
+### Modo Mock (offline/CI)
 
-1. `.env` sem `BILLING_PROVIDER` → `MockProvider` ativo.
+1. `.env` com `BILLING_PROVIDER` comentado → `MockProvider` ativo.
 2. Fluxo: `/billing/checkout` → QR fake → botão "[DEV] Simular pagamento recebido" (ou `POST /api/billing/mock-trigger { event }`) → webhook interno com HMAC mock → subscription ativa.
 3. Não toca rede externa. É o modo dos testes `test:sprints`.
+4. O botão "Simular pagamento" só aparece quando o checkout veio do Mock — a resposta de `POST /api/billing/checkout` inclui `provider` e a UI gateia nisso (fix 2026-06-13; antes usava `NODE_ENV` e mostrava o botão mesmo em modo sandbox, onde ele falharia no HMAC).
 
-### Modo Sandbox (testar AsaasProvider real)
+### Modo Sandbox (recomendado p/ teste manual)
 
-1. No `.env`, descomente `BILLING_PROVIDER=ASAAS` (as outras 2 vars já estão lá).
-2. Reinicie o dev server (env só carrega no boot).
-3. Checkout cria **customer/assinatura reais na sandbox** — confira em `sandbox.asaas.com` → Cobranças. Pagamento Pix sandbox é simulável pelo próprio painel.
-4. **Webhook**: o retorno (`PAYMENT_RECEIVED` → ativar subscription) só chega se a sandbox alcançar seu localhost:
+1. `.env` já tem `BILLING_PROVIDER=ASAAS` + `ASAAS_WEBHOOK_SECRET` local (token gerado 2026-06-13). Dev server rodando.
+2. Em outro terminal: **`./scripts/dev-tunnel.sh`** — sobe cloudflared, captura a URL trycloudflare e **registra/atualiza o webhook "confirmaai-dev-tunnel" na sandbox via API** (token = `ASAAS_WEBHOOK_SECRET`, eventos de Cobranças, v3, sequencial). Zero passo manual no painel. `Ctrl+C` desabilita o webhook na sandbox (evita fila pausada por entregas contra túnel morto) e derruba o túnel.
+3. Checkout cria **customer/assinatura reais na sandbox** — confira em `sandbox.asaas.com` → Cobranças.
+4. **"Pagar" a cobrança sandbox**: pelo painel, ou via API (mais rápido):
    ```bash
-   cloudflared tunnel --url http://localhost:3000   # gera https://<aleatorio>.trycloudflare.com
+   curl -X POST -H "access_token: $ASAAS_API_KEY" -H "Content-Type: application/json" \
+     "https://sandbox.asaas.com/api/v3/payments/<pay_id>/receiveInCash" \
+     -d '{"paymentDate":"YYYY-MM-DD","value":65.0,"notifyCustomerByEmail":false}'
    ```
-   Depois cadastre em `sandbox.asaas.com` → Integrações → Webhooks: URL `https://<tunel>/api/billing/webhook`, token = o MESMO valor de `ASAAS_WEBHOOK_SECRET` do seu `.env` local, v3, sequencial + fila. Sem túnel, o pagamento sandbox acontece mas a subscription local não ativa (alternativa: simular a ativação via `mock-trigger`... não — ele assina com HMAC do Mock; com `BILLING_PROVIDER=ASAAS` a verificação rejeita. Use o túnel.)
-5. **Reverter ao fim**: re-comentar `BILLING_PROVIDER` e reiniciar.
+   Dispara `PAYMENT_RECEIVED` (status `RECEIVED_IN_CASH`) → túnel → webhook local → plano ativa.
+5. **Setup one-time já feito (2026-06-13)**: a conta sandbox precisa de **chave Pix** cadastrada, senão o checkout falha com `pixQrCode 400 invalid_action` (mesmo bug do go-live). Criada via `POST /pix/addressKeys {"type":"EVP"}`. Se criar outra conta sandbox, repetir.
+6. **Fila sequencial do webhook**: se o dev server reiniciar com o túnel ativo, entregas falham e entram em retry/backoff — eventos podem atrasar alguns minutos (cheque `enabled`/`interrupted` em `GET /webhooks`). O `dev-tunnel.sh` reativa (`enabled:true, interrupted:false`) ao subir.
+7. **Pagamentos de assinaturas órfãs** (de checkouts falhos) chegam mas não resolvem `userId` (sub não persistida localmente) → `BillingEvent` fica com `userId null`, sem patch. Comportamento correto: vai pra reconciliação.
+8. **Limpeza**: cancele as assinaturas de teste na sandbox ao fim (`DELETE /subscriptions/<id>`) — cada checkout cria uma nova (bug conhecido do retry, fix na Sprint 10) e elas geram cobrança mensal.
+9. **CPF do usuário**: o checkout Asaas exige `User.cpf` (bug conhecido, fix Sprint 10). O seed user local já tem CPF fake válido setado (40436067293).
+10. **Reverter pra Mock**: comentar `BILLING_PROVIDER` e reiniciar o dev server.
 
 ### Modo Produção a partir do local (raro — use com medo)
 

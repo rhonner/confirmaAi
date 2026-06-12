@@ -1,4 +1,4 @@
-import { addDays } from "date-fns";
+import { addDays, addMonths } from "date-fns";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { PLANS } from "./plans";
 import type {
@@ -150,9 +150,10 @@ export class AsaasProvider implements BillingProviderImpl {
         customer?: string;
         subscription?: string;
         status?: string;
+        dueDate?: string;
         nextDueDate?: string;
       };
-      subscription?: { id?: string; customer?: string };
+      subscription?: { id?: string; customer?: string; nextDueDate?: string };
     };
 
     const providerEventId =
@@ -166,10 +167,28 @@ export class AsaasProvider implements BillingProviderImpl {
       providerCustomerId: json.payment?.customer ?? json.subscription?.customer ?? null,
       providerSubscriptionId: json.payment?.subscription ?? json.subscription?.id ?? null,
       paymentStatus: mapPaymentStatus(json.payment?.status),
-      nextDueDate: json.payment?.nextDueDate ? new Date(json.payment.nextDueDate) : null,
+      nextDueDate: deriveNextDueDate(json),
       payload: json,
     };
   }
+}
+
+/**
+ * O Asaas NÃO envia `nextDueDate` no objeto `payment` dos webhooks (o campo
+ * vive na subscription, que não vem no payload de PAYMENT_*). Achado no teste
+ * sandbox 2026-06-13: sem fallback, `currentPeriodEnd` ficava null após a
+ * ativação — e o downgrade do cron (`CANCELED + currentPeriodEnd < now`)
+ * nunca dispararia para quem cancelasse. Fallback: vencimento da cobrança
+ * paga + 1 mês = próxima cobrança do ciclo MONTHLY.
+ */
+function deriveNextDueDate(json: {
+  payment?: { dueDate?: string; nextDueDate?: string };
+  subscription?: { nextDueDate?: string };
+}): Date | null {
+  const explicit = json.payment?.nextDueDate ?? json.subscription?.nextDueDate;
+  if (explicit) return new Date(explicit);
+  if (json.payment?.dueDate) return addMonths(new Date(json.payment.dueDate), 1);
+  return null;
 }
 
 function mapPaymentStatus(s: string | undefined): ParsedEvent["paymentStatus"] {
