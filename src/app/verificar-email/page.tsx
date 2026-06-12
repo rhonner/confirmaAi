@@ -4,7 +4,7 @@ import { CheckCircle2, AlertCircle, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "Verificar email — ConfirmaAí",
+  title: "Verificar email — Clínica Organizada",
   robots: { index: false },
 };
 

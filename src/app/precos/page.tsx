@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Planos e preços — ConfirmaAí",
+  title: "Planos e preços — Clínica Organizada",
   description:
-    "Compare os planos do ConfirmaAí: Grátis (5 pacientes), Pro (R$ 65/mês) e Premium (R$ 110/mês). Confirmação automática de agendamentos via WhatsApp para clínicas.",
+    "Compare os planos da Clínica Organizada: Grátis (5 pacientes), Pro (R$ 65/mês) e Premium (R$ 110/mês). Confirmação automática de agendamentos via WhatsApp para clínicas.",
 };
 
 export default function PricingPage() {
@@ -16,7 +16,7 @@ export default function PricingPage() {
       <header className="border-b border-border">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link href="/" className="text-lg font-bold">
-            ConfirmaAí
+            Clínica Organizada
           </Link>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
@@ -55,7 +55,7 @@ export default function PricingPage() {
 
         <div className="mt-12 mx-auto max-w-3xl space-y-6 text-sm text-muted-foreground">
           <FAQ q="Por que o limite de 5 pacientes no Free é vitalício e não mensal?">
-            Porque o ConfirmaAí cobra por capacidade, não por consumo recorrente.
+            Porque a Clínica Organizada cobra por capacidade, não por consumo recorrente.
             Os 5 pacientes são pra você testar com clientes reais antes de assinar.
             Mesmo que você delete um paciente, a vaga não é liberada — isso evita
             burlar o limite criando e excluindo contas.
@@ -76,7 +76,7 @@ export default function PricingPage() {
 
       <footer className="border-t border-border py-8 mt-12">
         <div className="container mx-auto px-4 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} ConfirmaAí
+          © {new Date().getFullYear()} Clínica Organizada
         </div>
       </footer>
     </div>

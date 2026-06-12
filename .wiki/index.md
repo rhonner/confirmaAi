@@ -31,6 +31,7 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [defense-in-depth-cron](pages/concepts/defense-in-depth-cron.md) | Cron diário backstop pra webhooks perdidos (PAST_DUE>7d → SUSPENDED) | 2026-06-10 |
 | [rhf-radix-gotcha](pages/concepts/rhf-radix-gotcha.md) | RHF Controller + Radix Checkbox: valor não chega no submit; `recaptchaToken: null` quebra `.optional()` | 2026-05-07 |
 | [whatsapp-ninth-digit-jid](pages/concepts/whatsapp-ninth-digit-jid.md) | JID pode vir sem o 9º dígito BR → resposta do paciente não casava com `patient.phone`; fix `brPhoneCandidates` | 2026-06-12 |
+| [asaas-external-reference-in-payment](pages/concepts/asaas-external-reference-in-payment.md) | Asaas manda externalReference em `payment`, não `subscription` → cliente pagava e ficava FREE; fix `planTierFromPayload` | 2026-06-12 |
 | [lazy-period-usage-counter](pages/concepts/lazy-period-usage-counter.md) | Quota de msgs sem job de reset: virada de período = linha nova lazy; fallback p/ webhook perdido | 2026-06-10 |
 | [neon-pooled-vs-direct-url](pages/concepts/neon-pooled-vs-direct-url.md) | Pooled (`-pooler`) no runtime serverless, direta nas migrations; PrismaPg dispensa `pgbouncer=true` | 2026-06-10 |
 | [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer | 2026-06-10 |

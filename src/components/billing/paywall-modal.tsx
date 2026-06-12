@@ -44,7 +44,7 @@ const TITLES: Record<PaywallReason, { title: string; description: string }> = {
   },
   PAYMENT_PAST_DUE: {
     title: "Pagamento em atraso",
-    description: "Regularize o pagamento para continuar usando o ConfirmaAí.",
+    description: "Regularize o pagamento para continuar usando a Clínica Organizada.",
   },
   SUSPENDED: {
     title: "Conta suspensa",

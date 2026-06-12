@@ -84,7 +84,7 @@ export class AsaasProvider implements BillingProviderImpl {
         cycle: "MONTHLY",
         value,
         nextDueDate,
-        description: `${plan.label} — ConfirmaAí`,
+        description: `${plan.label} — Clínica Organizada`,
         externalReference: `${input.userId}:${input.plan}`,
       }),
     });

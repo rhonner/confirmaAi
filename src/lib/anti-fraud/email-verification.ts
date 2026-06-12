@@ -95,12 +95,12 @@ export async function sendVerificationEmail(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "ConfirmaAí <noreply@clinicaorganizada.com>",
+        from: "Clínica Organizada <noreply@clinicaorganizada.com>",
         to: [input.to],
-        subject: "Confirme seu email — ConfirmaAí",
+        subject: "Confirme seu email — Clínica Organizada",
         html: `
           <p>Olá ${escapeHtml(input.name)},</p>
-          <p>Bem-vindo(a) ao ConfirmaAí. Para ativar sua conta, confirme seu email:</p>
+          <p>Bem-vindo(a) à Clínica Organizada. Para ativar sua conta, confirme seu email:</p>
           <p><a href="${link}">Confirmar meu email</a></p>
           <p>Esse link expira em ${TOKEN_TTL_HOURS}h.</p>
           <p>Se você não criou uma conta, ignore este email.</p>

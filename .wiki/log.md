@@ -106,3 +106,15 @@ Smoke test E2E em prod expôs bug invisível em dev: resposta "1" do paciente ig
 ## [2026-06-12] update | 🏁 SMOKE TEST E2E COMPLETO — go-live 100%
 
 Reteste pós-fix: resposta "1" da paciente → CONFIRMED na agenda. Ciclo validado em produção: agendamento → cron VPS → Evolution → WhatsApp → resposta → webhook (com brPhoneCandidates) → confirmação. Extras validados de brinde: modal soft de 60% da quota disparou no 3º paciente, CPF obrigatório no Free, stats do cron (Sprint 6) na resposta do endpoint. Sprint 7 encerrada. Próximo: Sprint 8 (resiliência WhatsApp) antes de marketing; Pix R$ 1 no Pro fica a critério do usuário.
+
+## [2026-06-12] ingest | 🔴 Bug crítico de billing achado no teste de pagamento real
+
+Pix R$ 3 real pago → webhook PAYMENT_RECEIVED ok, mas plano não subia de FREE: handler procurava externalReference em payload.subscription/topo, Asaas envia em payload.payment.externalReference. Em prod = todo cliente pagaria e ficaria Free. Fix: helper planTierFromPayload (3 fontes) + 5 testes regressão (164/164). Conta teste reconciliada p/ PRO manualmente. Diagnóstico via tabela BillingEvent de prod (fonte de verdade do billing). Página nova: concepts/asaas-external-reference-in-payment. O teste real pagou 3 bugs: chave Pix ausente, assinatura duplicada no retry, externalReference. Pendente: commit+push do fix, depois reenviar webhook do Asaas pra validar fim-a-fim.
+
+## [2026-06-12] update | ✅ Fix de billing validado em PRODUÇÃO com pagamento real
+
+Conta teste 2 (limpa, pós-deploy do fix planTierFromPayload): signup v2 completo → checkout Pix → pagou R$3 real → webhook PAYMENT_RECEIVED → plano virou PRO AUTOMATICAMENTE → redirect /billing/sucesso + badge Pro. Zero intervenção manual. O ciclo de cobrança Asaas está 100% validado fim-a-fim em produção. Pendências de limpeza: cancelar assinaturas de teste (testepagto, testepagto2, órfã sub_3m1b00oia8grmdp2) no painel Asaas pra não cobrar mês que vem.
+
+## [2026-06-12] update | Marca unificada: ConfirmaAí → Clínica Organizada
+
+Item 2 dos bloqueadores de marketing resolvido. 11 ocorrências de "ConfirmaAí" em 5 arquivos de src/ trocadas por "Clínica Organizada" (email-verification from/subject/body, precos title/desc/footer/FAQ, paywall-modal, asaas description, verificar-email title). Concordância de gênero corrigida (Clínica = feminino: à/da/a, não ao/do/o). 164/164 testes, tsc e build limpos. .context/.wiki mantêm "ConfirmaAí" como registro histórico (nome de produto original do CLAUDE.md). Reduz combustível do flag de Safe Browsing (nome agora bate com domínio clinicaorganizada.com). Pendente: deploy (commit+push) + nudge do Search Console.
