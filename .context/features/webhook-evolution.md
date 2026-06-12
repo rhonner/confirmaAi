@@ -39,12 +39,13 @@
 5. **Match do agendamento**: scoped por `userId` (multi-tenancy crítico — o mesmo telefone pode estar em pacientes de tenants diferentes):
    ```
    userId: user.id
-   patient.phone: <phone normalizado>
+   patient.phone: { in: brPhoneCandidates(<phone do JID>) }
    status: PENDING
    confirmationSentAt: { not: null }
    dateTime >= now
    orderBy confirmationSentAt desc, take 1
    ```
+   **⚠️ Nono dígito (fix 2026-06-12, achado no smoke test de produção)**: o JID do WhatsApp pode vir **sem o nono dígito** (`554197974990@s.whatsapp.net`) mesmo quando o paciente foi cadastrado com ele (`+5541997974990`) — números registrados antes do rollout do 9. Match por igualdade exata descartava a resposta silenciosamente. `brPhoneCandidates` (em `src/lib/phone.ts`) gera as duas variantes (só para celular: 1º dígito 6-9; fixo não ganha 9).
 6. **Aplica resultado**:
    - `CONFIRMED` → `appointment.update({ status: CONFIRMED, confirmedAt: now })`.
    - `CANCELED`  → `appointment.update({ status: CANCELED })`.

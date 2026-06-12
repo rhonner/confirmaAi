@@ -43,3 +43,27 @@ export function toCanonicalPhone(value: string): string {
 export function isValidPhone(value: string): boolean {
   return PHONE_REGEX.test(value)
 }
+
+/**
+ * Returns the canonical phone plus its Brazilian ninth-digit variant.
+ *
+ * WhatsApp JIDs may omit the ninth digit for mobile numbers registered before
+ * its rollout: a patient stored as +5541999999999 can reply from a JID of
+ * 554199999999@s.whatsapp.net (and vice versa). Matching by a single exact
+ * value silently drops those replies, so lookups must accept both forms.
+ */
+export function brPhoneCandidates(phone: string): string[] {
+  const candidates = new Set<string>([phone])
+  const match = phone.match(/^\+55(\d{2})(\d+)$/)
+  if (match) {
+    const [, ddd, rest] = match
+    // Only mobile numbers carry the ninth digit; pre-rollout mobiles start
+    // with 6-9. Landlines (2-5) never gain a 9, so no variant for them.
+    if (rest.length === 8 && /^[6-9]/.test(rest)) {
+      candidates.add(`+55${ddd}9${rest}`)
+    } else if (rest.length === 9 && rest.startsWith("9") && /^[6-9]/.test(rest.slice(1))) {
+      candidates.add(`+55${ddd}${rest.slice(1)}`)
+    }
+  }
+  return [...candidates]
+}

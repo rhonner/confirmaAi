@@ -372,3 +372,29 @@ describe("Auth validations", () => {
     });
   });
 });
+
+// --- brPhoneCandidates (nono dígito do WhatsApp BR) ---
+import { brPhoneCandidates } from "@/lib/phone";
+
+describe("brPhoneCandidates", () => {
+  it("adds the ninth-digit variant for 8-digit JID phones", () => {
+    expect(brPhoneCandidates("+554197974990").sort()).toEqual(
+      ["+554197974990", "+5541997974990"].sort(),
+    );
+  });
+
+  it("adds the no-ninth-digit variant for 9-digit phones starting with 9", () => {
+    expect(brPhoneCandidates("+5541997974990").sort()).toEqual(
+      ["+554197974990", "+5541997974990"].sort(),
+    );
+  });
+
+  it("does not invent variants for 9-digit numbers not starting with 9 (landline-like)", () => {
+    expect(brPhoneCandidates("+554133334444")).toEqual(["+554133334444"]);
+  });
+
+  it("passes through non-BR or malformed phones untouched", () => {
+    expect(brPhoneCandidates("+15551234567")).toEqual(["+15551234567"]);
+    expect(brPhoneCandidates("garbage")).toEqual(["garbage"]);
+  });
+});

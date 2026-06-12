@@ -94,3 +94,11 @@ Seção operacional nova em .context/features/billing.md: matriz de envs por mod
 ## [2026-06-12] update | ASAAS_API_KEY prod na Vercel — 16/16 envs, go-live destravado
 
 KYC aprovado; chave prod gerada (2FA SMS do usuário) e adicionada via clipboard relay com sanity check de prefixo/tamanho ($aact_prod_, 166 chars) — valor nunca entrou no contexto do agente; validada read-only (GET /customers 200); clipboard limpo. Checklist do go-live: TUDO pronto exceto merge v2.0.0→main (usuário, gh) + smoke test E2E.
+
+## [2026-06-12] update | 🚀 V2 EM PRODUÇÃO — Sprint 7 fechada
+
+Merge v2.0.0→main (usuário) + deploy Ready em ~6min. Verificação pós-deploy: /precos 200 (página exclusiva v2), /api/billing/subscription 401 auth-gate, webhook 401 sem HMAC. 7/11 sprints fechadas. Próximo: smoke test E2E assistido, depois Sprint 8 (resiliência WhatsApp) ANTES de marketing.
+
+## [2026-06-12] ingest | 🐛 Bug real achado no smoke test: JID sem nono dígito
+
+Smoke test E2E em prod expôs bug invisível em dev: resposta "1" do paciente ignorada porque o JID do WhatsApp veio sem o nono dígito (554197974990 vs +5541997974990 cadastrado). Fix: brPhoneCandidates em src/lib/phone.ts + match com IN no webhook. 159/159 testes. Página nova: concepts/whatsapp-ninth-digit-jid. Pendente: push pra main + reteste com a resposta real.

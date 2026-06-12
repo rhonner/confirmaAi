@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResponse } from "@/lib/services/webhook-parser";
+import { brPhoneCandidates } from "@/lib/phone";
 import { audit, maskPhone, truncateMessage, withFixedActor } from "@/lib/audit";
 
 // Evolution API webhook — one webhook URL per instance, so the [instance]
@@ -152,10 +153,12 @@ export const POST = withFixedActor(
 
     // Scoped to this tenant (user.id) — prevents cross-tenant collisions
     // when the same patient phone is registered under multiple users.
+    // brPhoneCandidates: WhatsApp JIDs may omit the Brazilian ninth digit,
+    // so the reply phone must match both stored variants.
     const appointment = await prisma.appointment.findFirst({
       where: {
         userId: user.id,
-        patient: { phone },
+        patient: { phone: { in: brPhoneCandidates(phone) } },
         status: "PENDING",
         confirmationSentAt: { not: null },
         dateTime: { gte: new Date() },
