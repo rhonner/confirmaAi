@@ -102,3 +102,7 @@ Merge v2.0.0→main (usuário) + deploy Ready em ~6min. Verificação pós-deplo
 ## [2026-06-12] ingest | 🐛 Bug real achado no smoke test: JID sem nono dígito
 
 Smoke test E2E em prod expôs bug invisível em dev: resposta "1" do paciente ignorada porque o JID do WhatsApp veio sem o nono dígito (554197974990 vs +5541997974990 cadastrado). Fix: brPhoneCandidates em src/lib/phone.ts + match com IN no webhook. 159/159 testes. Página nova: concepts/whatsapp-ninth-digit-jid. Pendente: push pra main + reteste com a resposta real.
+
+## [2026-06-12] update | 🏁 SMOKE TEST E2E COMPLETO — go-live 100%
+
+Reteste pós-fix: resposta "1" da paciente → CONFIRMED na agenda. Ciclo validado em produção: agendamento → cron VPS → Evolution → WhatsApp → resposta → webhook (com brPhoneCandidates) → confirmação. Extras validados de brinde: modal soft de 60% da quota disparou no 3º paciente, CPF obrigatório no Free, stats do cron (Sprint 6) na resposta do endpoint. Sprint 7 encerrada. Próximo: Sprint 8 (resiliência WhatsApp) antes de marketing; Pix R$ 1 no Pro fica a critério do usuário.
