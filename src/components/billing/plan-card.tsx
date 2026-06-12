@@ -16,15 +16,14 @@ type Props = {
   ctaLabel?: string;
 };
 
+// Só features que EXISTEM no produto. Linhas de roadmap (multi-profissional,
+// Google Calendar, NF-e, API, relatórios avançados) saíram em 2026-06-12:
+// vender o que não existe é risco CDC + churn. Reintroduzir linha a linha
+// quando cada feature for real (junto com a volta do plano Premium).
 const FEATURE_ROWS: Array<{ key: keyof typeof PLANS.FREE.features | "patientSlots" | "messages"; label: string }> = [
   { key: "patientSlots", label: "Pacientes únicos vitalícios" },
   { key: "messages", label: "Mensagens WhatsApp/mês" },
   { key: "exportCsv", label: "Exportar CSV" },
-  { key: "advancedReports", label: "Relatórios avançados" },
-  { key: "multiProfessional", label: "Multi-profissional" },
-  { key: "googleCalendar", label: "Integração Google Calendar" },
-  { key: "nfe", label: "Emissão de NF-e" },
-  { key: "api", label: "Acesso à API" },
 ];
 
 export function PlanCard({

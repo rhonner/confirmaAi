@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getAuthSession, unauthorizedResponse, serverErrorResponse } from "@/lib/auth-helpers"
+import { getAuthSession, unauthorizedResponse, paywallResponse, serverErrorResponse } from "@/lib/auth-helpers"
+import { checkEntitlement } from "@/lib/billing"
 import { buildCsv } from "@/lib/csv"
 import { APP_TIMEZONE, formatInTimeZone, todayIsoInAppTz } from "@/lib/timezone"
 
@@ -8,6 +9,13 @@ export async function GET(_req: NextRequest) {
   try {
     const session = await getAuthSession()
     if (!session?.user?.id) return unauthorizedResponse()
+
+    // Export CSV é feature de plano pago — o card sempre disse isso, mas o
+    // gate só foi aplicado em 2026-06-12 (antes, Free também exportava).
+    const decision = await checkEntitlement(session.user.id, "export.csv")
+    if (!decision.allowed) {
+      return paywallResponse({ reason: decision.reason, upgrade: decision.upgrade })
+    }
 
     const patients = await prisma.patient.findMany({
       where: { userId: session.user.id },

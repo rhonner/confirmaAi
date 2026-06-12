@@ -105,7 +105,9 @@ export async function check(
         return {
           allowed: false,
           reason: "QUOTA_EXCEEDED",
-          upgrade: planTier === "FREE" ? "PRO" : "PREMIUM",
+          // PREMIUM está oculto da venda (PLANS.PREMIUM.hidden) — Pro no
+          // limite não tem upsell automático; resolve via suporte/admin.
+          upgrade: planTier === "FREE" ? "PRO" : undefined,
           current: usage.messagesSent,
           limit: usage.messagesIncluded,
         };

@@ -28,6 +28,13 @@ export type PlanConfig = {
   features: PlanFeatures;
   /** ID do plano no Asaas (Sprint 5). */
   asaasPlanId?: string;
+  /**
+   * Oculto da UI de venda (/precos, /billing, paywall). O tier continua
+   * válido no backend (enum, assinaturas existentes, entitlements).
+   * PREMIUM fica oculto até multi-profissional OU Google Calendar existirem
+   * de verdade — vender feature inexistente é risco CDC + churn garantido.
+   */
+  hidden?: boolean;
 };
 
 export const PLANS = {
@@ -68,6 +75,7 @@ export const PLANS = {
     priceMonthly: 11000,
     patientSlots: null,
     messagesIncluded: 5000,
+    hidden: true,
     features: {
       exportCsv: true,
       advancedReports: true,
@@ -83,3 +91,8 @@ export const PLANS = {
 export function getPlanConfig(tier: PlanTier): PlanConfig {
   return PLANS[tier];
 }
+
+/** Tiers visíveis na UI de venda, em ordem de exibição. */
+export const VISIBLE_PLAN_TIERS = (Object.keys(PLANS) as PlanTier[]).filter(
+  (t) => !getPlanConfig(t).hidden,
+);

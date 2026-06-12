@@ -28,16 +28,18 @@ test.describe("Sprint 3 — UX de quota", () => {
     await expect(page.getByRole("heading", { name: /plano e cobrança/i })).toBeVisible();
     await expect(page.getByTestId("plan-card-FREE")).toBeVisible();
     await expect(page.getByTestId("plan-card-PRO")).toBeVisible();
-    await expect(page.getByTestId("plan-card-PREMIUM")).toBeVisible();
+    // PREMIUM oculto da venda (PLANS.PREMIUM.hidden) desde 2026-06-12 —
+    // só aparece para assinantes Premium existentes.
+    await expect(page.getByTestId("plan-card-PREMIUM")).toHaveCount(0);
   });
 
-  test("Página /precos pública renderiza os 3 planos sem login", async ({ page }) => {
+  test("Página /precos pública renderiza os 2 planos visíveis sem login", async ({ page }) => {
     await page.goto("/precos");
 
     await expect(page.getByRole("heading", { name: /planos simples/i })).toBeVisible();
     await expect(page.getByTestId("plan-card-FREE")).toBeVisible();
     await expect(page.getByTestId("plan-card-PRO")).toBeVisible();
-    await expect(page.getByTestId("plan-card-PREMIUM")).toBeVisible();
+    await expect(page.getByTestId("plan-card-PREMIUM")).toHaveCount(0);
 
     // CTA "Começar grátis" leva para /registro
     await expect(

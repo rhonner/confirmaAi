@@ -98,13 +98,15 @@ Confirmado em 2026-05-07 via Chrome MCP, fluxo end-to-end:
 ## Rodando local: Mock vs Sandbox vs Produção
 
 > Como apontar o `npm run dev` local para cada ambiente de cobrança. O seletor é o `factory.ts`: lê `BILLING_PROVIDER` (`ASAAS` | `MOCK`) com fallback por `NODE_ENV` (dev → Mock, production → Asaas).
+>
+> **🥇 DECISÃO 2026-06-13 (prioridade nº 1 do roadmap)**: o modo recomendado para teste manual de billing em dev é **SANDBOX**, não Mock. O go-live provou que Mock passa em tudo e a API real revela bugs de shape (5 achados em 1 dia). Mock fica para: trabalho offline, `test:sprints`/vitest (importam `MockProvider` direto, independem da env) e o botão "Simular pagamento" (`mock-trigger`, que só funciona em modo Mock). Setup do túnel+webhook: ver item prioridade nº 1 em `../plans/monetization-v2.md`.
 
 ### Matriz de configuração (`.env` local)
 
 | Modo | `BILLING_PROVIDER` | `ASAAS_API_URL` | `ASAAS_API_KEY` | Webhook |
 | ---- | ------------------ | ---------------- | ---------------- | ------- |
-| **Mock** (default dev) | *(ausente/comentado)* | — | — | `POST /api/billing/mock-trigger` simula tudo |
-| **Sandbox** | `ASAAS` | `https://sandbox.asaas.com/api/v3` | chave `$aact_hmlg_...` (já no `.env`, gerada 2026-06-10) | precisa de túnel público (ver abaixo) |
+| **Sandbox** (recomendado p/ teste manual) | `ASAAS` | `https://sandbox.asaas.com/api/v3` | chave `$aact_hmlg_...` (já no `.env`, gerada 2026-06-10) | túnel público + webhook sandbox (script `dev-tunnel.sh`, a criar — prioridade nº 1) |
+| **Mock** (offline/CI/mock-trigger) | *(ausente/comentado)* | — | — | `POST /api/billing/mock-trigger` simula tudo |
 | **Produção** ⚠️ | `ASAAS` | `https://www.asaas.com/api/v3` | chave prod (na Vercel; NÃO copiar pro `.env` sem necessidade real) | já aponta pra Vercel — local NÃO recebe eventos |
 
 ### ⚠️ Gotcha das aspas (vale pra qualquer chave Asaas no `.env`)

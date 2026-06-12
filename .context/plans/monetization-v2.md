@@ -952,6 +952,17 @@ Riscos de **percepção**, não técnicos:
 
 > **Status 2026-06-10**: domínio `clinicaorganizada.com` comprado (Cloudflare), DNS configurado (raiz/www → Vercel, `evolution.` → 49.13.202.135), app v1 no ar na Vercel e Evolution API respondendo com HTTPS. Restante: Asaas prod, envs, pooled DATABASE_URL, cadência do cron, migrations v2 + merge `v2.0.0` → `main`.
 
+### 🥇 PRIORIDADE Nº 1 — Dev local integrado ao Asaas SANDBOX (antes da Sprint 8)
+
+> **Decisão do founder (2026-06-13)**: o ambiente local deve testar billing contra o **sandbox do Asaas**, não contra o Mock. Motivo comprovado no go-live: Mock passou em tudo e o Asaas real revelou 5 bugs (shape do `externalReference`, chave Pix ausente, assinatura duplicada...). Mock fica como fallback offline e para os testes automatizados; o fluxo manual de billing em dev passa a exercitar a API real.
+
+Escopo (~meio dia):
+- [ ] `.env` local: descomentar `BILLING_PROVIDER=ASAAS` (credenciais sandbox já estão lá desde 2026-06-10 — chave `confirmaai-dev-local`, aspas simples obrigatórias).
+- [ ] **Script `scripts/dev-tunnel.sh`**: sobe `cloudflared tunnel --url http://localhost:3000`, captura a URL gerada e **registra/atualiza o webhook no sandbox via API** (`POST/PUT /webhook` com a chave sandbox — token = `ASAAS_WEBHOOK_SECRET` local, eventos de Cobranças, v3, sequencial). Sem passo manual no painel a cada sessão.
+- [ ] Validar ciclo completo local: checkout → QR sandbox → "pagar" pelo painel sandbox → webhook chega no túnel → plano ativa localmente.
+- [ ] Documentar em `.context/features/billing.md` § "Rodando local" (Sandbox vira o modo recomendado; Mock = offline/CI).
+- [ ] **Não quebrar**: `test:sprints` e vitest usam `MockProvider` importado direto (independem da env) ✓; o botão dev "Simular pagamento" (`mock-trigger`) só funciona em modo Mock — documentar que em modo Sandbox o pagamento se simula pelo painel do Asaas.
+
 ### Sprint 8 — Resiliência WhatsApp: anti-churn silencioso (3-4 dias) **[NOVA]**
 
 > **Maior ameaça ao "rodar sozinho"**: a instância Evolution do tenant desconecta → o scheduler filtra `whatsappStatus != CONNECTED` pra fora → as confirmações **param silenciosamente** → cliente paga por um produto que não faz nada → churn. Hoje ninguém é avisado.
@@ -1067,6 +1078,20 @@ Riscos de **percepção**, não técnicos:
 - [ ] E2E: cancel → permanece até `currentPeriodEnd` → vira FREE com >5 pacientes.
 
 ---
+
+## 11.5 Decisão: Premium oculto + verdade nos planos (2026-06-12)
+
+> **Contexto**: auditoria promessa×código revelou que o Premium vendia 4 features inexistentes (multi-profissional, Google Calendar, NF-e, API) e Pro+Premium vendiam "Relatórios avançados" (flag sem nenhum uso real). Com billing vivo, isso é risco CDC (propaganda enganosa) + churn garantido no 1º cliente Premium.
+
+**Decisões aplicadas:**
+1. **`PLANS.PREMIUM.hidden = true`** — some de `/precos`, `/billing` (exceto p/ assinante Premium existente) e paywall; checkout rejeita `?plan=PREMIUM` por URL (400). Tier continua no enum/DB.
+2. **Tabela de features só com o que existe**: pacientes, mensagens, export CSV. Linhas de roadmap removidas (nem como "—").
+3. **Gate `export.csv` APLICADO** nas rotas de export (antes Free exportava de graça — card mentia pro outro lado).
+4. **Upsell de mensagens do Pro**: deny aponta `upgrade: undefined` (sem Premium pra vender); caso raríssimo, resolve via suporte.
+
+**Critério de reintrodução do Premium**: quando **multi-profissional OU Google Calendar** existirem de verdade, reintroduzir com card honesto (provavelmente re-precificado). NF-e adicional depende de CNPJ. Cada feature nova → linha nova na tabela.
+
+**E2E atualizado**: `quota-paywall.spec.ts` espera 2 cards (`plan-card-PREMIUM` count 0).
 
 ## 12. Decisões fechadas (2026-05-07)
 

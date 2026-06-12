@@ -7,7 +7,7 @@ import { ArrowLeft } from "lucide-react";
 export const metadata: Metadata = {
   title: "Planos e preços — Clínica Organizada",
   description:
-    "Compare os planos da Clínica Organizada: Grátis (5 pacientes), Pro (R$ 65/mês) e Premium (R$ 110/mês). Confirmação automática de agendamentos via WhatsApp para clínicas.",
+    "Compare os planos da Clínica Organizada: Grátis (5 pacientes) e Pro (R$ 65/mês, pacientes ilimitados). Confirmação automática de agendamentos via WhatsApp para clínicas.",
 };
 
 export default function PricingPage() {
@@ -47,10 +47,9 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
+        <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
           <PlanCard tier="FREE" ctaHref="/registro" ctaLabel="Começar grátis" />
           <PlanCard tier="PRO" highlighted ctaHref="/registro" ctaLabel="Começar com Pro" />
-          <PlanCard tier="PREMIUM" ctaHref="/registro" ctaLabel="Começar com Premium" />
         </div>
 
         <div className="mt-12 mx-auto max-w-3xl space-y-6 text-sm text-muted-foreground">

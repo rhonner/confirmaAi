@@ -8,7 +8,7 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { audit, auditWrap } from "@/lib/audit";
-import { getBillingProvider } from "@/lib/billing";
+import { getBillingProvider, getPlanConfig } from "@/lib/billing";
 import type { ApiResponse } from "@/lib/types/api";
 import type { PlanTier } from "@/generated/prisma/client";
 
@@ -38,6 +38,12 @@ export const POST = auditWrap(async (request: NextRequest) => {
       return badRequestResponse(parsed.error.issues[0].message);
     }
     const { plan, method } = parsed.data;
+
+    // Plano oculto da venda (ex: PREMIUM até as features existirem) não pode
+    // ser assinado nem por URL direta.
+    if (getPlanConfig(plan).hidden) {
+      return badRequestResponse("Plano indisponível no momento");
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },

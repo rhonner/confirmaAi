@@ -126,7 +126,15 @@ export default function BillingPage() {
         <h3 className="text-lg font-semibold mb-4">
           {usage.plan === "FREE" ? "Faça upgrade" : "Comparar planos"}
         </h3>
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* PREMIUM oculto da venda (PLANS.PREMIUM.hidden) — só aparece para
+            quem já é Premium, que precisa continuar vendo o próprio plano. */}
+        <div
+          className={
+            usage.plan === "PREMIUM"
+              ? "grid gap-4 md:grid-cols-3"
+              : "grid gap-4 md:grid-cols-2"
+          }
+        >
           <PlanCard
             tier="FREE"
             current={usage.plan === "FREE"}
@@ -141,15 +149,9 @@ export default function BillingPage() {
               usage.plan === "PRO" ? undefined : "/billing/checkout?plan=PRO"
             }
           />
-          <PlanCard
-            tier="PREMIUM"
-            current={usage.plan === "PREMIUM"}
-            ctaHref={
-              usage.plan === "PREMIUM"
-                ? undefined
-                : "/billing/checkout?plan=PREMIUM"
-            }
-          />
+          {usage.plan === "PREMIUM" && (
+            <PlanCard tier="PREMIUM" current ctaLabel="Plano atual" />
+          )}
         </div>
       </div>
 

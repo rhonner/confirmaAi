@@ -115,18 +115,15 @@ export function PaywallModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 sm:grid-cols-2 mt-2">
+        {/* PREMIUM oculto da venda (PLANS.PREMIUM.hidden) — paywall oferece só
+            o Pro. Quando o deny apontar upgrade PREMIUM (Pro no limite de
+            mensagens), o CTA cai em /billing para contato/ajuste. */}
+        <div className="mx-auto mt-2 w-full max-w-sm">
           <PlanCard
             tier="PRO"
-            highlighted={upgrade !== "PREMIUM"}
+            highlighted
             ctaHref="/billing"
             ctaLabel="Assinar Pro"
-          />
-          <PlanCard
-            tier="PREMIUM"
-            highlighted={upgrade === "PREMIUM"}
-            ctaHref="/billing"
-            ctaLabel="Assinar Premium"
           />
         </div>
 

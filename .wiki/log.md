@@ -122,3 +122,11 @@ Item 2 dos bloqueadores de marketing resolvido. 11 ocorrências de "ConfirmaAí"
 ## [2026-06-12 fim] ingest | Fechamento da sessão — go-live concluído, snapshot de descanso
 
 Consolidação final do dia: synthesis/monetization-v2-state atualizada (título, 7/11 sprints, seção bloqueadores de marketing, tabela de 5 bugs do go-live, snapshot de descanso com próximos passos e contas de teste). deployment-status.md ganhou seção de limpeza pendente + recursos de produção. Raw nova: 2026-06-12-golive-completo-e-validacao-pagamento. index atualizado. ESTADO: v2 em produção e vendendo, fluxo validado fim-a-fim com Pix real. Descanso. Próxima: limpar assinaturas teste Asaas → monitorar Safe Browsing → Sprint 8 (resiliência WhatsApp).
+
+## [2026-06-13] update | Verdade nos planos: Premium oculto, features vapor removidas, gate CSV aplicado
+
+Auditoria promessa×código: Premium vendia 4 features inexistentes (multi-prof, GCal, NF-e, API); Pro+Premium vendiam "Relatórios avançados" (flag sem uso); e o export CSV prometido como pago estava ABERTO pro Free (gate nunca aplicado). Decisão founder: PLANS.PREMIUM.hidden=true (some da venda, checkout 400 por URL, assinante existente ainda vê), FEATURE_ROWS só com o real, gate export.csv aplicado nas 2 rotas, upsell de msgs do Pro sem target (Premium oculto). Reintrodução do Premium: quando multi-prof OU GCal existirem. 164/164 testes, 79/79 sprints, build ok, /precos validado no Chrome (2 cards honestos). Registrado em monetization-v2.md §11.5.
+
+## [2026-06-13] update | Decisão: dev local testa billing contra SANDBOX Asaas (prioridade nº 1)
+
+Founder decidiu: teste manual de billing em dev usa sandbox real, não Mock — justificativa empírica: Mock passou em tudo no go-live e a API real revelou 5 bugs de shape. Mock rebaixado a offline/CI/mock-trigger. Escopo registrado como item pré-Sprint 8 em monetization-v2.md: flip do BILLING_PROVIDER no .env (credenciais sandbox já existem), script dev-tunnel.sh (cloudflared + registro automático do webhook sandbox via API), validação do ciclo completo, docs. billing.md § Rodando local atualizado (Sandbox = recomendado).
