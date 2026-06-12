@@ -90,3 +90,7 @@ Seção operacional nova em .context/features/billing.md: matriz de envs por mod
 - Resend: API key na Vercel; domínio sa-east-1; 4 registros DNS na Cloudflare. Técnica nova: **DKIM via clipboard relay** (clique-copia no Resend → cmd+v no form da Cloudflare) — valor criptográfico nunca passou pelo contexto do agente; filtro de conteúdo do javascript_tool tinha bloqueado a leitura direta.
 - Pendências go-live: só ASAAS_API_KEY (atrás do KYC do usuário) → merge → smoke test.
 - Achado menor: email-verification.ts envia como "ConfirmaAí <noreply@clinicaorganizada.com>" — divergência de marca (app se chama Clínica Organizada na UI). Corrigir na Sprint 10 (emails).
+
+## [2026-06-12] update | ASAAS_API_KEY prod na Vercel — 16/16 envs, go-live destravado
+
+KYC aprovado; chave prod gerada (2FA SMS do usuário) e adicionada via clipboard relay com sanity check de prefixo/tamanho ($aact_prod_, 166 chars) — valor nunca entrou no contexto do agente; validada read-only (GET /customers 200); clipboard limpo. Checklist do go-live: TUDO pronto exceto merge v2.0.0→main (usuário, gh) + smoke test E2E.
