@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runSchedulerJobs } from "@/lib/services/scheduler";
+import { audit, runWithAuditContext } from "@/lib/audit";
 
 // Trigger endpoint para o Vercel Cron Jobs.
 // Vercel injeta `Authorization: Bearer <CRON_SECRET>` em todo cron call;
@@ -16,11 +17,21 @@ export async function GET(request: NextRequest) {
 
   const startedAt = new Date();
   try {
-    await runSchedulerJobs();
+    const stats = await runWithAuditContext(
+      { actorType: "SYSTEM", actorId: "cron" },
+      async () => {
+        const s = await runSchedulerJobs();
+        // Heartbeat + telemetria do run (Sprint 6): vira insumo do alerta de
+        // "cron morto" e do tuning de time-budget (Sprint 9 — /api/health).
+        await audit({ action: "cron.run", metadata: { ...s } });
+        return s;
+      },
+    );
     return NextResponse.json({
       ok: true,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
+      stats,
     });
   } catch (error) {
     console.error("[cron] runSchedulerJobs failed:", error);

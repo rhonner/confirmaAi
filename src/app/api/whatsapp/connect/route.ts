@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getAuthSession,
@@ -10,6 +10,7 @@ import {
   connectInstance,
   getInstanceStatus,
 } from "@/lib/services/evolution";
+import { auditWrap } from "@/lib/audit";
 import type { ApiResponse } from "@/lib/types/api";
 
 type ConnectResponse = {
@@ -18,7 +19,7 @@ type ConnectResponse = {
   status: "CONNECTING" | "CONNECTED";
 };
 
-export async function POST() {
+export const POST = auditWrap(async (_request: NextRequest) => {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return unauthorizedResponse();
@@ -80,4 +81,4 @@ export async function POST() {
     console.error("POST /api/whatsapp/connect error:", error);
     return serverErrorResponse();
   }
-}
+})

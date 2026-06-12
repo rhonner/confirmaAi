@@ -32,6 +32,7 @@ enum MessageStatus {
   DELIVERED
   READ
   FAILED
+  QUOTA_BLOCKED
 }
 
 enum WhatsappStatus {
@@ -41,67 +42,136 @@ enum WhatsappStatus {
   FAILED
 }
 
+enum PlanTier {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  SUSPENDED
+}
+
+enum BillingProvider {
+  ASAAS
+  STRIPE
+  PAGARME
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  WEBHOOK
+  ADMIN
+  ANONYMOUS
+}
+
+enum IdentifierType {
+  CPF
+  PHONE
+}
+
 // Models
 model User {
-  id                   String        @id @default(cuid())
-  name                 String
-  email                String        @unique
-  password             String
-  clinicName           String
-  avgAppointmentValue  Decimal       @default(0) @db.Decimal(10, 2)
-  evolutionInstanceName String?      @unique
-  whatsappStatus       WhatsappStatus @default(DISCONNECTED)
-  whatsappPhoneNumber  String?
-  whatsappConnectedAt  DateTime?
-  lastQrcodeBase64     String?
-  lastQrcodeAt         DateTime?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  id                         String         @id @default(cuid())
+  name                       String
+  email                      String         @unique
+  password                   String
+  clinicName                 String
+  avgAppointmentValue        Decimal        @default(0) @db.Decimal(10, 2)
+  evolutionInstanceName      String?        @unique
+  whatsappStatus             WhatsappStatus @default(DISCONNECTED)
+  whatsappPhoneNumber        String?
+  whatsappConnectedAt        DateTime?
+  lastQrcodeBase64           String?
+  lastQrcodeAt               DateTime?
+  cpf                        String?
+  cpfHash                    String?
+  emailVerifiedAt            DateTime?
+  emailVerificationToken     String?        @unique
+  emailVerificationExpiresAt DateTime?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
 
-  patients             Patient[]
-  appointments         Appointment[]
-  settings             Settings?
+  patientSlotCount Int @default(0)
+
+  patients          Patient[]
+  appointments      Appointment[]
+  settings          Settings?
+  subscription      Subscription?
+  patientQuotaSlots PatientQuotaSlot[]
+
+  @@index([cpfHash])
+}
+
+model SignupAttempt {
+  id            String   @id @default(cuid())
+  ipAddress     String?
+  emailHash     String
+  cpfHash       String?
+  fingerprint   String?
+  succeeded     Boolean  @default(false)
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  @@index([ipAddress, createdAt(sort: Desc)])
+  @@index([emailHash, createdAt(sort: Desc)])
+  @@index([cpfHash])
 }
 
 model Patient {
-  id           String        @id @default(cuid())
-  name         String
-  phone        String
-  email        String?
-  notes        String?
-  userId       String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  phone          String
+  phoneCanonical String    @default("")
+  email          String?
+  cpf            String?
+  cpfHash        String?
+  notes          String?
+  userId         String
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  quotaSlot    PatientQuotaSlot? @relation("PatientCurrentSlot")
 
   @@unique([userId, phone])
+  @@unique([userId, cpfHash])
   @@index([userId])
+  @@index([userId, archivedAt])
 }
 
 model Appointment {
-  id                  String            @id @default(cuid())
-  dateTime            DateTime
-  durationMinutes     Int               @default(30)
-  status              AppointmentStatus @default(PENDING)
-  patientId           String
-  userId              String
-  confirmationSentAt  DateTime?
-  reminderSentAt      DateTime?
-  confirmedAt         DateTime?
-  notes               String?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  id                 String            @id @default(cuid())
+  dateTime           DateTime
+  durationMinutes    Int               @default(30)
+  status             AppointmentStatus @default(PENDING)
+  patientId          String
+  userId             String
+  confirmationSentAt DateTime?
+  reminderSentAt     DateTime?
+  confirmedAt        DateTime?
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  patient             Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messageLogs         MessageLog[]
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageLogs MessageLog[]
 
   @@index([userId])
   @@index([patientId])
   @@index([dateTime])
   @@index([status])
+  // Índices compostos das queries cross-tenant do scheduler (Sprint 6):
+  // sendConfirmations filtra (status, confirmationSentAt); markNoShows (status, dateTime).
+  @@index([status, confirmationSentAt])
+  @@index([status, dateTime])
 }
 
 model MessageLog {
@@ -114,9 +184,93 @@ model MessageLog {
   status        MessageStatus @default(SENT)
   createdAt     DateTime      @default(now())
 
-  appointment   Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
   @@index([appointmentId])
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  userId                 String             @unique
+  plan                   PlanTier           @default(FREE)
+  status                 SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart     DateTime           @default(now())
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  provider               BillingProvider?
+  providerCustomerId     String?
+  providerSubscriptionId String?            @unique
+  adminOverrideUntil     DateTime?
+  adminOverrideReason    String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model PatientQuotaSlot {
+  id             String         @id @default(cuid())
+  userId         String
+  identifierType IdentifierType
+  identifierHash String
+  patientId      String?        @unique
+  firstSeenAt    DateTime       @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patient Patient? @relation("PatientCurrentSlot", fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, identifierHash])
+  @@index([userId])
+  @@index([identifierHash])
+}
+
+model BillingEvent {
+  id              String          @id @default(cuid())
+  userId          String?
+  provider        BillingProvider
+  eventType       String
+  providerEventId String          @unique
+  payload         Json
+  processedAt     DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([eventType, createdAt(sort: Desc)])
+}
+
+model UsageCounter {
+  id               String   @id @default(cuid())
+  userId           String
+  periodStart      DateTime
+  periodEnd        DateTime
+  messagesSent     Int      @default(0)
+  messagesIncluded Int
+
+  @@unique([userId, periodStart])
+  @@index([userId, periodEnd])
+}
+
+model AuditLog {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  actorType    ActorType
+  actorId      String?
+  tenantUserId String?
+  action       String
+  entityType   String?
+  entityId     String?
+  ipAddress    String?
+  userAgent    String?
+  beforeJson   Json?
+  afterJson    Json?
+  metadata     Json?
+
+  @@index([tenantUserId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([action, createdAt(sort: Desc)])
 }
 
 model Settings {
@@ -129,5 +283,5 @@ model Settings {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

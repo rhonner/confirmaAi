@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { audit, auditWrap } from "@/lib/audit"
 import type { ApiResponse } from "@/lib/types/api"
 
 const bodySchema = z.object({
@@ -15,7 +16,7 @@ const bodySchema = z.object({
  *
  * Always returning 200 also prevents user enumeration.
  */
-export async function POST(req: NextRequest) {
+export const POST = auditWrap(async (req: NextRequest) => {
   const json = await req.json().catch(() => null)
   const parsed = bodySchema.safeParse(json)
   if (!parsed.success) {
@@ -25,6 +26,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  await audit({
+    action: "auth.password_reset_requested",
+    metadata: { email: parsed.data.email },
+  })
+
   console.info(
     `[forgot-password] reset requested for ${parsed.data.email} (email delivery not configured)`,
   )
@@ -32,4 +38,4 @@ export async function POST(req: NextRequest) {
   return NextResponse.json<ApiResponse>({
     message: "Se o email existir, um link foi enviado.",
   })
-}
+})

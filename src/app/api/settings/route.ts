@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { updateSettingsSchema } from "@/lib/validations/settings"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
+import { auditWrap } from "@/lib/audit"
 import type { ApiResponse, SettingsResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+export const PUT = auditWrap(async (request: NextRequest) => {
   try {
     const session = await getAuthSession()
     if (!session?.user?.id) {
@@ -104,4 +105,4 @@ export async function PUT(request: NextRequest) {
     console.error("PUT settings error:", error)
     return serverErrorResponse()
   }
-}
+})

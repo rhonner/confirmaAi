@@ -22,11 +22,13 @@ async function main() {
 
   const user = await prisma.user.create({
     data: {
-      name: "Dr. João Silva",
-      email: "admin@teste.com",
+      name: "Rhonner Matheus",
+      email: "rhonner.matheus@gmail.com",
       password: hashedPassword,
       clinicName: "Clínica Saúde Total",
       avgAppointmentValue: 150.0,
+      // Grandfathering Sprint 4: seed user já vem com email verificado
+      emailVerifiedAt: new Date(),
     },
   })
 
@@ -43,6 +45,17 @@ async function main() {
 
   console.log("Created settings")
 
+  // Create subscription (Sprint 1+ — todo user precisa ter Subscription).
+  await prisma.subscription.create({
+    data: {
+      userId: user.id,
+      plan: "PRO",
+      status: "ACTIVE",
+    },
+  })
+
+  console.log("Created subscription PRO/ACTIVE")
+
   // Create patients
   const patientsData = [
     { name: "Maria Santos", phone: "+5511999990001", email: "maria.santos@email.com" },
@@ -52,17 +65,34 @@ async function main() {
     { name: "Carla Lima", phone: "+5511999990005", email: null },
   ]
 
+  const { hashPhone } = await import("../src/lib/billing/identifiers")
   const patients = []
   for (const patientData of patientsData) {
+    const phoneCanonical = patientData.phone.replace(/\D/g, "")
     const patient = await prisma.patient.create({
       data: {
         ...patientData,
+        phoneCanonical,
         userId: user.id,
+      },
+    })
+    // Cria slot PHONE para a quota (admin é PRO então quota não trava, mas
+    // mantém ledger consistente para quando alterar plano).
+    await prisma.patientQuotaSlot.create({
+      data: {
+        userId: user.id,
+        identifierType: "PHONE",
+        identifierHash: hashPhone(phoneCanonical),
+        patientId: patient.id,
       },
     })
     patients.push(patient)
     console.log(`Created patient: ${patient.name}`)
   }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { patientSlotCount: patients.length },
+  })
 
   // Create appointments spread over next 7 days
   const now = new Date()

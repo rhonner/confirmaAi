@@ -20,12 +20,14 @@
 ## Regras de negócio
 
 - **Nome**: 3–200 chars.
-- **Telefone**: regex `/^\+55\d{10,11}$/` (Brasil, 10 ou 11 dígitos após +55). **Único por usuário** (`@@unique([userId, phone])`). P2002 → erro "Telefone já cadastrado para este usuário".
+- **Telefone**: regex `/^\+55\d{10,11}$/` (Brasil, 10 ou 11 dígitos após +55). **Único por usuário** (`@@unique([userId, phone])`). Backend persiste também `phoneCanonical` (apenas dígitos) para hashing de quota. P2002 → erro "Telefone já cadastrado para este usuário".
+- **CPF** (Sprint 2 — `plan-quota.md`): validado por DV, canonicalizado (apenas dígitos). Persistido em `Patient.cpf` e `Patient.cpfHash`. **Obrigatório no plano Free** (rejeitado pelo backend com 402 + reason `CPF_REQUIRED`). Único por user (`@@unique([userId, cpfHash])`). Mudança de CPF não é permitida via PUT (só excluir/recadastrar).
 - **Email** opcional, máx 320 chars, validado como email se presente.
 - **Notes** opcional, máx 2000 chars.
 - **Strings vazias** (`""`) em `email`/`notes` são convertidas para `undefined` antes da validação no POST.
 - **Não pode deletar paciente com agendamentos futuros** (`dateTime >= now` e `status NOT IN (CANCELED, NO_SHOW)`).
 - **`onDelete: Cascade`**: ao deletar um Paciente, seus Appointments (e MessageLogs) são removidos.
+- **Vaga histórica preservada** (Sprint 2): deletar paciente NÃO libera vaga no plano. `PatientQuotaSlot.patientId` vira `null` (órfão). Recriar com mesmo CPF/telefone reaproveita a vaga. Ver [`plan-quota.md`](plan-quota.md).
 
 ## Endpoints
 

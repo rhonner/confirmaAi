@@ -18,11 +18,26 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { PHONE_REGEX } from "@/lib/phone"
-import { useCreatePatient, useUpdatePatient } from "@/hooks/use-api"
+import { useCreatePatient, useUpdatePatient, useSubscription, PaywallError } from "@/hooks/use-api"
+import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
+import { PaywallModal, type PaywallReason } from "@/components/billing/paywall-modal"
+
+const cpfFormSchema = z
+  .string()
+  .optional()
+  .or(z.literal(""))
+  .refine(
+    (value) => {
+      if (!value) return true
+      return validateCpf(value).valid
+    },
+    { message: "CPF inválido" },
+  )
 
 const patientSchema = z.object({
   name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   phone: z.string().regex(PHONE_REGEX, "Informe um celular válido com DDD"),
+  cpf: cpfFormSchema,
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   notes: z.string().optional(),
 })
@@ -33,6 +48,7 @@ export type ExistingPatient = {
   id: string
   name: string
   phone: string
+  cpf?: string | null
   email?: string | null
   notes?: string | null
 }
@@ -52,6 +68,15 @@ export function PatientFormDialog({
 }: PatientFormDialogProps) {
   const createMutation = useCreatePatient()
   const updateMutation = useUpdatePatient()
+  const subscriptionQuery = useSubscription()
+  const isFreeplan = subscriptionQuery.data?.plan === "FREE"
+  const [paywall, setPaywall] = React.useState<{
+    open: boolean
+    reason: PaywallReason
+    current?: number
+    limit?: number
+    upgrade: "PRO" | "PREMIUM"
+  }>({ open: false, reason: "QUOTA_EXCEEDED", upgrade: "PRO" })
 
   const {
     register,
@@ -62,7 +87,7 @@ export function PatientFormDialog({
     formState: { errors, isSubmitting },
   } = useForm<PatientForm>({
     resolver: zodResolver(patientSchema),
-    defaultValues: { name: "", phone: "", email: "", notes: "" },
+    defaultValues: { name: "", phone: "", cpf: "", email: "", notes: "" },
   })
 
   React.useEffect(() => {
@@ -70,6 +95,7 @@ export function PatientFormDialog({
       reset({
         name: patient?.name ?? "",
         phone: patient?.phone ?? "",
+        cpf: patient?.cpf ? formatCpf(canonicalizeCpf(patient.cpf)) : "",
         email: patient?.email ?? "",
         notes: patient?.notes ?? "",
       })
@@ -77,9 +103,16 @@ export function PatientFormDialog({
   }, [open, patient, reset])
 
   const onSubmit = async (data: PatientForm) => {
+    // CPF é obrigatório no Free para criar (não para editar — grandfathering).
+    if (!patient && isFreeplan && !data.cpf) {
+      setError("cpf", { type: "server", message: "CPF é obrigatório no plano Free" })
+      return
+    }
+
     try {
       const cleaned = {
         ...data,
+        cpf: data.cpf ? canonicalizeCpf(data.cpf) : undefined,
         email: data.email || undefined,
         notes: data.notes || undefined,
       }
@@ -89,8 +122,20 @@ export function PatientFormDialog({
       onSaved?.(saved)
       onOpenChange(false)
     } catch (error) {
+      if (error instanceof PaywallError) {
+        setPaywall({
+          open: true,
+          reason: error.reason,
+          current: error.current,
+          limit: error.limit,
+          upgrade: error.upgrade,
+        })
+        return
+      }
       const message = error instanceof Error ? error.message : ""
-      if (/telefone/i.test(message)) {
+      if (/CPF/i.test(message)) {
+        setError("cpf", { type: "server", message })
+      } else if (/telefone/i.test(message)) {
         setError("phone", { type: "server", message })
       } else if (/email/i.test(message)) {
         setError("email", { type: "server", message })
@@ -150,6 +195,41 @@ export function PatientFormDialog({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="patient-cpf">
+              CPF{isFreeplan ? "" : " (opcional)"}
+            </Label>
+            <Controller
+              name="cpf"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="patient-cpf"
+                  inputMode="numeric"
+                  placeholder="000.000.000-00"
+                  value={field.value ?? ""}
+                  onChange={(e) => {
+                    const digits = canonicalizeCpf(e.target.value).slice(0, 11)
+                    field.onChange(digits.length === 11 ? formatCpf(digits) : digits)
+                  }}
+                  aria-invalid={!!errors.cpf}
+                  disabled={!!patient?.cpf}
+                />
+              )}
+            />
+            {errors.cpf ? (
+              <p className="text-sm text-destructive">{errors.cpf.message}</p>
+            ) : isFreeplan && !patient ? (
+              <p className="text-xs text-muted-foreground">
+                Obrigatório no plano Free.
+              </p>
+            ) : patient?.cpf ? (
+              <p className="text-xs text-muted-foreground">
+                CPF não pode ser alterado após cadastrado. Para corrigir, exclua e recadastre.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="patient-email">Email (opcional)</Label>
             <Input
               id="patient-email"
@@ -189,6 +269,16 @@ export function PatientFormDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <PaywallModal
+        open={paywall.open}
+        onOpenChange={(open) => setPaywall((p) => ({ ...p, open }))}
+        reason={paywall.reason}
+        current={paywall.current}
+        limit={paywall.limit}
+        upgrade={paywall.upgrade}
+        variant="hard"
+      />
     </Dialog>
   )
 }

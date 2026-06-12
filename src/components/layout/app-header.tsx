@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { UsageBadge } from "@/components/billing/usage-badge";
 
 type AppHeaderProps = {
   clinicName: string;
@@ -64,6 +65,7 @@ export function AppHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        <UsageBadge />
         <Button
           variant="ghost"
           size="icon"

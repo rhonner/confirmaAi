@@ -1,7 +1,41 @@
 # Deployment Status — Stop & Resume Snapshot
 
 > Snapshot do progresso de subir a infraestrutura de produção do ConfirmaAí.
-> **Última atualização**: 2026-05-02 (sessão pausada para definir nome/domínio com sócio).
+> **Última atualização**: 2026-06-10 (Sprint 7 em andamento — auditoria completa do estado real).
+
+---
+
+## 📊 ESTADO REAL (auditado em 2026-06-10)
+
+A v1 **JÁ ESTÁ EM PRODUÇÃO** — boa parte deste documento foi executada em sessões de maio. Auditoria via SSH + Cloudflare + Vercel:
+
+### ✅ Funcionando em produção
+- **Domínio**: `clinicaorganizada.com` (Cloudflare, conta rhonner.matheus@gmail.com).
+- **DNS**: raiz A `76.76.21.21` (Vercel) + `www` CNAME `cname.vercel-dns.com` + `evolution` A `49.13.202.135` — todos DNS-only (cinza).
+- **App**: Vercel projeto `saas1` (team `besenacis-projects`, plano Hobby), deploy da branch `main` (v1 sem monetização).
+- **Evolution API**: `evoapicloud/evolution-api:v2.3.7` + Postgres 16 + Redis 7 via Docker, up 5+ semanas. Caddy com HTTPS válido em `evolution.clinicaorganizada.com` → `127.0.0.1:8080`.
+- **VPS hardening**: UFW (22/80/443), fail2ban ativo, swap 2GB, unattended-upgrades, **sshd key-only** (`PasswordAuthentication no` aplicado em 2026-06-10 via `/etc/ssh/sshd_config.d/99-hardening.conf`).
+- **Cadência do cron RESOLVIDA**: crontab root na VPS `*/30 * * * * /usr/local/bin/clinica-cron.sh` → `GET https://clinicaorganizada.com/api/cron/run` com Bearer CRON_SECRET. Log em `/var/log/clinica-cron.log`, respostas `{"ok":true}` consistentes. (Vercel Cron `0 3 * * *` continua como redundância diária.)
+- **Disco**: 26% usado (9/38 GB). RAM: ~1GB/3.7GB usados.
+
+### Envs de produção na Vercel (inventário 2026-06-10)
+Existem (v1): `CRON_SECRET`, `EVOLUTION_API_KEY`, `EVOLUTION_API_URL`, `EVOLUTION_WEBHOOK_BASE_URL`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`.
+
+### 🔴 Pendências do go-live v2 (Sprint 7)
+| # | Item | Quem | Status / Detalhe |
+| - | ---- | ---- | ---------------- |
+| 1 | `DATABASE_URL` → **pooled** | dev (CLI) | ✅ 2026-06-10 — host trocado para `ep-divine-recipe-acbdf1sw-pooler...` via `vercel env`. Migrations continuam na URL direta. |
+| 2 | Conta **Asaas produção** | — | ✅ 2026-06-12 — KYC aprovado (usuário); chave `confirmaai-producao-vercel` gerada (2FA SMS) e adicionada à Vercel via **clipboard relay** (`pbpaste \| vercel env add` — valor nunca passou pelo chat/contexto), validada com `GET /customers` → 200, clipboard limpo após. Webhook já estava ✅ desde 2026-06-10. NF-e fica pra quando houver CNPJ. |
+| 3 | **reCAPTCHA v3** | — | ✅ 2026-06-10 — site criado via automação (projeto GCP "MakeItLand", domínio `clinicaorganizada.com`), **chaves na Vercel** (`NEXT_PUBLIC_RECAPTCHA_SITE_KEY` + `RECAPTCHA_SECRET_KEY`). Admin: google.com/recaptcha (conta Google /u/2). |
+| 4 | **Resend** | — | ✅ 2026-06-10 — conta criada (usuário), API key gerada e **na Vercel** (`RESEND_API_KEY`), domínio `clinicaorganizada.com` adicionado (região sa-east-1) e **4 registros DNS criados na Cloudflare via automação**: TXT `resend._domainkey` (DKIM via clipboard), MX `send` → `feedback-smtp.sa-east-1.amazonses.com` (prio 10), TXT `send` (SPF), TXT `_dmarc`. `dig` confirma propagação; **domínio VERIFICADO no Resend** ("ready to send emails"). Sender do código: `noreply@clinicaorganizada.com` (⚠️ display name diz "ConfirmaAí" — divergência de marca com Clínica Organizada, corrigir na Sprint 10). |
+| 5 | Envs v2 na Vercel | dev (CLI) | ✅ **COMPLETO 2026-06-12 — 16/16 envs em produção** (8 da v1 + pepper, billing provider, 3×Asaas, 2×reCAPTCHA, Resend). Conferido via `vercel env ls production`. |
+| 6 | Migrations v2 em prod | dev | ✅ 2026-06-10 — 7 migrations aplicadas via `migrate deploy` (URL direta) + backfill `backfill-quota-slots.ts` com pepper de prod: 14 patients → 14 slots PHONE, 6 users atualizados, 8/8 users com Subscription FREE/ACTIVE. Users atuais são contas de teste (nenhum WA conectado). |
+| 7 | Merge `v2.0.0` → `main` | **usuário** (gh) | Dispara o deploy v2. Fazer APÓS 2-4. |
+| 8 | Smoke test E2E | dev + usuário | Signup → verify email → QR WhatsApp → paciente → agendamento → confirmação no celular → responder. |
+| 9 | **Sandbox Asaas** | — | ✅ 2026-06-10 — conta sandbox criada (botão em Integrações → Início da conta prod), chave `confirmaai-dev-local` gerada (2FA SMS do usuário) e salva no `.env` local **entre aspas simples** (prefixo `$aact_` seria expandido pelo dotenv-expand do Next). Validada com `GET /customers` → 200. `BILLING_PROVIDER` segue comentado (Mock é o default em dev); descomentar pra exercitar o `AsaasProvider` real. Webhook sandbox NÃO configurado — exige URL pública; quando precisar, subir túnel (ex: `cloudflared tunnel`) e cadastrar em sandbox.asaas.com → Integrações → Webhooks. |
+
+> ⚠️ Ordem importa: merge (7) por último — a v2 em produção sem reCAPTCHA/Resend/Asaas quebra signup e billing.
+> ⚠️ `CPF_HASH_PEPPER` de produção é **imutável** (rotacionar exige rehash da base toda). Valor está na Vercel; não regenerar.
 
 ---
 
