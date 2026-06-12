@@ -33,7 +33,22 @@ Existem (v1): `CRON_SECRET`, `EVOLUTION_API_KEY`, `EVOLUTION_API_URL`, `EVOLUTIO
 | 7 | Merge `v2.0.0` → `main` | **usuário** (gh) | ✅ 2026-06-12 — deploy `saas1-cc1sphyeg` **Ready**. Verificado na sequência: `/precos` 200, `/api/billing/subscription` 401 auth-gate, webhook 401 sem HMAC. **V2 EM PRODUÇÃO.** |
 | 8 | Smoke test E2E | dev + usuário | ✅ 2026-06-12 — ciclo completo validado em produção: login → badge 2/5→3/5 + modal soft 60% disparou → `/billing` ok → QR WhatsApp escaneado (webhook `connection.update` confirmou) → paciente "Teste Smoke" (CPF obrigatório no Free ✓) → agendamento 14:30 → cron disparado via script da VPS (`confirmationsSent: 1`, stats Sprint 6 ✓) → mensagem chegou no WhatsApp → resposta "1" → **bug do nono dígito encontrado e corrigido** (deploy `saas1-a8r9kjdfn`) → reteste → **CONFIRMED** ✅. Pendente do roteiro: Pix R$ 1 real no upgrade Pro (opcional, quando o usuário quiser). |
 
-> 🏁 **GO-LIVE 100% CONCLUÍDO em 2026-06-12.** O ConfirmaAí v2 está vendendo em produção com o fluxo core validado fim-a-fim. Próximo do roadmap: Sprint 8 (resiliência WhatsApp) ANTES de campanha de marketing.
+> 🏁 **GO-LIVE 100% CONCLUÍDO em 2026-06-12.** A Clínica Organizada v2 está vendendo em produção com o fluxo core validado fim-a-fim (signup → WhatsApp confirma → Pix paga → Pro ativa automático). Próximo do roadmap: Sprint 8 (resiliência WhatsApp) ANTES de campanha de marketing.
+
+## 🧹 Pendências de limpeza / acompanhamento (abertas ao fim de 2026-06-12)
+
+1. **Cancelar assinaturas de teste no Asaas** (senão cobram em ~30d): `sub_yd62rxxzokuelolp` (conta testepagto), a da testepagto2, e a órfã `sub_3m1b00oia8grmdp2`. Painel Asaas → Assinaturas → cancelar.
+2. **Safe Browsing**: domínio `clinicaorganizada.com` apareceu como "Dangerous/phishing" em perfil Chrome com Enhanced Safe Browsing. Search Console verificado (DNS TXT `google-site-verification`) e **sem issue listado** → heurística de tempo real. Marca unificada (ConfirmaAí→Clínica Organizada) removeu o sinal nome≠domínio. Acompanhar; "Request review" se virar listagem central.
+3. **Bugs no backlog (Sprint 10)**: checkout retry duplica assinatura no gateway; checkout com `User.cpf` null (contas grandfathered pré-Sprint 4) rejeita assinatura.
+
+## 🔑 Recursos de produção (referência rápida)
+
+- **App**: Vercel projeto `saas1` (team `besenacis-projects`, Hobby), branch `main`. 16/16 envs.
+- **Banco**: Neon `ep-divine-recipe-acbdf1sw` (runtime usa `-pooler`, migrations a direta).
+- **Evolution**: VPS Hetzner `49.13.202.135` (`evolution.clinicaorganizada.com`), crontab `*/30` dispara `/api/cron/run`.
+- **Billing**: Asaas produção (`BILLING_PROVIDER=ASAAS`), chave Pix aleatória cadastrada, webhook `/api/billing/webhook` com token = `ASAAS_WEBHOOK_SECRET`.
+- **Email**: Resend, domínio verificado (DKIM/SPF/DMARC na Cloudflare), remetente `noreply@clinicaorganizada.com`.
+- **Contas de teste** (`.env` local): `+testepagto@gmail.com` e `+testepagto2@gmail.com`, senha `TesteClinica2026!`, ambas PRO.
 | 9 | **Sandbox Asaas** | — | ✅ 2026-06-10 — conta sandbox criada (botão em Integrações → Início da conta prod), chave `confirmaai-dev-local` gerada (2FA SMS do usuário) e salva no `.env` local **entre aspas simples** (prefixo `$aact_` seria expandido pelo dotenv-expand do Next). Validada com `GET /customers` → 200. `BILLING_PROVIDER` segue comentado (Mock é o default em dev); descomentar pra exercitar o `AsaasProvider` real. Webhook sandbox NÃO configurado — exige URL pública; quando precisar, subir túnel (ex: `cloudflared tunnel`) e cadastrar em sandbox.asaas.com → Integrações → Webhooks. |
 
 > ⚠️ Ordem importa: merge (7) por último — a v2 em produção sem reCAPTCHA/Resend/Asaas quebra signup e billing.

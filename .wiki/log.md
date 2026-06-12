@@ -118,3 +118,7 @@ Conta teste 2 (limpa, pós-deploy do fix planTierFromPayload): signup v2 complet
 ## [2026-06-12] update | Marca unificada: ConfirmaAí → Clínica Organizada
 
 Item 2 dos bloqueadores de marketing resolvido. 11 ocorrências de "ConfirmaAí" em 5 arquivos de src/ trocadas por "Clínica Organizada" (email-verification from/subject/body, precos title/desc/footer/FAQ, paywall-modal, asaas description, verificar-email title). Concordância de gênero corrigida (Clínica = feminino: à/da/a, não ao/do/o). 164/164 testes, tsc e build limpos. .context/.wiki mantêm "ConfirmaAí" como registro histórico (nome de produto original do CLAUDE.md). Reduz combustível do flag de Safe Browsing (nome agora bate com domínio clinicaorganizada.com). Pendente: deploy (commit+push) + nudge do Search Console.
+
+## [2026-06-12 fim] ingest | Fechamento da sessão — go-live concluído, snapshot de descanso
+
+Consolidação final do dia: synthesis/monetization-v2-state atualizada (título, 7/11 sprints, seção bloqueadores de marketing, tabela de 5 bugs do go-live, snapshot de descanso com próximos passos e contas de teste). deployment-status.md ganhou seção de limpeza pendente + recursos de produção. Raw nova: 2026-06-12-golive-completo-e-validacao-pagamento. index atualizado. ESTADO: v2 em produção e vendendo, fluxo validado fim-a-fim com Pix real. Descanso. Próxima: limpar assinaturas teste Asaas → monitorar Safe Browsing → Sprint 8 (resiliência WhatsApp).

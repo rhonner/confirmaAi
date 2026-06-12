@@ -1,8 +1,8 @@
 ---
-title: Estado da monetização v2 — snapshot 2026-05-07 (pós-Sprint 5)
+title: Estado da monetização v2 — snapshot 2026-06-12 (v2 EM PRODUÇÃO, 7/11 sprints)
 type: synthesis
 created: 2026-05-07
-updated: 2026-06-10
+updated: 2026-06-12
 tags: [billing, monetization, snapshot, roadmap]
 sources:
   - .context/plans/monetization-v2.md
@@ -45,11 +45,30 @@ status: stable
 | 4 | Anti-fraude signup | ✅ 2026-05-07 | reCAPTCHA, email verify (Resend), disposable blocklist, honeypot, cross-tenant CPF dono, SignupAttempt purpose-built |
 | 5 | Cobrança Asaas | ✅ 2026-05-07 | BillingProvider interface, Mock+Asaas, webhook idempotente HMAC, lifecycle cron, /billing/checkout completo |
 | 6 | Mensagens + gates + hardening escala scheduler | ✅ 2026-06-10 | `usage.ts` lazy-period, gate dedup `QUOTA_BLOCKED`, chunking 200/45s, índices compostos, audit `cron.run`, badge ≥50% |
-| 7 | Go-live (deploy produção) | ✅ 2026-06-12 | **V2 EM PRODUÇÃO** — merge `v2.0.0`→`main`, deploy Ready, 16/16 envs, `/precos` 200, gates de auth/HMAC verificados. Falta só o smoke test E2E assistido (item 8 do `deployment-status.md`). |
+| 7 | Go-live (deploy produção) | ✅ 2026-06-12 | **V2 EM PRODUÇÃO E VENDENDO** — merge→main, 16/16 envs, smoke E2E completo (WhatsApp confirma + Pix paga e ativa Pro automático). 3 bugs reais corrigidos no caminho (ver abaixo). Marca unificada ConfirmaAí→Clínica Organizada. |
 | 8 | Resiliência WhatsApp **[nova]** | ⏳ | Anti-churn silencioso: email ao tenant quando instância desconecta, banner, health-check Evolution |
 | 9 | Observabilidade **[nova]** | ⏳ | Sentry + `GET /api/health` agregador (cron morto, BillingEvent travado, Evolution down) + uptime monitor externo |
 | 10 | Receita passiva: emails + admin (ex-7) | ⏳ | Dunning 1/3/7, transacionais, `/admin/audit`, retention 90d AuditLog |
 | 11 | LGPD + legal (ex-8) | ⏳ pré-marketing | Termos/privacidade, export, delete account, NF-e, CNPJ no rodapé |
+
+## 🚦 Bloqueadores de marketing (ordem de ataque)
+
+> Produto funciona ponta a ponta. Estes travam **aquisição**, não uso:
+
+1. **🔴 Safe Browsing flag** — Chrome mostra tela vermelha de phishing em alguns perfis (Enhanced Safe Browsing). Search Console **verificado** (DNS TXT) e **sem issue listado** → é heurística de tempo real, não blacklist central. Mitigação aplicada: marca unificada (sinal nome≠domínio eliminado). Próximo: monitorar Search Console → "Request review" se virar listagem. Em perfil padrão o site abre normal.
+2. **🟠 Marca dupla** — ✅ RESOLVIDO 2026-06-12 (ConfirmaAí→Clínica Organizada no código).
+
+## 🐛 Bugs reais achados no go-live (todos antes do 1º cliente)
+
+| Bug | Como pego | Fix | Doc |
+| --- | --------- | --- | --- |
+| Resposta WhatsApp ignorada (JID sem 9º dígito) | smoke test, número real antigo | `brPhoneCandidates` | [[../concepts/whatsapp-ninth-digit-jid]] |
+| Cliente paga e fica FREE (externalReference em `payment`) | teste de pagamento Pix real | `planTierFromPayload` (3 fontes) | [[../concepts/asaas-external-reference-in-payment]] |
+| Chave Pix ausente → QR `invalid_action` | 1º checkout real | cadastrar chave aleatória no Asaas (onboarding) | — |
+| Checkout retry duplica assinatura no gateway | 2º checkout | 📋 backlog Sprint 10 | — |
+| Checkout com `User.cpf` null (grandfathered) rejeita assinatura | conta pré-Sprint 4 | 📋 backlog Sprint 10 | — |
+
+> Lição transversal: **integração externa só revela o shape/edge real com tráfego real**. Mock/sandbox passavam; produção com Pix de R$ 3 pagou 5 bugs.
 
 ## Dívidas técnicas (estado atual)
 
@@ -66,7 +85,7 @@ status: stable
 ## Validação automatizada
 
 - `npm run test:sprints` cobre Sprints 1-6 → **79/79** checks.
-- `npm run test` (vitest) → **155/155** unit.
+- `npm run test` (vitest) → **164/164** unit (em 2026-06-12, após fixes do go-live).
 - Chrome MCP walk-through (regra obrigatória DoD): 38+ cenários validados acumulados.
 
 ## Patterns que emergiram (wikis)
@@ -83,7 +102,8 @@ status: stable
 - [[../concepts/lazy-period-usage-counter]] — quota de mensagens sem job de reset (Sprint 6)
 - [[../concepts/neon-pooled-vs-direct-url]] — pooled no runtime, direta nas migrations
 - [[../concepts/vercel-hobby-cron-workaround]] — crontab da VPS dispara o scheduler 30/30min
-- [[../concepts/claude-chrome-sensitive-domains]] — painel Asaas é sempre manual
+- [[../concepts/claude-chrome-sensitive-domains]] — "Permission denied" é prompt aprovável, não bloqueio duro
+- [[../concepts/asaas-external-reference-in-payment]] — externalReference vem em `payment`, não `subscription`
 - [[../entities/prisma-v7-extensions]] — `$extends` p/ auditoria automática
 - [[../entities/radix-popover-and-dialog]] — programmatic click não dispara
 - [[../entities/asaas-integration]] — endpoints, gotchas, config
@@ -97,4 +117,14 @@ Quando billing real estiver no ar (pós-Sprint 5 em prod):
 - Churn por plano
 - Taxa de email verify (≤24h tras signup)
 
-> Próxima sprint: **7 (go-live)** — domínio destravado (`clinicaorganizada.com`); faltam Asaas prod, envs/pooled URL, cadência do cron e merge `v2.0.0`→`main`. Em paralelo, Sprint 8 (resiliência WhatsApp) não depende de nada externo.
+## 📍 Estado ao fim de 2026-06-12 (snapshot de descanso)
+
+**V2 está no ar e vendendo de verdade** (`clinicaorganizada.com`). Fluxo completo validado com dinheiro real: signup → WhatsApp confirma → Pix paga → Pro ativa automático.
+
+**Próxima sessão — ordem sugerida:**
+1. **Limpeza Asaas** (5 min): cancelar 3 assinaturas de teste pra não cobrar em ~30d — `sub_yd62rxxzokuelolp` (testepagto), a da testepagto2, e a órfã `sub_3m1b00oia8grmdp2`. Credenciais de teste no `.env` local.
+2. **Monitorar Safe Browsing**: conferir no Chrome se a tela vermelha sumiu pós-unificação de marca; se persistir, "Request review" no Search Console (já verificado).
+3. **Sprint 8 — Resiliência WhatsApp** (anti-churn silencioso): minha recomendação forte ANTES de ligar marketing. Não depende de nada externo, dá pra começar a codar direto.
+4. Backlog de bugs (Sprint 10): checkout retry duplica assinatura; checkout com `User.cpf` null (grandfathered).
+
+**Contas de teste de produção** (no `.env` local): `rhonner.matheus+testepagto@gmail.com` e `+testepagto2@gmail.com`, senha `TesteClinica2026!`, ambas PRO ativas. Seed dev segue `rhonner.matheus@gmail.com / 123456`.

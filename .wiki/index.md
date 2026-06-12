@@ -43,7 +43,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
-| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: 6/11 sprints ✅, roadmap re-sequenciado p/ autonomia, go-live ~90% | 2026-06-10 |
+| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (7/11 sprints), bugs do go-live, bloqueadores de marketing | 2026-06-12 |
 
 ---
 
@@ -51,7 +51,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 3 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 4 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 
