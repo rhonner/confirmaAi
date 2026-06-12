@@ -96,3 +96,26 @@ export function eventToSubscriptionPatch(event: ParsedEvent): {
   }
   return {};
 }
+
+/**
+ * Extrai o tier comprado do `externalReference` ("<userId>:<PLAN>").
+ *
+ * Asaas envia o externalReference em `payment.externalReference` nos eventos
+ * de pagamento — NÃO em `subscription.externalReference` nem no topo. Procurar
+ * só nesses dois (bug do go-live 2026-06-12) fazia o pagamento ser aceito mas
+ * o plano nunca subir de FREE. Procura nas três fontes.
+ */
+export function planTierFromPayload(payload: unknown): "PRO" | "PREMIUM" | null {
+  const p = payload as {
+    payment?: { externalReference?: string };
+    subscription?: { externalReference?: string };
+    externalReference?: string;
+  };
+  const ref =
+    p?.payment?.externalReference ??
+    p?.subscription?.externalReference ??
+    p?.externalReference;
+  if (!ref) return null;
+  const [, planTier] = ref.split(":");
+  return planTier === "PRO" || planTier === "PREMIUM" ? planTier : null;
+}

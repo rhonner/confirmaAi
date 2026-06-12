@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit, withFixedActor } from "@/lib/audit";
-import { getBillingProvider, eventToSubscriptionPatch } from "@/lib/billing";
+import { getBillingProvider, eventToSubscriptionPatch, planTierFromPayload } from "@/lib/billing";
 
 /**
  * Webhook do provider de cobrança (Asaas em prod, Mock em dev).
@@ -99,15 +99,10 @@ export const POST = withFixedActor(
             },
           });
 
-          // Se evento é PAYMENT_RECEIVED e a subscription tem externalReference indicando o plan, atualiza.
-          const payloadObj = event.payload as {
-            subscription?: { externalReference?: string };
-            externalReference?: string;
-          };
-          const ref = payloadObj.subscription?.externalReference ?? payloadObj.externalReference;
-          if (ref && patch.status === "ACTIVE") {
-            const [, planTier] = ref.split(":");
-            if (planTier === "PRO" || planTier === "PREMIUM") {
+          // Ativação do plano comprado (PAYMENT_RECEIVED) via externalReference.
+          if (patch.status === "ACTIVE") {
+            const planTier = planTierFromPayload(event.payload);
+            if (planTier) {
               await prisma.subscription.update({
                 where: { userId },
                 data: { plan: planTier },

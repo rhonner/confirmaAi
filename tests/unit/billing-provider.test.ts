@@ -117,3 +117,29 @@ describe("eventToSubscriptionPatch", () => {
     expect(Object.keys(patch)).toHaveLength(0);
   });
 });
+
+import { planTierFromPayload } from "@/lib/billing/provider";
+
+describe("planTierFromPayload (bug do go-live: externalReference em payment)", () => {
+  it("lê o plano de payment.externalReference (formato real do Asaas em PAYMENT_RECEIVED)", () => {
+    const payload = { event: "PAYMENT_RECEIVED", payment: { externalReference: "user_abc:PRO" } };
+    expect(planTierFromPayload(payload)).toBe("PRO");
+  });
+
+  it("lê de subscription.externalReference quando presente", () => {
+    expect(planTierFromPayload({ subscription: { externalReference: "user_abc:PREMIUM" } })).toBe("PREMIUM");
+  });
+
+  it("lê do externalReference de topo como último fallback", () => {
+    expect(planTierFromPayload({ externalReference: "user_abc:PRO" })).toBe("PRO");
+  });
+
+  it("retorna null quando não há externalReference", () => {
+    expect(planTierFromPayload({ event: "PAYMENT_RECEIVED", payment: {} })).toBeNull();
+  });
+
+  it("retorna null para tier desconhecido (não promove FREE nem lixo)", () => {
+    expect(planTierFromPayload({ payment: { externalReference: "user_abc:FREE" } })).toBeNull();
+    expect(planTierFromPayload({ payment: { externalReference: "user_abc" } })).toBeNull();
+  });
+});

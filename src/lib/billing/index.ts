@@ -27,6 +27,7 @@ export {
   type CheckoutResult,
   type ParsedEvent,
   eventToSubscriptionPatch,
+  planTierFromPayload,
 } from "./provider";
 export {
   getCurrentUsage,
