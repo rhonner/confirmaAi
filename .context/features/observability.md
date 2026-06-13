@@ -60,7 +60,7 @@ Ponto único `captureError(error, { area, tenantUserId, extra })`. O destino é 
 - **Pacote**: `@sentry/nextjs` instalado. Init via `mod.init({ dsn, tracesSampleRate: 0 })` em `initObservability()` (chamado no `register()` do `instrumentation.ts`) — só erros, sem APM/tracing (ruído + quota mínimos).
 - **Onde roda**: **produção apenas**. `SENTRY_DSN` está na Vercel (Production, encrypted) — projeto Sentry `clinica-organizada-web`, org `clinica-organizada`, **free tier**. No `.env` local a linha fica **comentada** (descomentar só pra testar Sentry em dev) — assim erros de dev não queimam a quota grátis (~5k/mês).
 - **Import dinâmico com STRING LITERAL** (`await import("@sentry/nextjs")`): continua lazy (gate por DSN), mas o specifier literal é rastreável pelo nft da Vercel → o pacote entra no bundle serverless. **Não usar specifier em variável** (`const s = "..."`): o nft não rastreia e o Sentry falharia mudo em prod. Detalhe do padrão em `.wiki/pages/concepts/optional-dependency-via-dynamic-import.md`.
-- **Validado 2026-06-13**: smoke test local (`captureError` + `Sentry.flush()` → `true`) confirmou entrega; evento "[Sprint 9] Sentry smoke test" no projeto.
+- **Validado 2026-06-13**: (1) smoke test local (`captureError` + `Sentry.flush()` → `true`); (2) **em produção** via rota-probe temporária `/api/debug-sentry` (gated por token) → resposta `{sentryConfigured:true, flushed:true}` no runtime serverless real + evento "[prod-probe] Sprint 9 Sentry verification" visível no feed de Issues. A probe foi **removida** após a confirmação (não deixar rota de debug em prod). Lição: rota de probe **não** pode usar pasta com prefixo `_` (private folder do App Router → fora do roteamento).
 
 ## Monitor de uptime externo
 
