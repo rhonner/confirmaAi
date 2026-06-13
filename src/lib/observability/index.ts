@@ -37,8 +37,11 @@ export async function initObservability(): Promise<void> {
   if (initStarted || !sentryEnabled()) return;
   initStarted = true;
   try {
-    const spec: string = "@sentry/nextjs";
-    const mod = await import(/* webpackIgnore: true */ spec);
+    // Import dinâmico com STRING LITERAL: continua lazy (só carrega quando há
+    // DSN, graças ao gate acima), mas o specifier literal é rastreável pelo
+    // nft da Vercel → o pacote entra no bundle serverless. Um specifier em
+    // variável NÃO seria rastreado e o Sentry falharia mudo em produção.
+    const mod = await import("@sentry/nextjs");
     mod.init({
       dsn: process.env.SENTRY_DSN,
       environment: process.env.NODE_ENV,
@@ -48,7 +51,7 @@ export async function initObservability(): Promise<void> {
     sentry = mod;
   } catch (err) {
     console.error(
-      "[observability] SENTRY_DSN setado mas @sentry/nextjs indisponível; usando console.",
+      "[observability] SENTRY_DSN setado mas falha ao inicializar @sentry/nextjs; usando console.",
       err,
     );
   }

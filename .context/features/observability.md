@@ -48,27 +48,30 @@ Formato:
 
 ## Captura de erros (`src/lib/observability`)
 
-Ponto único `captureError(error, { area, tenantUserId, extra })`. Segue o padrão `dev-fallback-without-secrets`:
+Ponto único `captureError(error, { area, tenantUserId, extra })`. O destino é gateado por env (`SENTRY_DSN`):
 
-- **Sem `SENTRY_DSN`** → `console.error` estruturado (capturado pelos logs Vercel/VPS). Estado padrão; zero dependência externa.
+- **Sem `SENTRY_DSN`** → `console.error` estruturado (capturado pelos logs Vercel/VPS).
 - **Com `SENTRY_DSN`** → encaminha pro Sentry, **adicionalmente** ao console.
 
 `onRequestError` (hook oficial do Next.js 16, em `instrumentation.ts`) captura **todo** erro de request no servidor (rotas API, RSC, route handlers) num ponto só. Erros que carregam contexto de tenant são reportados explicitamente nos handlers: **cron** (`area: "cron"` — job desatendido) e **webhook de billing** (`area: "webhook"`, `tenantUserId` — cliente pagou e o plano não subiu).
 
-### Ligar o Sentry (opt-in, 1 passo)
+### Sentry — ✅ ATIVO (2026-06-13)
 
-`npm i @sentry/nextjs` + setar `SENTRY_DSN` (criar projeto no Sentry free tier). O import é dinâmico e tolerante — env setada mas pacote ausente cai no console sem quebrar. **A dependência não é arrastada até o dia em que for ligada** (build verde sem ela).
+- **Pacote**: `@sentry/nextjs` instalado. Init via `mod.init({ dsn, tracesSampleRate: 0 })` em `initObservability()` (chamado no `register()` do `instrumentation.ts`) — só erros, sem APM/tracing (ruído + quota mínimos).
+- **Onde roda**: **produção apenas**. `SENTRY_DSN` está na Vercel (Production, encrypted) — projeto Sentry `clinica-organizada-web`, org `clinica-organizada`, **free tier**. No `.env` local a linha fica **comentada** (descomentar só pra testar Sentry em dev) — assim erros de dev não queimam a quota grátis (~5k/mês).
+- **Import dinâmico com STRING LITERAL** (`await import("@sentry/nextjs")`): continua lazy (gate por DSN), mas o specifier literal é rastreável pelo nft da Vercel → o pacote entra no bundle serverless. **Não usar specifier em variável** (`const s = "..."`): o nft não rastreia e o Sentry falharia mudo em prod. Detalhe do padrão em `.wiki/pages/concepts/optional-dependency-via-dynamic-import.md`.
+- **Validado 2026-06-13**: smoke test local (`captureError` + `Sentry.flush()` → `true`) confirmou entrega; evento "[Sprint 9] Sentry smoke test" no projeto.
 
-## Monitor de uptime externo (passo manual do fundador)
+## Monitor de uptime externo
 
-> Não é código — é configuração de conta externa, como as chaves Asaas/Resend. **Pendente de setup pelo usuário.**
+> Não é código — é configuração de conta externa, como as chaves Asaas/Resend. **✅ Configurado 2026-06-13.**
 
-Criar checks gratuitos (UptimeRobot ou BetterStack) apontando para:
-1. `https://clinicaorganizada.com/api/health` — **o agregador** (200/503). É o alerta principal.
+3 checks no **UptimeRobot** (conta `WeCalc`, alerta por email `wcwecalc@gmail.com`), HTTP, intervalo 5 min, todos `Up`:
+1. `https://clinicaorganizada.com/api/health` — **o agregador** (200/503). É o alerta principal: UptimeRobot trata não-2xx como down, então o `503` degradado dispara sozinho.
 2. `https://clinicaorganizada.com` — o app Vercel responde.
 3. `https://evolution.clinicaorganizada.com` — a VPS Evolution responde.
 
-O monitor (email/push do próprio serviço) vira o sistema de alerta sem infra própria.
+O monitor (email/push do próprio serviço) é o sistema de alerta, sem infra própria. **Página de status pública deliberadamente NÃO criada** (não expor status dos serviços publicamente). Anti-flapping (alertar após 2 falhas consecutivas) fica como ajuste opcional nas settings do monitor #1.
 
 ## Runbook de incidentes
 

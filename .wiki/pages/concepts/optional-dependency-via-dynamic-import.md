@@ -50,6 +50,20 @@ Os dois truques que fazem o build passar sem o pacote:
 
 Resultado: build verde com ou sem `@sentry/nextjs` instalado. Ligar de verdade = `npm i @sentry/nextjs` + setar `SENTRY_DSN`. Sem nenhum dos dois, `captureError` cai no `console.error` estruturado (capturado pelos logs Vercel/VPS).
 
+## ⚠️ Gotcha: ao ADOTAR a dependência, troque pra string literal (senão falha mudo em prod)
+
+> Aprendido na adoção real do Sentry (2026-06-13). O truque acima é ótimo **enquanto o pacote não está instalado**. No momento em que você instala e quer que ele rode em produção, ele vira uma **armadilha silenciosa**.
+
+O `@vercel/nft` (que decide o que entra no bundle das serverless functions da Vercel/Next) faz **análise estática**. Ele **não consegue rastrear** um `import(spec)` com specifier em variável (`spec: string`) — ainda mais com `webpackIgnore: true`, que manda ignorar de propósito. Consequência: o `@sentry/nextjs` **não é incluído** no bundle da função → em runtime, `await import(spec)` lança `MODULE_NOT_FOUND` → o `catch` engole → **Sentry nunca inicializa em produção, sem nenhum erro visível**. O dev acha que ligou; nada chega.
+
+**Fix ao adotar**: trocar pra **string literal**, sem `webpackIgnore`:
+```ts
+const mod = await import("@sentry/nextjs");   // literal → nft rastreia → entra no bundle
+```
+Continua **lazy** (o gate `if (!sentryEnabled()) return` antes do import garante que só carrega quando há DSN — em dev sem DSN, nem em teste, o módulo é tocado) e agora é **rastreável**. Como o pacote está instalado, o `tsc` resolve o literal normalmente (sem o `any` forçado).
+
+Regra mental: **specifier variável = "pode não existir" (build sem o pacote); specifier literal = "existe, só carregue tarde" (lazy + bundled).** Migra de um pro outro no commit que instala a dependência.
+
 ## Relação com [[dev-fallback-without-secrets]]
 
 É o **padrão irmão**. Aquele gateia uma integração por **secret ausente** com fallback funcional (`DEV_BYPASS`/log). Este gateia uma **dependência ausente** por env + import dinâmico. Ambos: zero-fricção sem setup externo, degradação graciosa em vez de quebra.

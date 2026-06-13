@@ -982,17 +982,18 @@ Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
 
 > "Não me preocupar" ≠ não olhar; = **ser alertado apenas quando algo quebra**. Sem isso, o canal de descoberta de incidente é o cliente cancelando. Detalhes operacionais + runbook em [`../features/observability.md`](../features/observability.md).
 
-- [x] **Captura de erros** (`src/lib/observability/`): ponto único `captureError({ area, tenantUserId, extra })`. Sem `SENTRY_DSN` → `console.error` estruturado (logs Vercel/VPS); com DSN → encaminha pro Sentry adicionalmente. `onRequestError` (hook oficial do Next 16 em `instrumentation.ts`) captura todo erro de request; **cron** e **webhook de billing** reportam com contexto de tenant. **Sentry é opt-in 1-passo** (`npm i @sentry/nextjs` + DSN) — import dinâmico tolerante, dependência não arrastada até ligar (padrão `dev-fallback-without-secrets`).
+- [x] **Captura de erros** (`src/lib/observability/`): ponto único `captureError({ area, tenantUserId, extra })`. Sem `SENTRY_DSN` → `console.error` estruturado (logs Vercel/VPS); com DSN → encaminha pro Sentry adicionalmente. `onRequestError` (hook oficial do Next 16 em `instrumentation.ts`) captura todo erro de request; **cron** e **webhook de billing** reportam com contexto de tenant.
+- [x] **Sentry ATIVADO (2026-06-13)**: `@sentry/nextjs` instalado; projeto `clinica-organizada-web` (free tier); `SENTRY_DSN` na Vercel (Production) — **prod-only**, comentado no `.env` local pra não queimar quota com erros de dev. Import dinâmico com **string literal** (rastreável pelo nft → entra no bundle serverless; specifier em variável falharia mudo em prod). Entrega validada via smoke test (`Sentry.flush()` → true).
 - [x] Rota **`GET /api/health`** que agrega checks e retorna **503** se qualquer um falhar (mudança vs. spec original "500": 503 Service Unavailable é o código HTTP correto pra "insalubre"; monitor trata qualquer não-2xx como down, efeito idêntico):
   - último `cron.run` (audit) há mais de 90 min → cron morto;
   - `BillingEvent.processedAt = null` há mais de 1h → webhook de pagamento travado;
   - health-check Evolution (Sprint 8) falhando → VPS/Evolution down;
   - (+ check de DB implícito). Lógica de avaliação **pura e testada** (`evaluateHealth`), coleta separada (`runHealthChecks`). Público de propósito (monitor sem credencial); corpo só com sinais agregados, zero PII.
-- [ ] **(PENDENTE — passo manual do fundador, conta externa)** Uptime monitor gratuito (UptimeRobot/BetterStack) em: app Vercel, `https://evolution.<dominio>`, e `GET /api/health` — o monitor vira o sistema de alerta (email/push) sem infra própria. Endpoint já pronto pra ser apontado.
+- [x] **(2026-06-13)** Uptime monitor configurado: 3 checks no UptimeRobot (conta `WeCalc`, email `wcwecalc@gmail.com`), HTTP 5 min, todos `Up` — `/api/health` (principal), app Vercel, `evolution.<dominio>`. Página de status pública NÃO criada (de propósito). Anti-flapping fica como ajuste opcional.
 - [x] Criado `.context/features/observability.md` com runbook de incidentes (cron morto → onde olhar; Evolution down → como reiniciar; webhook travado → como reconciliar `BillingEvent`; DB → painel Neon).
 - [x] Régua: tsc/build limpos, **182/182 vitest** (8 novos em `health.test.ts`), **93/93 test:sprints** (6 checks novos — 9.1-9.6), comportamento real validado via dev server + curl (503 degradado sem cron recente → 200 ok após heartbeat). 9/11 sprints.
 
-> **Único item em aberto da Sprint 9**: criar os monitores externos (UptimeRobot) — é setup de conta, não código. O `/api/health` já está em produção pronto pra ser monitorado.
+> **Sprint 9 100% fechada (2026-06-13)**: `/api/health` em produção (deploy `f12105b`, retornando `200 ok` com todos os checks verdes) + 3 monitores UptimeRobot ativos apontando pra ele. O ciclo de observabilidade está fechado fim-a-fim.
 
 ### Sprint 10 — Receita passiva: emails transacionais + admin (1 semana)
 
