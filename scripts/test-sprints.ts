@@ -31,7 +31,7 @@ if (process.env.NODE_ENV === "production") {
   throw new Error("não rodar em produção");
 }
 
-type Sprint = 1 | 2 | 3 | 4 | 5 | 6;
+type Sprint = 1 | 2 | 3 | 4 | 5 | 6 | 8;
 const results: Array<{ id: string; sprint: Sprint; pass: boolean; detail: string }> = [];
 function check(id: string, sprint: Sprint, pass: boolean, detail = "") {
   results.push({ id, sprint, pass, detail });
@@ -1023,6 +1023,160 @@ async function main() {
   await prisma.user.deleteMany({ where: { id: usageUser.id } });
 
   // ====================================================================
+  // SPRINT 8 — Resiliência WhatsApp (anti-churn silencioso)
+  // ====================================================================
+  console.log("\n━━━ SPRINT 8 ━━━\n");
+
+  const { shouldRenotifyDisconnected, runWhatsappResilience } = await import(
+    "../src/lib/services/whatsapp-alerts"
+  );
+
+  // 8.1 Schema: campos de tracking de desconexão no User
+  const wppCols = await prisma.$queryRawUnsafe<{ column_name: string }[]>(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'User' AND column_name IN ('whatsappDisconnectedAt', 'whatsappDisconnectNotifiedAt')`,
+  );
+  check("8.1 User tem whatsappDisconnectedAt + whatsappDisconnectNotifiedAt", 8, wppCols.length === 2);
+
+  // 8.2-8.4 Regra de renotificação (pura)
+  const now8 = new Date();
+  const hoursAgo = (h: number) => new Date(now8.getTime() - h * 3_600_000);
+  check(
+    "8.2 Dedup 24h: notificado há 23h não renotifica (mesmo com pending)",
+    8,
+    shouldRenotifyDisconnected({
+      disconnectedAt: hoursAgo(30),
+      notifiedAt: hoursAgo(23),
+      hasFutureAppointments: true,
+      now: now8,
+    }) === false,
+  );
+  check(
+    "8.3 Com agendamentos futuros renotifica diariamente",
+    8,
+    shouldRenotifyDisconnected({
+      disconnectedAt: hoursAgo(240),
+      notifiedAt: hoursAgo(25),
+      hasFutureAppointments: true,
+      now: now8,
+    }) === true,
+  );
+  check(
+    "8.4 Sem pending: reforço só na janela 24-48h (72h → silêncio)",
+    8,
+    shouldRenotifyDisconnected({
+      disconnectedAt: hoursAgo(25),
+      notifiedAt: hoursAgo(25),
+      hasFutureAppointments: false,
+      now: now8,
+    }) === true &&
+      shouldRenotifyDisconnected({
+        disconnectedAt: hoursAgo(72),
+        notifiedAt: hoursAgo(30),
+        hasFutureAppointments: false,
+        now: now8,
+      }) === false,
+  );
+
+  // 8.5 Sweep funcional: desconectado há 30h com agendamento futuro →
+  // renotifica (email DEV_LOGGED em dev), atualiza notifiedAt e audita
+  // whatsapp.disconnected_with_pending.
+  const wppUser = await prisma.user.create({
+    data: {
+      name: "Wpp Disc Test",
+      email: `wpp-disc-${Date.now()}@t.local`,
+      password: "x",
+      clinicName: "Wpp Disc",
+      emailVerifiedAt: new Date(),
+      evolutionInstanceName: `clinic-wpp-disc-${Date.now()}`,
+      whatsappStatus: "DISCONNECTED",
+      whatsappDisconnectedAt: hoursAgo(30),
+      whatsappDisconnectNotifiedAt: hoursAgo(30),
+    },
+  });
+  const wppPatient = await prisma.patient.create({
+    data: {
+      name: "Paciente Wpp",
+      phone: "+5541999000111",
+      phoneCanonical: "5541999000111",
+      userId: wppUser.id,
+    },
+  });
+  await prisma.appointment.create({
+    data: {
+      userId: wppUser.id,
+      patientId: wppPatient.id,
+      dateTime: new Date(now8.getTime() + 24 * 3_600_000),
+      status: "PENDING",
+    },
+  });
+  const pendingAuditBefore = await prisma.auditLog.count({
+    where: { tenantUserId: wppUser.id, action: "whatsapp.disconnected_with_pending" },
+  });
+  const wppStats = await runWhatsappResilience();
+  const wppUserAfter = await prisma.user.findUnique({
+    where: { id: wppUser.id },
+    select: { whatsappDisconnectNotifiedAt: true },
+  });
+  const pendingAuditAfter = await prisma.auditLog.count({
+    where: { tenantUserId: wppUser.id, action: "whatsapp.disconnected_with_pending" },
+  });
+  check(
+    "8.5 Sweep renotifica desconectado com pending + audit disconnected_with_pending",
+    8,
+    wppStats.whatsappRenotified >= 1 &&
+      wppStats.whatsappDisconnectedWithPending >= 1 &&
+      pendingAuditAfter > pendingAuditBefore &&
+      !!wppUserAfter?.whatsappDisconnectNotifiedAt &&
+      wppUserAfter.whatsappDisconnectNotifiedAt.getTime() > hoursAgo(1).getTime(),
+    `renotified=${wppStats.whatsappRenotified} pending=${wppStats.whatsappDisconnectedWithPending}`,
+  );
+
+  // 8.6 Métrica de % conectados calculada (com instância existente no DB)
+  check(
+    "8.6 Métrica whatsappConnectedPct calculada",
+    8,
+    typeof wppStats.whatsappConnectedPct === "number" &&
+      wppStats.whatsappConnectedPct >= 0 &&
+      wppStats.whatsappConnectedPct <= 100,
+    `pct=${wppStats.whatsappConnectedPct} health=${wppStats.evolutionHealth}`,
+  );
+
+  // 8.7 Detecção wired: webhook (close → markWhatsappDisconnected) + status
+  // poll (downgrade) + reconexão limpa tracking + disconnect intencional limpa.
+  const evoWebhookSrc = readFileSync(
+    join(root, "src/app/api/webhook/evolution/[instance]/route.ts"),
+    "utf8",
+  );
+  const statusRouteSrc = readFileSync(join(root, "src/app/api/whatsapp/status/route.ts"), "utf8");
+  const disconnectRouteSrc = readFileSync(
+    join(root, "src/app/api/whatsapp/disconnect/route.ts"),
+    "utf8",
+  );
+  check(
+    "8.7 Detecção de transição wired (webhook + poll + clears)",
+    8,
+    evoWebhookSrc.includes("markWhatsappDisconnected") &&
+      evoWebhookSrc.includes("whatsappReconnectedPatch") &&
+      statusRouteSrc.includes("markWhatsappDisconnected") &&
+      disconnectRouteSrc.includes("whatsappDisconnectedAt: null"),
+  );
+
+  // 8.8 Banner no layout + email lib + scheduler integrado
+  const layoutSrc = readFileSync(join(root, "src/app/(dashboard)/layout.tsx"), "utf8");
+  const schedulerSrc8 = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+  check(
+    "8.8 Banner montado no layout + email.ts + sweep no scheduler",
+    8,
+    exists("src/components/whatsapp/whatsapp-disconnected-banner.tsx") &&
+      layoutSrc.includes("WhatsappDisconnectedBanner") &&
+      exists("src/lib/email.ts") &&
+      schedulerSrc8.includes("runWhatsappResilience"),
+  );
+
+  // Cleanup Sprint 8
+  await prisma.user.deleteMany({ where: { id: wppUser.id } });
+
+  // ====================================================================
   // CLEANUP
   // ====================================================================
   console.log("\n━━━ Limpando dados de teste ━━━");
@@ -1045,6 +1199,7 @@ async function main() {
   const sprint4 = results.filter((r) => r.sprint === 4);
   const sprint5 = results.filter((r) => r.sprint === 5);
   const sprint6 = results.filter((r) => r.sprint === 6);
+  const sprint8 = results.filter((r) => r.sprint === 8);
   const failed = results.filter((r) => !r.pass);
   console.log(`Sprint 1: ${sprint1.filter((r) => r.pass).length}/${sprint1.length}`);
   console.log(`Sprint 2: ${sprint2.filter((r) => r.pass).length}/${sprint2.length}`);
@@ -1052,6 +1207,7 @@ async function main() {
   console.log(`Sprint 4: ${sprint4.filter((r) => r.pass).length}/${sprint4.length}`);
   console.log(`Sprint 5: ${sprint5.filter((r) => r.pass).length}/${sprint5.length}`);
   console.log(`Sprint 6: ${sprint6.filter((r) => r.pass).length}/${sprint6.length}`);
+  console.log(`Sprint 8: ${sprint8.filter((r) => r.pass).length}/${sprint8.length}`);
   console.log(`Total:    ${results.filter((r) => r.pass).length}/${results.length}`);
   if (failed.length > 0) {
     console.log("\n❌ FAILED:");

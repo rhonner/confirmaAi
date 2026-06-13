@@ -7,6 +7,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { WhatsappDisconnectedBanner } from "@/components/whatsapp/whatsapp-disconnected-banner";
 
 export default function DashboardLayout({
   children,
@@ -80,6 +81,7 @@ export default function DashboardLayout({
         {/* Page Content */}
         <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto animate-fade-in-up">
+            <WhatsappDisconnectedBanner />
             {children}
           </div>
         </main>

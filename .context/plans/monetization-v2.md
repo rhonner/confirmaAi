@@ -965,17 +965,18 @@ Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
 - [x] **🐛 Bug real achado e corrigido**: `payment.nextDueDate` não existe no payload do Asaas → `currentPeriodEnd` ficava null na ativação → **cancelamento nunca expiraria no cron** (afetava produção). Fix: `deriveNextDueDate` (fallback `payment.dueDate + 1 mês`) + 3 testes de regressão com payload real. **Pendente: commit+push pra produção.**
 - [x] **🐛 Bug de UI corrigido**: checkout mostrava "[DEV] MockProvider" + botão "Simular pagamento" mesmo em modo Asaas (gate era `NODE_ENV`). Agora a resposta do checkout traz `provider` e a UI gateia nisso.
 
-### Sprint 8 — Resiliência WhatsApp: anti-churn silencioso (3-4 dias) **[NOVA]**
+### Sprint 8 — Resiliência WhatsApp: anti-churn silencioso **✅ CONCLUÍDA 2026-06-13**
 
 > **Maior ameaça ao "rodar sozinho"**: a instância Evolution do tenant desconecta → o scheduler filtra `whatsappStatus != CONNECTED` pra fora → as confirmações **param silenciosamente** → cliente paga por um produto que não faz nada → churn. Hoje ninguém é avisado.
 
-- [ ] Detecção: webhook Evolution já recebe `connection.update` — ao transicionar para desconectado, gravar `User.whatsappDisconnectedAt` + audit `whatsapp.disconnected`.
-- [ ] **Notificação ao cliente por email** (Resend, infra da Sprint 4): "Seu WhatsApp desconectou — suas confirmações estão pausadas. Reconecte em /configuracoes" — imediato + reforço em 24h se continuar desconectado.
-- [ ] Banner vermelho persistente no dashboard enquanto desconectado, CTA direto pro QR code.
-- [ ] Job no cron diário: tenants desconectados **com agendamentos futuros** → renotificar + audit `whatsapp.disconnected_with_pending` (são os que estão perdendo valor agora).
-- [ ] Health-check da Evolution API no cron: ping no endpoint de instâncias; falha → audit `evolution.health_failed` (consumido pelo `/api/health` da Sprint 9).
-- [ ] Métrica agregada: % de tenants conectados (exposta no admin, Sprint 10).
-- [ ] Atualizar `.context/features/whatsapp.md` + `webhook-evolution.md` + `scheduler.md`.
+- [x] Detecção: transição `CONNECTED → DISCONNECTED` em 2 pontos (webhook `close` + downgrade do poll de status) → `User.whatsappDisconnectedAt` + audit `whatsapp.disconnected {source}`. Migration `20260612230508`.
+- [x] **Notificação por email** (via novo `src/lib/email.ts`, extraído do email-verification): imediato na transição + reforço em 24h (janela 24-48h) — regra pura `shouldRenotifyDisconnected` com dedup de 1 email/24h.
+- [x] Banner vermelho persistente no layout do dashboard (`WhatsappDisconnectedBanner`), CTA → `/configuracoes`; só pra quem JÁ esteve conectado; desconexão intencional não nagga.
+- [x] Sweep no cron: desconectados **com agendamentos futuros** → renotificação diária + audit `whatsapp.disconnected_with_pending`.
+- [x] Health-check Evolution no cron (`checkEvolutionHealth`, timeout 10s) → audit `evolution.health_failed` quando DOWN (pronto pro `/api/health` da Sprint 9).
+- [x] Métrica `whatsappConnectedPct` nas `SchedulerStats`/audit `cron.run` (admin consome na Sprint 10).
+- [x] `.context/features/whatsapp.md` + `webhook-evolution.md` + `scheduler.md` atualizados; helper `scripts/toggle-whatsapp-state.ts`.
+- [x] Régua: tsc/build limpos, 174/174 vitest (7 novos), 87/87 test:sprints (8 checks novos, incl. sweep funcional no DB), walk-through Chrome (banner + cadeia de detecção via poll real).
 
 ### Sprint 9 — Observabilidade: só ser interrompido quando quebra (2 dias) **[NOVA]**
 

@@ -22,8 +22,8 @@
 
 | `data.state`  | Ação                                                                          |
 | ------------- | ----------------------------------------------------------------------------- |
-| `open`        | `whatsappStatus = CONNECTED`, `whatsappConnectedAt = now`. Atualiza `whatsappPhoneNumber` se `data.key.remoteJid` presente |
-| `close`       | `whatsappStatus = DISCONNECTED`                                               |
+| `open`        | `whatsappStatus = CONNECTED`, `whatsappConnectedAt = now`, zera tracking de desconexão (`whatsappReconnectedPatch`). Atualiza `whatsappPhoneNumber` se `data.key.remoteJid` presente |
+| `close`       | `whatsappStatus = DISCONNECTED`. **Sprint 8**: se status anterior era `CONNECTED` (transição real), chama `markWhatsappDisconnected(userId, "webhook")` → `whatsappDisconnectedAt`, audit `whatsapp.disconnected`, email imediato ao tenant. Eventos `close` repetidos/durante pareamento não alertam. |
 | `connecting`  | `whatsappStatus = CONNECTING`                                                 |
 
 #### `messages.upsert` (resposta do paciente)

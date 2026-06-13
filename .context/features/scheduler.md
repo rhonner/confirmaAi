@@ -25,7 +25,16 @@
   }
   ```
 - `startScheduler()` registra `cron.schedule("*/30 * * * *", runSchedulerJobs)` (a cada 30 min, hora cheia e meia).
-- `runSchedulerJobs()` processa em sequência: confirmações → lembretes → `markNoShows()` → `runBillingMaintenance()`, e **retorna `SchedulerStats`** (`{ confirmationsSent, remindersSent, sendFailures, quotaBlocked, noShowsMarked, truncated, durationMs }`). A rota `/api/cron/run` audita `cron.run` com essas stats a cada execução — heartbeat para o alerta de "cron morto" (Sprint 9).
+- `runSchedulerJobs()` processa em sequência: confirmações → lembretes → `markNoShows()` → `runBillingMaintenance()` → `runWhatsappResilience()` (Sprint 8), e **retorna `SchedulerStats`** (`{ confirmationsSent, remindersSent, sendFailures, quotaBlocked, noShowsMarked, truncated, durationMs, whatsappRenotified, whatsappDisconnectedWithPending, evolutionHealth, whatsappConnectedPct }`). A rota `/api/cron/run` audita `cron.run` com essas stats a cada execução — heartbeat para o alerta de "cron morto" (Sprint 9).
+
+### Sprint 8 — resiliência WhatsApp no cron
+
+`runWhatsappResilience()` (em `src/lib/services/whatsapp-alerts.ts`) roda a cada execução do cron:
+1. **Health-check Evolution** (`checkEvolutionHealth`, timeout 10s) → `DOWN` audita `evolution.health_failed`.
+2. **Métrica** `whatsappConnectedPct` (% de tenants com instância CONNECTED).
+3. **Sweep de desconectados**: tenants `DISCONNECTED|FAILED` com `whatsappDisconnectedAt` setado → `shouldRenotifyDisconnected` decide (dedup 24h; com agendamentos futuros renotifica diariamente + audit `whatsapp.disconnected_with_pending`; sem, só reforço na janela 24-48h). Email via `src/lib/email.ts` (dev sem `RESEND_API_KEY` → console).
+
+Detalhes completos em [`whatsapp.md`](whatsapp.md) § Resiliência.
 
 ### Sprint 6 — quota de mensagens + hardening de escala
 
@@ -86,7 +95,7 @@ prisma.appointment.updateMany({
 ## Pontos sensíveis
 
 - **Single-instance**: rodar em múltiplos processos pode causar mensagens duplicadas. O `update` de `confirmationSentAt` é o mecanismo de idempotência, mas há janela de race entre o `findMany` e o `update`. Em produção real, usar um worker dedicado (BullMQ ou cron externo) e/ou lock distribuído.
-- **WhatsApp obrigatório**: filtros incluem `user.whatsappStatus = CONNECTED`. Se desconectar no meio, mensagens param até reconectar.
+- **WhatsApp obrigatório**: filtros incluem `user.whatsappStatus = CONNECTED`. Se desconectar no meio, mensagens param até reconectar — **mas desde a Sprint 8 isso não é mais silencioso**: o tenant recebe email imediato + reforços e vê banner vermelho no dashboard (ver `whatsapp.md` § Resiliência).
 - **Sem retry**: se `sendWhatsAppMessage` retornar `false`, **não** marca `confirmationSentAt`. Próxima execução tenta de novo, indefinidamente, até `dateTime` passar e `markNoShows` tirar do filtro.
 - **Auditoria** (Sprint 1): cada `sendConfirmations`/`sendReminders` emite `audit({ action: "message.sent", ... })` no branch de sucesso e `"message.send_failed"` no branch de falha. Contexto vem do `runWithAuditContext({ actorType: "SYSTEM", actorId: "cron" })` setado em `/api/cron/run`. `MessageLog` continua sendo a tabela de domínio (só sucesso); `AuditLog` cobre falhas também.
 - **Locale & timezone**: `formatAppointmentDate`/`formatAppointmentTime` usam `formatInTimeZone(..., "America/Sao_Paulo", ...)` (date-fns-tz) com locale ptBR. **Não** usar `format()` puro: o runtime do Vercel é UTC e o `Appointment.dateTime` é um instante UTC, então `format()` rendiza 3h adiantado (14h → "17:00"). `TZ` é env reservada no Vercel, por isso o fix é em código, não em env var.

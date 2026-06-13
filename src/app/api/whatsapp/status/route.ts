@@ -6,6 +6,10 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { getInstanceStatus } from "@/lib/services/evolution";
+import {
+  markWhatsappDisconnected,
+  whatsappReconnectedPatch,
+} from "@/lib/services/whatsapp-alerts";
 import type { ApiResponse } from "@/lib/types/api";
 
 type StatusResponse = {
@@ -72,8 +76,15 @@ export async function GET() {
           whatsappStatus: nextStatus,
           whatsappPhoneNumber: nextPhone,
           whatsappConnectedAt: nextConnectedAt,
+          // Reconectou via poll → zera tracking de desconexão (Sprint 8).
+          ...(nextStatus === "CONNECTED" ? whatsappReconnectedPatch() : {}),
         },
       });
+      // Sprint 8: downgrade CONNECTED → DISCONNECTED detectado pelo poll
+      // (webhook pode ter sido perdido) → mesma trilha de alerta.
+      if (user.whatsappStatus === "CONNECTED" && nextStatus === "DISCONNECTED") {
+        await markWhatsappDisconnected(session.user.id, "status_poll");
+      }
     }
 
     return NextResponse.json<ApiResponse<StatusResponse>>({

@@ -18,6 +18,15 @@ export type SchedulerStats = {
   /** True se o time-budget estourou antes de varrer tudo (próximo run continua). */
   truncated: boolean;
   durationMs: number;
+  // Sprint 8 — resiliência WhatsApp (ver whatsapp-alerts.ts):
+  /** Emails de reforço/renotificação de desconexão enviados pelo sweep. */
+  whatsappRenotified: number;
+  /** Tenants desconectados com agendamentos futuros (valor em risco). */
+  whatsappDisconnectedWithPending: number;
+  /** Health-check da Evolution API ("OK" | "DOWN" | "NOT_CONFIGURED"). */
+  evolutionHealth: string;
+  /** % de tenants com instância que estão CONNECTED (null sem instâncias). */
+  whatsappConnectedPct: number | null;
 };
 
 // A rota /api/cron/run tem maxDuration = 60s; paramos a varredura em 45s
@@ -225,6 +234,10 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     noShowsMarked: 0,
     truncated: false,
     durationMs: 0,
+    whatsappRenotified: 0,
+    whatsappDisconnectedWithPending: 0,
+    evolutionHealth: "NOT_CONFIGURED",
+    whatsappConnectedPct: null,
   };
 
   try {
@@ -249,6 +262,19 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     }
   } catch (err) {
     console.error("billing-maintenance failed:", err);
+  }
+
+  // Resiliência WhatsApp (Sprint 8): health-check Evolution, métrica de
+  // conectados e sweep de desconectados (reforço 24h / renotificação diária).
+  try {
+    const { runWhatsappResilience } = await import("./whatsapp-alerts");
+    const w = await runWhatsappResilience();
+    stats.whatsappRenotified = w.whatsappRenotified;
+    stats.whatsappDisconnectedWithPending = w.whatsappDisconnectedWithPending;
+    stats.evolutionHealth = w.evolutionHealth;
+    stats.whatsappConnectedPct = w.whatsappConnectedPct;
+  } catch (err) {
+    console.error("whatsapp-resilience failed:", err);
   }
 
   stats.durationMs = Date.now() - startedAt;

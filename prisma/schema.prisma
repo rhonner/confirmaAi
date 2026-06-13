@@ -86,6 +86,10 @@ model User {
   whatsappStatus             WhatsappStatus @default(DISCONNECTED)
   whatsappPhoneNumber        String?
   whatsappConnectedAt        DateTime?
+  // Sprint 8 — resiliência: quando a instância caiu e quando o tenant foi
+  // avisado por email pela última vez (dedup de notificações do sweep).
+  whatsappDisconnectedAt       DateTime?
+  whatsappDisconnectNotifiedAt DateTime?
   lastQrcodeBase64           String?
   lastQrcodeAt               DateTime?
   cpf                        String?

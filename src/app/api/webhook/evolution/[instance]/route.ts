@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { parseResponse } from "@/lib/services/webhook-parser";
 import { brPhoneCandidates } from "@/lib/phone";
 import { audit, maskPhone, truncateMessage, withFixedActor } from "@/lib/audit";
+import {
+  markWhatsappDisconnected,
+  whatsappReconnectedPatch,
+} from "@/lib/services/whatsapp-alerts";
 
 // Evolution API webhook — one webhook URL per instance, so the [instance]
 // path segment identifies the tenant.
@@ -82,7 +86,7 @@ export const POST = withFixedActor(
 
     const user = await prisma.user.findUnique({
       where: { evolutionInstanceName: instance },
-      select: { id: true },
+      select: { id: true, whatsappStatus: true },
     });
     if (!user) return NextResponse.json({ received: true });
 
@@ -121,14 +125,21 @@ export const POST = withFixedActor(
             whatsappConnectedAt: new Date(),
             lastQrcodeBase64: null,
             lastQrcodeAt: null,
+            ...whatsappReconnectedPatch(),
             ...(ownerPhone ? { whatsappPhoneNumber: ownerPhone } : {}),
           },
         });
       } else if (state === "close") {
+        const wasConnected = user.whatsappStatus === "CONNECTED";
         await prisma.user.update({
           where: { id: user.id },
           data: { whatsappStatus: "DISCONNECTED" },
         });
+        // Sprint 8: só na TRANSIÇÃO (CONNECTED → close) — eventos "close"
+        // repetidos ou durante pareamento inicial não disparam alerta.
+        if (wasConnected) {
+          await markWhatsappDisconnected(user.id, "webhook");
+        }
       } else if (state === "connecting") {
         await prisma.user.update({
           where: { id: user.id },

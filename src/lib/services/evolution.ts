@@ -199,3 +199,23 @@ export async function sendText(
     return false;
   }
 }
+
+export type EvolutionHealth = "OK" | "DOWN" | "NOT_CONFIGURED";
+
+/**
+ * Health-check da Evolution API (Sprint 8): lista instâncias com timeout
+ * curto. "NOT_CONFIGURED" em dev sem envs (não é falha); "DOWN" cobre erro
+ * HTTP, timeout e rede — consumido pelo cron (audit `evolution.health_failed`)
+ * e pelo `/api/health` da Sprint 9.
+ */
+export async function checkEvolutionHealth(timeoutMs = 10_000): Promise<EvolutionHealth> {
+  if (!getConfig()) return "NOT_CONFIGURED";
+  try {
+    const res = await evoFetch("/instance/fetchInstances", {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res.ok ? "OK" : "DOWN";
+  } catch {
+    return "DOWN";
+  }
+}

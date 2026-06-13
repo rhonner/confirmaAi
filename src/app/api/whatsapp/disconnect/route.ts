@@ -31,6 +31,10 @@ export const POST = auditWrap(async (_request: NextRequest) => {
         whatsappStatus: "DISCONNECTED",
         whatsappPhoneNumber: null,
         whatsappConnectedAt: null,
+        // Desconexão INTENCIONAL → zera o tracking de alerta (Sprint 8);
+        // o sweep não deve renotificar quem desconectou de propósito.
+        whatsappDisconnectedAt: null,
+        whatsappDisconnectNotifiedAt: null,
       },
     });
 
