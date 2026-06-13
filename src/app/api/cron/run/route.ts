@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runSchedulerJobs } from "@/lib/services/scheduler";
 import { audit, runWithAuditContext } from "@/lib/audit";
+import { captureError } from "@/lib/observability";
 
 // Trigger endpoint para o Vercel Cron Jobs.
 // Vercel injeta `Authorization: Bearer <CRON_SECRET>` em todo cron call;
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
       stats,
     });
   } catch (error) {
-    console.error("[cron] runSchedulerJobs failed:", error);
+    // O cron é desatendido — se ele falha, ninguém vê a não ser pelo alerta.
+    await captureError(error, { area: "cron", extra: { route: "/api/cron/run" } });
     return NextResponse.json(
       { ok: false, error: String(error) },
       { status: 500 },

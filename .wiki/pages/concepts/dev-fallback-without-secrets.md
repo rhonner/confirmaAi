@@ -2,13 +2,15 @@
 title: Dev fallback sem chaves externas
 type: concept
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-13
 tags: [pattern, dev-experience, integrations, secrets]
 sources:
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
+  - .context/features/observability.md
 related:
   - .context/features/auth.md
   - .context/features/billing.md
+  - pages/concepts/optional-dependency-via-dynamic-import.md
 status: stable
 ---
 
@@ -76,9 +78,14 @@ return process.env.NODE_ENV === "production" ? new AsaasProvider() : new MockPro
 - **Risco**: mock pode divergir do real. Mitigado escrevendo o mock contra o **mesmo schema** de eventos/payloads do provider real (ver `MockProvider.parseEvent` espelhando Asaas-shape).
 - **Detecção de regressão prod**: typecheck + run script de health-check em deploy garante que `MISCONFIGURED` não passa.
 
+## Padrão irmão
+
+A Sprint 9 estendeu a família com [[optional-dependency-via-dynamic-import]]: mesma filosofia (zero-fricção sem setup externo, degradação graciosa), mas gateando uma **dependência npm ausente** (Sentry) em vez de um **secret ausente**. Diferença: lá a ausência é legítima até em produção (a integração é opcional), então não há `if (isProd) throw`.
+
 ## Wikilinks
 
 - [[../entities/asaas-integration]]
 - [[../synthesis/monetization-v2-state]]
+- [[optional-dependency-via-dynamic-import]]
 
 > Fontes: `src/lib/anti-fraud/recaptcha.ts`, `email-verification.ts`, `src/lib/billing/factory.ts`, `mock.ts`.

@@ -61,7 +61,7 @@ UI: `src/app/(dashboard)/billing/checkout/page.tsx` mostra QR + botão "Copiar c
 6. Audit `billing.payment.received` / `failed` / `subscription.canceled` / `billing.webhook.processed`.
 7. Marca `BillingEvent.processedAt = now`. Falhas mantêm `processedAt = null` para reconciliação manual.
 
-**Sempre 200 após registrar** (provider retentaria em 5xx). Falhas no apply ficam pra reconciliação.
+**Sempre 200 após registrar** (provider retentaria em 5xx). Falhas no apply ficam pra reconciliação — e a partir da Sprint 9 não são silenciosas: o catch chama `captureError({ area: "webhook", tenantUserId })` (cliente pagou e plano não subiu = alerta de receita), e `GET /api/health` acende `billing: degraded` (503) se algum `BillingEvent.processedAt = null` passar de 1h. Ver [`observability.md`](observability.md).
 
 ### Lifecycle (cron diário — defesa em profundidade)
 

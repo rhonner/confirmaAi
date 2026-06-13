@@ -1,8 +1,8 @@
 ---
-title: Estado da monetização v2 — snapshot 2026-06-12 (v2 EM PRODUÇÃO, 7/11 sprints)
+title: Estado da monetização v2 — snapshot 2026-06-13 (v2 EM PRODUÇÃO, 9/11 sprints)
 type: synthesis
 created: 2026-05-07
-updated: 2026-06-12
+updated: 2026-06-13
 tags: [billing, monetization, snapshot, roadmap]
 sources:
   - .context/plans/monetization-v2.md
@@ -13,6 +13,7 @@ related:
   - .context/features/plan-quota.md
   - .context/features/audit.md
   - .context/features/auth.md
+  - .context/features/observability.md
 status: stable
 ---
 
@@ -33,7 +34,7 @@ status: stable
 - **Cross-tenant detection de CPF de paciente** — descartado (paciente em N clínicas é legítimo). Detecção fica só pro **dono** (`User.cpfHash`).
 - **`User.cpfHash @unique`** — removida. Permite caso médico-com-2-clínicas (≤3); 4ª criação bloqueada via threshold em `owner-cpf-dedup`.
 
-## Sprints (6/11 fechadas — re-sequenciado 2026-06-10)
+## Sprints (9/11 fechadas — re-sequenciado 2026-06-10)
 
 > **Re-sequenciamento 2026-06-10**: premissa do fundador "rodar e vender sozinho, sem trocar banco/arquitetura depois". Entraram 3 sprints novas (7, 8, 9); antigas 7/8 viraram 10/11. Análise de invariantes de escala em `monetization-v2.md` §9.4 — conclusão: a stack atual escala sem rewrite; os riscos reais são operacionais e silenciosos (WhatsApp desconectado, cron morto, webhook travado), cada um com sprint própria.
 
@@ -46,8 +47,8 @@ status: stable
 | 5 | Cobrança Asaas | ✅ 2026-05-07 | BillingProvider interface, Mock+Asaas, webhook idempotente HMAC, lifecycle cron, /billing/checkout completo |
 | 6 | Mensagens + gates + hardening escala scheduler | ✅ 2026-06-10 | `usage.ts` lazy-period, gate dedup `QUOTA_BLOCKED`, chunking 200/45s, índices compostos, audit `cron.run`, badge ≥50% |
 | 7 | Go-live (deploy produção) | ✅ 2026-06-12 | **V2 EM PRODUÇÃO E VENDENDO** — merge→main, 16/16 envs, smoke E2E completo (WhatsApp confirma + Pix paga e ativa Pro automático). 3 bugs reais corrigidos no caminho (ver abaixo). Marca unificada ConfirmaAí→Clínica Organizada. |
-| 8 | Resiliência WhatsApp **[nova]** | ⏳ | Anti-churn silencioso: email ao tenant quando instância desconecta, banner, health-check Evolution |
-| 9 | Observabilidade **[nova]** | ⏳ | Sentry + `GET /api/health` agregador (cron morto, BillingEvent travado, Evolution down) + uptime monitor externo |
+| 8 | Resiliência WhatsApp **[nova]** | ✅ 2026-06-13 | Anti-churn silencioso: detecção CONNECTED→DISCONNECTED (webhook + poll), email + banner, sweep no cron com `shouldRenotifyDisconnected`, health-check Evolution, `whatsappConnectedPct`. `src/lib/email.ts` genérico extraído. 174→ vitest, 87 sprints |
+| 9 | Observabilidade **[nova]** | ✅ 2026-06-13 (monitor externo pendente) | `GET /api/health` (200/503) agrega cron/billing/evolution/db — `evaluateHealth` pura + testada. Seam `captureError` + `onRequestError` (Next 16); cron e webhook reportam com tenant. **Sentry opt-in 1-passo** via [[../concepts/optional-dependency-via-dynamic-import]] (não instalado, build verde). Operacional em `.context/features/observability.md`. **Falta**: criar monitores UptimeRobot (setup de conta externa). 182 vitest, 93 sprints |
 | 10 | Receita passiva: emails + admin (ex-7) | ⏳ | Dunning 1/3/7, transacionais, `/admin/audit`, retention 90d AuditLog |
 | 11 | LGPD + legal (ex-8) | ⏳ pré-marketing | Termos/privacidade, export, delete account, NF-e, CNPJ no rodapé |
 

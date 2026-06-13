@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit, withFixedActor } from "@/lib/audit";
 import { getBillingProvider, eventToSubscriptionPatch, planTierFromPayload } from "@/lib/billing";
+import { captureError } from "@/lib/observability";
 
 /**
  * Webhook do provider de cobrança (Asaas em prod, Mock em dev).
@@ -124,7 +125,18 @@ export const POST = withFixedActor(
             },
           });
         } catch (err) {
-          console.error("[billing.webhook] failed to apply patch:", err);
+          // Cliente pagou e o plano não subiu: alerta de receita, não só log.
+          // O BillingEvent fica com processedAt=null → o /api/health também
+          // acende depois de 1h se ninguém reconciliar.
+          await captureError(err, {
+            area: "webhook",
+            tenantUserId: userId,
+            extra: {
+              eventType: event.eventType,
+              providerEventId: event.providerEventId,
+              billingEventId: billingEventRecord.id,
+            },
+          });
           // Mantém o BillingEvent com processedAt=null pra reconciliação
           return NextResponse.json({ received: true, error: "apply_failed" });
         }

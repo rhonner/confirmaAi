@@ -36,6 +36,7 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [neon-pooled-vs-direct-url](pages/concepts/neon-pooled-vs-direct-url.md) | Pooled (`-pooler`) no runtime serverless, direta nas migrations; PrismaPg dispensa `pgbouncer=true` | 2026-06-10 |
 | [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer | 2026-06-10 |
 | [claude-chrome-sensitive-domains](pages/concepts/claude-chrome-sensitive-domains.md) | `Permission denied` em site sensível = prompt da extensão (aprovável), não bloqueio duro; protocolo de retry + workflow de secrets | 2026-06-10 |
+| [optional-dependency-via-dynamic-import](pages/concepts/optional-dependency-via-dynamic-import.md) | Dependência opcional (Sentry) gated por env + `import(spec)` com specifier em variável + `webpackIgnore` → build verde sem o pacote; irmão de dev-fallback | 2026-06-13 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -43,7 +44,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
-| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (7/11 sprints), bugs do go-live, bloqueadores de marketing | 2026-06-12 |
+| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 sprints — Sprint 8 resiliência + 9 observabilidade fechadas), bugs do go-live, bloqueadores de marketing | 2026-06-13 |
 
 ---
 

@@ -31,7 +31,7 @@ if (process.env.NODE_ENV === "production") {
   throw new Error("não rodar em produção");
 }
 
-type Sprint = 1 | 2 | 3 | 4 | 5 | 6 | 8;
+type Sprint = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 9;
 const results: Array<{ id: string; sprint: Sprint; pass: boolean; detail: string }> = [];
 function check(id: string, sprint: Sprint, pass: boolean, detail = "") {
   results.push({ id, sprint, pass, detail });
@@ -1177,16 +1177,126 @@ async function main() {
   await prisma.user.deleteMany({ where: { id: wppUser.id } });
 
   // ====================================================================
+  // SPRINT 9 — Observabilidade (/api/health + captura de erros)
+  // ====================================================================
+  console.log("\n━━━ SPRINT 9 ━━━\n");
+
+  const { evaluateHealth, CRON_STALE_MINUTES, BILLING_STUCK_MINUTES } = await import(
+    "../src/lib/services/health"
+  );
+
+  const now9 = new Date();
+  const minsAgo9 = (m: number) => new Date(now9.getTime() - m * 60_000);
+  const okInputs = {
+    now: now9,
+    databaseOk: true,
+    lastCronRunAt: minsAgo9(10),
+    stuckBillingEvents: 0,
+    evolutionHealth: "OK" as const,
+  };
+
+  // 9.1 Laudo saudável → status ok
+  check(
+    "9.1 evaluateHealth: tudo verde → status ok",
+    9,
+    evaluateHealth(okInputs).status === "ok",
+  );
+
+  // 9.2 Cron parado além do limite → degraded
+  check(
+    "9.2 cron parado > limite → degraded (cron.ok false)",
+    9,
+    (() => {
+      const r = evaluateHealth({ ...okInputs, lastCronRunAt: minsAgo9(CRON_STALE_MINUTES + 5) });
+      return r.status === "degraded" && r.checks.cron.ok === false;
+    })(),
+    `threshold=${CRON_STALE_MINUTES}min`,
+  );
+
+  // 9.3 BillingEvent travado → degraded
+  check(
+    "9.3 BillingEvent não-processado → billing degradado",
+    9,
+    (() => {
+      const r = evaluateHealth({ ...okInputs, stuckBillingEvents: 1 });
+      return r.status === "degraded" && r.checks.billing.ok === false;
+    })(),
+    `threshold=${BILLING_STUCK_MINUTES}min`,
+  );
+
+  // 9.4 Evolution: DOWN derruba, NOT_CONFIGURED não
+  check(
+    "9.4 Evolution DOWN → degraded; NOT_CONFIGURED → ok",
+    9,
+    evaluateHealth({ ...okInputs, evolutionHealth: "DOWN" }).status === "degraded" &&
+      evaluateHealth({ ...okInputs, evolutionHealth: "NOT_CONFIGURED" }).status === "ok",
+  );
+
+  // 9.5 Queries reais que alimentam o laudo são válidas contra o schema:
+  // semeia um audit cron.run agora e confirma que a coleta o enxerga recente.
+  await runWithAuditContext({ actorType: "SYSTEM", actorId: "cron" }, async () => {
+    await audit({ action: "cron.run", metadata: { fromTest: true } });
+  });
+  const lastCron9 = await prisma.auditLog.findFirst({
+    where: { action: "cron.run" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  const stuckBilling9 = await prisma.billingEvent.count({
+    where: {
+      processedAt: null,
+      createdAt: { lt: new Date(now9.getTime() - BILLING_STUCK_MINUTES * 60_000) },
+    },
+  });
+  const liveReport = evaluateHealth({
+    now: now9,
+    databaseOk: true,
+    lastCronRunAt: lastCron9?.createdAt ?? null,
+    stuckBillingEvents: stuckBilling9,
+    evolutionHealth: "NOT_CONFIGURED",
+  });
+  check(
+    "9.5 coleta real (auditLog cron.run + billingEvent.count) → cron.ok com run recém-semeado",
+    9,
+    !!lastCron9 && liveReport.checks.cron.ok === true,
+    `lastRunMinutesAgo=${liveReport.checks.cron.lastRunMinutesAgo} stuckBilling=${stuckBilling9}`,
+  );
+
+  // 9.6 Endpoint + seam de observabilidade montados e fiados
+  const healthRouteSrc = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
+  const instrumentationSrc = readFileSync(join(root, "instrumentation.ts"), "utf8");
+  const cronRouteSrc = readFileSync(join(root, "src/app/api/cron/run/route.ts"), "utf8");
+  const billingWebhookSrc = readFileSync(
+    join(root, "src/app/api/billing/webhook/route.ts"),
+    "utf8",
+  );
+  check(
+    "9.6 /api/health (200/503) + observability + onRequestError + captureError fiados",
+    9,
+    exists("src/app/api/health/route.ts") &&
+      healthRouteSrc.includes("runHealthChecks") &&
+      healthRouteSrc.includes("503") &&
+      exists("src/lib/observability/index.ts") &&
+      instrumentationSrc.includes("onRequestError") &&
+      instrumentationSrc.includes("initObservability") &&
+      cronRouteSrc.includes("captureError") &&
+      billingWebhookSrc.includes("captureError"),
+  );
+
+  // ====================================================================
   // CLEANUP
   // ====================================================================
   console.log("\n━━━ Limpando dados de teste ━━━");
   await prisma.user.deleteMany({
     where: { id: { in: [testUser.id, quotaUser.id, proUser.id] } },
   });
-  // Limpa audit de IPs de teste
+  // Limpa audit de IPs de teste + o cron.run semeado no check 9.5
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
     await tx.auditLog.deleteMany({ where: { ipAddress: { startsWith: "10.99.99." } } });
+    await tx.$executeRawUnsafe(
+      `DELETE FROM "AuditLog" WHERE action = 'cron.run' AND metadata->>'fromTest' = 'true'`,
+    );
   });
 
   // ====================================================================
@@ -1200,6 +1310,7 @@ async function main() {
   const sprint5 = results.filter((r) => r.sprint === 5);
   const sprint6 = results.filter((r) => r.sprint === 6);
   const sprint8 = results.filter((r) => r.sprint === 8);
+  const sprint9 = results.filter((r) => r.sprint === 9);
   const failed = results.filter((r) => !r.pass);
   console.log(`Sprint 1: ${sprint1.filter((r) => r.pass).length}/${sprint1.length}`);
   console.log(`Sprint 2: ${sprint2.filter((r) => r.pass).length}/${sprint2.length}`);
@@ -1208,6 +1319,7 @@ async function main() {
   console.log(`Sprint 5: ${sprint5.filter((r) => r.pass).length}/${sprint5.length}`);
   console.log(`Sprint 6: ${sprint6.filter((r) => r.pass).length}/${sprint6.length}`);
   console.log(`Sprint 8: ${sprint8.filter((r) => r.pass).length}/${sprint8.length}`);
+  console.log(`Sprint 9: ${sprint9.filter((r) => r.pass).length}/${sprint9.length}`);
   console.log(`Total:    ${results.filter((r) => r.pass).length}/${results.length}`);
   if (failed.length > 0) {
     console.log("\n❌ FAILED:");

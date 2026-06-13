@@ -62,6 +62,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Auditoria            | [features/audit.md](features/audit.md)               | Trilha de mutações (Prisma extension) + eventos de domínio (login, msg, webhook) |
 | Billing               | [features/billing.md](features/billing.md)        | Cobrança via provider (Asaas/Mock), checkout Pix/cartão, webhook idempotente com HMAC, lifecycle cron, portal + cancelar |
 | Plan Quota           | [features/plan-quota.md](features/plan-quota.md)     | Vagas vitalícias de paciente (Free=5), CPF como identifier primário, anti-fraude por slot ledger |
+| Observabilidade      | [features/observability.md](features/observability.md) | `GET /api/health` (200/503) agrega cron/billing/evolution/db; captura de erros (console + Sentry opt-in via `SENTRY_DSN`); runbook |
 
 ## Índice de fluxos cruzados
 

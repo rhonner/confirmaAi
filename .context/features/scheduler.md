@@ -25,7 +25,7 @@
   }
   ```
 - `startScheduler()` registra `cron.schedule("*/30 * * * *", runSchedulerJobs)` (a cada 30 min, hora cheia e meia).
-- `runSchedulerJobs()` processa em sequência: confirmações → lembretes → `markNoShows()` → `runBillingMaintenance()` → `runWhatsappResilience()` (Sprint 8), e **retorna `SchedulerStats`** (`{ confirmationsSent, remindersSent, sendFailures, quotaBlocked, noShowsMarked, truncated, durationMs, whatsappRenotified, whatsappDisconnectedWithPending, evolutionHealth, whatsappConnectedPct }`). A rota `/api/cron/run` audita `cron.run` com essas stats a cada execução — heartbeat para o alerta de "cron morto" (Sprint 9).
+- `runSchedulerJobs()` processa em sequência: confirmações → lembretes → `markNoShows()` → `runBillingMaintenance()` → `runWhatsappResilience()` (Sprint 8), e **retorna `SchedulerStats`** (`{ confirmationsSent, remindersSent, sendFailures, quotaBlocked, noShowsMarked, truncated, durationMs, whatsappRenotified, whatsappDisconnectedWithPending, evolutionHealth, whatsappConnectedPct }`). A rota `/api/cron/run` audita `cron.run` com essas stats a cada execução — heartbeat consumido pelo check `cron` de `GET /api/health` (ver [`observability.md`](observability.md)): sem `cron.run` nos últimos 90 min → 503. Em falha do job, o catch da rota chama `captureError({ area: "cron" })`.
 
 ### Sprint 8 — resiliência WhatsApp no cron
 
