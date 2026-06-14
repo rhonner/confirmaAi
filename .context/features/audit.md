@@ -80,4 +80,4 @@ Chamadas explícitas de `audit({ action, ... })` para:
 - **Novo evento de domínio**: chamar `audit({ action: "<area>.<verb>", ... })` no ponto da operação. Adicionar label PT-BR.
 - **Novo actor type** (ex: `INTEGRATION` para chaves de API): adicionar no enum Prisma + migration.
 - **Redact novo campo sensível**: adicionar em `REDACTED_FIELDS`.
-- **Tela `/configuracoes/atividade`** (Sprint 7): query `prisma.auditLog.findMany({ where: { tenantUserId: session.user.id }, orderBy: { createdAt: "desc" } })`. Mapear `action` via `actionLabel`.
+- **Tela `/configuracoes/atividade`** (✅ implementada Sprint 10): `GET /api/account/activity` faz `prisma.auditLog.findMany({ where: { tenantUserId: session.user.id }, orderBy: { createdAt: "desc" }, take: 50, skip })` (paginado), mapeia `action` via `actionLabel`. Página client em `src/app/(dashboard)/configuracoes/atividade/page.tsx` (linkada do card em `/configuracoes`). O painel admin cross-tenant (`/admin/audit`) consome a mesma `AuditLog` — ver [`admin.md`](admin.md).

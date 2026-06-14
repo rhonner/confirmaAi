@@ -1001,8 +1001,8 @@ Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
 
 - [ ] **Dunning**: pagamento falhou → emails nos dias 1/3/7 + aviso de suspensão iminente (lifecycle PAST_DUE → SUSPENDED já existe; isto é a camada de comunicação).
 - [ ] Emails transacionais (Resend): boas-vindas, pagamento confirmado, cancelamento, próximo do limite (3/5 e 5/5).
-- [ ] `/configuracoes/atividade` (audit do próprio user).
-- [ ] `/admin/audit` (allowlist) + painel com % de tenants WhatsApp-conectados (métrica da Sprint 8) e casos `fraud.cpf_reused_owner`.
+- [x] **(fatia 1, 2026-06-13)** `/configuracoes/atividade` (audit do próprio user, tenant-scoped, paginado, labels PT-BR) — `GET /api/account/activity` + card linkado em `/configuracoes`. Ver [`../features/audit.md`](../features/audit.md).
+- [x] **(fatia 1, 2026-06-13)** `/admin/audit` (allowlist `ADMIN_EMAILS`, gate em layout+API) + painel: whatsappConnectedPct (métrica Sprint 8), usuários, pagantes ativos, casos `fraud.cpf_reused_owner` + auditoria recente cross-tenant. Gate negativo validado no Chrome. Ver [`../features/admin.md`](../features/admin.md). Régua: 187 vitest (+5 admin allowlist), 97 sprints (+4: 10.1-10.4).
 - [ ] Reset de conta Free (1×, com check de zero agendamentos).
 - [ ] Onboarding banner com upgrade CTA.
 - [ ] **Checkout com `User.cpf` null** (bug achado no teste de pagamento real 2026-06-12): Asaas cria o customer sem CPF mas rejeita a assinatura (`400: "preencher o CPF ou CNPJ do cliente"`). Afeta contas grandfathered (pré-Sprint 4). Fix: checkout retorna `CPF_REQUIRED` quando `user.cpf` null → página de checkout mostra campo CPF → salva em `User.cpf/cpfHash` → atualiza customer no Asaas (`POST /customers/{id}`) → segue. Workaround manual usado no teste: preencher CPF do cliente direto no painel Asaas.

@@ -495,3 +495,43 @@ export function useUpdateSettings() {
     },
   });
 }
+
+// ===== Auditoria (Sprint 10) =====
+
+export type ActivityItem = {
+  id: string;
+  createdAt: string;
+  action: string;
+  label: string;
+  actorType: string;
+  entityType: string | null;
+};
+
+export function useAccountActivity(page: number) {
+  return useQuery({
+    queryKey: ["account-activity", page],
+    queryFn: () => fetchPaginated<ActivityItem>(`/api/account/activity?page=${page}`),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export type AdminAuditRow = ActivityItem & { tenantUserId: string | null };
+
+export type AdminAuditData = {
+  metrics: {
+    whatsappConnectedPct: number;
+    whatsappConnected: number;
+    whatsappWithInstance: number;
+    totalUsers: number;
+    paidActive: number;
+  };
+  fraudCases: AdminAuditRow[];
+  recent: AdminAuditRow[];
+};
+
+export function useAdminAudit() {
+  return useQuery({
+    queryKey: ["admin-audit"],
+    queryFn: () => fetchApi<AdminAuditData>("/api/admin/audit"),
+  });
+}

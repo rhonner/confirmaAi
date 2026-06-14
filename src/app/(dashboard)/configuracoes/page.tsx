@@ -11,7 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { DollarSign, Save } from "lucide-react";
+import { DollarSign, Save, History, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { WhatsappConnection } from "@/components/settings/whatsapp-connection";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -400,6 +401,25 @@ export default function ConfiguracoesPage() {
           </Button>
         </div>
       </form>
+
+      <Link href="/configuracoes/atividade" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-muted p-2">
+                <History className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium">Atividade da conta</p>
+                <p className="text-sm text-muted-foreground">
+                  Histórico de logins, alterações, mensagens e cobrança
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   );
 }

@@ -18,6 +18,8 @@ const LABELS: Record<string, string> = {
   "auth.email_verify_failed": "Falha ao confirmar email",
 
   // Domain entities (Prisma extension)
+  "user.create": "Conta criada",
+  "user.delete": "Conta removida",
   "patient.create": "Paciente criado",
   "patient.update": "Paciente atualizado",
   "patient.delete": "Paciente removido",
@@ -30,8 +32,10 @@ const LABELS: Record<string, string> = {
   // WhatsApp
   "whatsapp.connected": "WhatsApp conectado",
   "whatsapp.disconnected": "WhatsApp desconectado",
+  "whatsapp.disconnected_with_pending": "WhatsApp desconectado (com agendamentos pendentes)",
   "whatsapp.qrcode_requested": "QR code solicitado",
   "whatsapp.connect_failed": "Falha ao conectar WhatsApp",
+  "evolution.health_failed": "Health-check do WhatsApp (Evolution) falhou",
 
   // Mensageria automática
   "cron.run": "Execução do agendador (cron)",
@@ -42,6 +46,11 @@ const LABELS: Record<string, string> = {
 
   // Billing
   "subscription.created": "Assinatura criada",
+  // Mutações auto-auditadas pela extensão Prisma (modelo Subscription)
+  "subscription.create": "Assinatura registrada",
+  "subscription.update": "Assinatura atualizada",
+  "subscription.upsert": "Assinatura atualizada",
+  "subscription.delete": "Assinatura removida",
   "subscription.upgraded": "Plano alterado para superior",
   "subscription.downgraded": "Plano alterado para inferior",
   "subscription.canceled": "Assinatura cancelada",

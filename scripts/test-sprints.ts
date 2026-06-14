@@ -31,7 +31,7 @@ if (process.env.NODE_ENV === "production") {
   throw new Error("não rodar em produção");
 }
 
-type Sprint = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 9;
+type Sprint = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 9 | 10;
 const results: Array<{ id: string; sprint: Sprint; pass: boolean; detail: string }> = [];
 function check(id: string, sprint: Sprint, pass: boolean, detail = "") {
   results.push({ id, sprint, pass, detail });
@@ -1284,6 +1284,73 @@ async function main() {
   );
 
   // ====================================================================
+  // SPRINT 10 — Receita passiva: atividade do usuário + painel admin
+  // ====================================================================
+  console.log("\n━━━ SPRINT 10 ━━━\n");
+
+  const { isAdminEmail, getAdminEmails } = await import("../src/lib/admin");
+
+  // 10.1 Allowlist de admin (pura)
+  const prevAdmin = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = " Boss@Clinica.com , dev@x.com ";
+  const adminOk =
+    isAdminEmail("boss@clinica.com") === true &&
+    isAdminEmail("BOSS@CLINICA.COM") === true &&
+    isAdminEmail("intruso@x.com") === false &&
+    isAdminEmail(null) === false &&
+    getAdminEmails().length === 2;
+  process.env.ADMIN_EMAILS = prevAdmin;
+  check("10.1 isAdminEmail: allowlist case-insensitive + nega fora da lista", 10, adminOk);
+
+  // 10.2 Atividade tenant-scoped: cada user só vê a própria trilha
+  const mark10 = "sprint10.activity_probe";
+  await prisma.auditLog.createMany({
+    data: [
+      { actorType: "USER", actorId: testUser.id, tenantUserId: testUser.id, action: mark10, ipAddress: "10.99.99.55" },
+      { actorType: "USER", actorId: proUser.id, tenantUserId: proUser.id, action: mark10, ipAddress: "10.99.99.55" },
+    ],
+  });
+  const mineActivity = await prisma.auditLog.findMany({
+    where: { tenantUserId: testUser.id, action: mark10 },
+    select: { tenantUserId: true },
+  });
+  check(
+    "10.2 Atividade tenant-scoped (query por tenantUserId não vaza outro tenant)",
+    10,
+    mineActivity.length === 1 && mineActivity.every((r) => r.tenantUserId === testUser.id),
+  );
+
+  // 10.3 Métrica whatsappConnectedPct (fórmula do painel admin)
+  const pctOf = (connected: number, withInstance: number) =>
+    withInstance > 0 ? Math.round((connected / withInstance) * 100) : 0;
+  const adminRouteSrc = readFileSync(join(root, "src/app/api/admin/audit/route.ts"), "utf8");
+  const adminLayoutSrc = readFileSync(join(root, "src/app/admin/layout.tsx"), "utf8");
+  check(
+    "10.3 Painel admin: gate isAdminEmail + 403 + métrica whatsappConnectedPct",
+    10,
+    pctOf(3, 4) === 75 &&
+      pctOf(0, 0) === 0 &&
+      adminRouteSrc.includes("isAdminEmail") &&
+      adminRouteSrc.includes("forbiddenResponse") &&
+      adminRouteSrc.includes("whatsappConnectedPct") &&
+      adminLayoutSrc.includes("isAdminEmail") &&
+      adminLayoutSrc.includes("redirect"),
+  );
+
+  // 10.4 Arquivos + wiring
+  const configSrc10 = readFileSync(join(root, "src/app/(dashboard)/configuracoes/page.tsx"), "utf8");
+  check(
+    "10.4 Páginas/rotas de auditoria existem + configuracoes linka atividade",
+    10,
+    exists("src/app/api/account/activity/route.ts") &&
+      exists("src/app/api/admin/audit/route.ts") &&
+      exists("src/app/(dashboard)/configuracoes/atividade/page.tsx") &&
+      exists("src/app/admin/layout.tsx") &&
+      exists("src/app/admin/audit/page.tsx") &&
+      configSrc10.includes("/configuracoes/atividade"),
+  );
+
+  // ====================================================================
   // CLEANUP
   // ====================================================================
   console.log("\n━━━ Limpando dados de teste ━━━");
@@ -1311,6 +1378,7 @@ async function main() {
   const sprint6 = results.filter((r) => r.sprint === 6);
   const sprint8 = results.filter((r) => r.sprint === 8);
   const sprint9 = results.filter((r) => r.sprint === 9);
+  const sprint10 = results.filter((r) => r.sprint === 10);
   const failed = results.filter((r) => !r.pass);
   console.log(`Sprint 1: ${sprint1.filter((r) => r.pass).length}/${sprint1.length}`);
   console.log(`Sprint 2: ${sprint2.filter((r) => r.pass).length}/${sprint2.length}`);
@@ -1320,6 +1388,7 @@ async function main() {
   console.log(`Sprint 6: ${sprint6.filter((r) => r.pass).length}/${sprint6.length}`);
   console.log(`Sprint 8: ${sprint8.filter((r) => r.pass).length}/${sprint8.length}`);
   console.log(`Sprint 9: ${sprint9.filter((r) => r.pass).length}/${sprint9.length}`);
+  console.log(`Sprint 10: ${sprint10.filter((r) => r.pass).length}/${sprint10.length}`);
   console.log(`Total:    ${results.filter((r) => r.pass).length}/${results.length}`);
   if (failed.length > 0) {
     console.log("\n❌ FAILED:");
