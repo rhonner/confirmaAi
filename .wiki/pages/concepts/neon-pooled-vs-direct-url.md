@@ -2,12 +2,14 @@
 title: Neon — URL pooled (runtime) vs direta (migrations)
 type: concept
 created: 2026-06-10
-updated: 2026-06-10
+updated: 2026-06-14
 tags: [neon, postgres, prisma, serverless, pooling, escala]
 sources:
   - raw/sessions/2026-06-10-sprint6-and-golive.md
+  - raw/sessions/2026-06-14-migration-incident-sprint10.md
 related:
   - pages/entities/prisma-v7-extensions.md
+  - pages/concepts/migrations-not-auto-applied.md
   - .context/plans/deployment-status.md
 status: stable
 ---
@@ -31,6 +33,10 @@ status: stable
 ## Gotcha Prisma
 
 Com o **driver adapter** (`@prisma/adapter-pg` → node-postgres) a URL pooled funciona **sem** o param `?pgbouncer=true` — esse param é coisa do engine nativo do Prisma (desativa prepared statements nomeados). Como o projeto usa `PrismaPg` obrigatório (Prisma v7), nada muda no código.
+
+## Implicação no auto-migrate (Sprint 10/fatia 2)
+
+Quando o `vercel-build` passou a rodar `prisma migrate deploy` no deploy (prevenção do [[migrations-not-auto-applied|incidente de migration]]), o migrate **precisa** da URL direta — DDL e os advisory locks do `prisma migrate` não funcionam confiáveis no PgBouncer (transaction mode). Solução: `prisma.config.ts` lê `process.env.DIRECT_URL ?? process.env.DATABASE_URL` (migrate prefere a direta; runtime continua na pooled via `src/lib/prisma.ts`). Ação de setup: cadastrar `DIRECT_URL` no Vercel = host **sem** `-pooler`.
 
 ## Por que isso importa pra premissa do produto
 

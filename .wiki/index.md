@@ -37,6 +37,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer | 2026-06-10 |
 | [claude-chrome-sensitive-domains](pages/concepts/claude-chrome-sensitive-domains.md) | `Permission denied` em site sensível = prompt da extensão (aprovável), não bloqueio duro; protocolo de retry + workflow de secrets | 2026-06-10 |
 | [optional-dependency-via-dynamic-import](pages/concepts/optional-dependency-via-dynamic-import.md) | Dependência opcional (Sentry) gated por env + `import(spec)` com specifier em variável + `webpackIgnore` → build verde sem o pacote; irmão de dev-fallback | 2026-06-13 |
+| [migrations-not-auto-applied](pages/concepts/migrations-not-auto-applied.md) | **Incidente**: Vercel `build` não roda migration → drift → login/signup quebram invisíveis (select-all findUnique; catch engolia). Fix `vercel-build: migrate deploy && next build` | 2026-06-14 |
+| [stateless-password-reset-token](pages/concepts/stateless-password-reset-token.md) | Reset single-use sem coluna/migration: HMAC(`NEXTAUTH_SECRET`+hash da senha) + TTL; trocar a senha invalida o token (padrão Django) | 2026-06-14 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -44,7 +46,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
-| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 sprints — Sprint 8 resiliência + 9 observabilidade fechadas), bugs do go-live, bloqueadores de marketing | 2026-06-13 |
+| [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 + Sprint 10 em progresso: admin/atividade, reset de senha, emails transacionais), incidente de migration, Sentry+UptimeRobot ativos | 2026-06-14 |
 
 ---
 
@@ -52,7 +54,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 5 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 6 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

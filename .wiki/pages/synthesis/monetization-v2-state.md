@@ -1,13 +1,14 @@
 ---
-title: Estado da monetização v2 — snapshot 2026-06-13 (v2 EM PRODUÇÃO, 9/11 sprints)
+title: Estado da monetização v2 — snapshot 2026-06-14 (v2 EM PRODUÇÃO, 9/11 + Sprint 10 em progresso)
 type: synthesis
 created: 2026-05-07
-updated: 2026-06-13
+updated: 2026-06-14
 tags: [billing, monetization, snapshot, roadmap]
 sources:
   - .context/plans/monetization-v2.md
   - raw/sessions/2026-05-07-sprint-1-3-monetizacao.md
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
+  - raw/sessions/2026-06-14-migration-incident-sprint10.md
 related:
   - .context/features/billing.md
   - .context/features/plan-quota.md
@@ -48,8 +49,8 @@ status: stable
 | 6 | Mensagens + gates + hardening escala scheduler | ✅ 2026-06-10 | `usage.ts` lazy-period, gate dedup `QUOTA_BLOCKED`, chunking 200/45s, índices compostos, audit `cron.run`, badge ≥50% |
 | 7 | Go-live (deploy produção) | ✅ 2026-06-12 | **V2 EM PRODUÇÃO E VENDENDO** — merge→main, 16/16 envs, smoke E2E completo (WhatsApp confirma + Pix paga e ativa Pro automático). 3 bugs reais corrigidos no caminho (ver abaixo). Marca unificada ConfirmaAí→Clínica Organizada. |
 | 8 | Resiliência WhatsApp **[nova]** | ✅ 2026-06-13 | Anti-churn silencioso: detecção CONNECTED→DISCONNECTED (webhook + poll), email + banner, sweep no cron com `shouldRenotifyDisconnected`, health-check Evolution, `whatsappConnectedPct`. `src/lib/email.ts` genérico extraído. 174→ vitest, 87 sprints |
-| 9 | Observabilidade **[nova]** | ✅ 2026-06-13 (monitor externo pendente) | `GET /api/health` (200/503) agrega cron/billing/evolution/db — `evaluateHealth` pura + testada. Seam `captureError` + `onRequestError` (Next 16); cron e webhook reportam com tenant. **Sentry opt-in 1-passo** via [[../concepts/optional-dependency-via-dynamic-import]] (não instalado, build verde). Operacional em `.context/features/observability.md`. **Falta**: criar monitores UptimeRobot (setup de conta externa). 182 vitest, 93 sprints |
-| 10 | Receita passiva: emails + admin (ex-7) | ⏳ | Dunning 1/3/7, transacionais, `/admin/audit`, retention 90d AuditLog |
+| 9 | Observabilidade **[nova]** | ✅ 2026-06-14 | `GET /api/health` (200/503) — `evaluateHealth` pura. `captureError` + `onRequestError`. **Sentry instalado + ATIVO em prod** (DSN no Vercel; validado via probe → evento real; padrão [[../concepts/optional-dependency-via-dynamic-import]]). **UptimeRobot** com 3 monitores. Op. em `.context/features/observability.md`. |
+| 10 | Receita passiva: emails + admin (ex-7) | 🔄 em progresso | **fatia 1 ✅** `/admin/audit` + `/configuracoes/atividade`. **fatia 2.1 ✅** reset de senha real ([[../concepts/stateless-password-reset-token]], validado em prod). **fatia 2.2 ✅** emails transacionais (boas-vindas/pagamento/cancelamento). **Falta**: fatia 2.3 (perto-do-limite + dunning 1/3/7), retention 90d AuditLog, reset conta Free, checkout CPF-null. ⚠️ **Incidente de migration** resolvido no caminho → [[../concepts/migrations-not-auto-applied]]. |
 | 11 | LGPD + legal (ex-8) | ⏳ pré-marketing | Termos/privacidade, export, delete account, NF-e, CNPJ no rodapé |
 
 ## 🚦 Bloqueadores de marketing (ordem de ataque)
