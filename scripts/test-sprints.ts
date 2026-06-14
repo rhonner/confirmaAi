@@ -1397,6 +1397,26 @@ async function main() {
       exists("src/lib/emails/layout.ts"),
   );
 
+  // 10.7 Emails transacionais (fatia 2.2): builders + senders fiados nos gatilhos
+  const { buildWelcomeEmail, buildPaymentConfirmedEmail, buildSubscriptionCanceledEmail } =
+    await import("../src/lib/emails/transactional");
+  const welcomeHtml = buildWelcomeEmail({ name: "Teste 10.7" }).html;
+  const payHtml = buildPaymentConfirmedEmail({ name: "x", planLabel: "Pro", periodEndLabel: "14/07/2026" }).html;
+  const cancelHtml = buildSubscriptionCanceledEmail({ name: "x", accessUntilLabel: "05/08/2026" }).html;
+  const verifySrc = readFileSync(join(root, "src/app/api/auth/verify-email/route.ts"), "utf8");
+  const cancelSrc = readFileSync(join(root, "src/app/api/billing/cancel/route.ts"), "utf8");
+  const webhookSrc10 = readFileSync(join(root, "src/app/api/billing/webhook/route.ts"), "utf8");
+  check(
+    "10.7 Transacionais: builders ok + boas-vindas/cancelamento/pagamento fiados",
+    10,
+    welcomeHtml.includes("Teste 10.7") &&
+      payHtml.includes("Pro") && payHtml.includes("14/07/2026") &&
+      cancelHtml.includes("05/08/2026") &&
+      verifySrc.includes("sendWelcomeEmail") &&
+      cancelSrc.includes("sendSubscriptionCanceledEmail") &&
+      webhookSrc10.includes("sendPaymentConfirmedEmail"),
+  );
+
   // ====================================================================
   // CLEANUP
   // ====================================================================

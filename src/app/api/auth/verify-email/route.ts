@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { audit, withFixedActor } from "@/lib/audit";
 import { verifyEmailToken } from "@/lib/anti-fraud/email-verification";
+import { sendWelcomeEmail } from "@/lib/emails/transactional";
+import { captureError } from "@/lib/observability";
 
 /**
  * Verifica o token de email enviado no signup. Redireciona para uma página
@@ -35,6 +38,17 @@ export const GET = withFixedActor(
       entityType: "User",
       entityId: result.userId,
     });
+
+    // Boas-vindas (best-effort — falha de email NÃO pode travar a ativação).
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: result.userId },
+        select: { name: true, email: true },
+      });
+      if (user) await sendWelcomeEmail({ to: user.email, name: user.name });
+    } catch (err) {
+      await captureError(err, { area: "request", extra: { route: "verify-email/welcome" } });
+    }
 
     return NextResponse.redirect(`${appUrl}/verificar-email?status=ok`);
   },

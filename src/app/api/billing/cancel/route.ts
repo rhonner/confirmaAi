@@ -7,6 +7,10 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { audit, auditWrap } from "@/lib/audit";
+import { sendSubscriptionCanceledEmail } from "@/lib/emails/transactional";
+import { captureError } from "@/lib/observability";
+import { formatInTimeZone, APP_TIMEZONE } from "@/lib/timezone";
+import { ptBR } from "date-fns/locale";
 import type { ApiResponse } from "@/lib/types/api";
 
 /**
@@ -40,6 +44,25 @@ export const POST = auditWrap(async (_req: NextRequest) => {
       entityId: sub.id,
       metadata: { plan: sub.plan, currentPeriodEnd: sub.currentPeriodEnd },
     });
+
+    // Email de cancelamento (best-effort — não trava a resposta).
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true, email: true },
+      });
+      if (user) {
+        await sendSubscriptionCanceledEmail({
+          to: user.email,
+          name: user.name,
+          accessUntilLabel: sub.currentPeriodEnd
+            ? formatInTimeZone(sub.currentPeriodEnd, APP_TIMEZONE, "dd/MM/yyyy", { locale: ptBR })
+            : undefined,
+        });
+      }
+    } catch (err) {
+      await captureError(err, { area: "request", extra: { route: "billing/cancel/email" } });
+    }
 
     return NextResponse.json<ApiResponse<{ canceled: true; periodEnd: string | null }>>({
       data: { canceled: true, periodEnd: sub.currentPeriodEnd?.toISOString() ?? null },

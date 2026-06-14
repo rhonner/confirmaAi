@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { audit, withFixedActor } from "@/lib/audit";
 import { getBillingProvider, eventToSubscriptionPatch, planTierFromPayload } from "@/lib/billing";
 import { captureError } from "@/lib/observability";
+import { sendPaymentConfirmedEmail } from "@/lib/emails/transactional";
+import { formatInTimeZone, APP_TIMEZONE } from "@/lib/timezone";
+import { ptBR } from "date-fns/locale";
+
+const PLAN_LABEL: Record<string, string> = { PRO: "Pro", PREMIUM: "Premium", FREE: "Free" };
 
 /**
  * Webhook do provider de cobrança (Asaas em prod, Mock em dev).
@@ -124,6 +129,34 @@ export const POST = withFixedActor(
               patch,
             },
           });
+
+          // Email "pagamento confirmado" — SÓ em ACTIVE, e em try/catch ISOLADO:
+          // falha de email NÃO pode cair no catch externo (que marcaria
+          // apply_failed / processedAt=null → /api/health acharia que travou).
+          if (patch.status === "ACTIVE") {
+            try {
+              const sub = await prisma.subscription.findUnique({
+                where: { userId },
+                select: { plan: true, currentPeriodEnd: true, user: { select: { name: true, email: true } } },
+              });
+              if (sub?.user) {
+                await sendPaymentConfirmedEmail({
+                  to: sub.user.email,
+                  name: sub.user.name,
+                  planLabel: PLAN_LABEL[sub.plan] ?? sub.plan,
+                  periodEndLabel: sub.currentPeriodEnd
+                    ? formatInTimeZone(sub.currentPeriodEnd, APP_TIMEZONE, "dd/MM/yyyy", { locale: ptBR })
+                    : undefined,
+                });
+              }
+            } catch (emailErr) {
+              await captureError(emailErr, {
+                area: "webhook",
+                tenantUserId: userId,
+                extra: { stage: "payment_confirmed_email" },
+              });
+            }
+          }
         } catch (err) {
           // Cliente pagou e o plano não subiu: alerta de receita, não só log.
           // O BillingEvent fica com processedAt=null → o /api/health também

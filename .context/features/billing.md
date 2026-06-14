@@ -63,6 +63,8 @@ UI: `src/app/(dashboard)/billing/checkout/page.tsx` mostra QR + botão "Copiar c
 
 **Sempre 200 após registrar** (provider retentaria em 5xx). Falhas no apply ficam pra reconciliação — e a partir da Sprint 9 não são silenciosas: o catch chama `captureError({ area: "webhook", tenantUserId })` (cliente pagou e plano não subiu = alerta de receita), e `GET /api/health` acende `billing: degraded` (503) se algum `BillingEvent.processedAt = null` passar de 1h. Ver [`observability.md`](observability.md).
 
+> **Emails transacionais (Sprint 10/fatia 2.2)**: no branch `PAYMENT_RECEIVED` (status→ACTIVE) o webhook dispara `sendPaymentConfirmedEmail` em **try/catch ISOLADO** — falha de email NÃO pode cair no catch externo (senão marcaria `apply_failed`/`processedAt=null` e o /api/health acharia o webhook travado). Cancelamento via `/api/billing/cancel` dispara `sendSubscriptionCanceledEmail` (best-effort). Senders em `src/lib/emails/transactional.ts`.
+
 ### Lifecycle (cron diário — defesa em profundidade)
 
 `runBillingMaintenance()` em `src/lib/services/billing-maintenance.ts`, chamado pelo `runSchedulerJobs()` (mesmo cron `/api/cron/run`):
