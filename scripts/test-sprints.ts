@@ -1350,6 +1350,53 @@ async function main() {
       configSrc10.includes("/configuracoes/atividade"),
   );
 
+  // 10.5 Reset de senha: token DB-backed valida e é single-use (integração)
+  const { makeResetToken, verifyResetToken } = await import(
+    "../src/lib/anti-fraud/password-reset"
+  );
+  const pwUser = await prisma.user.create({
+    data: {
+      name: "Reset Test",
+      email: `reset-${Date.now()}@t.local`,
+      password: await import("bcryptjs").then((b) => b.hash("senha-antiga", 10)),
+      clinicName: "Reset Clinic",
+      emailVerifiedAt: new Date(),
+    },
+  });
+  const freshUser = await prisma.user.findUnique({
+    where: { id: pwUser.id },
+    select: { password: true },
+  });
+  const resetToken = makeResetToken(pwUser.id, freshUser!.password);
+  const verifyOk = await verifyResetToken(resetToken);
+  // troca a senha (simula o reset) → token deve ficar inválido (single-use)
+  await prisma.user.update({
+    where: { id: pwUser.id },
+    data: { password: await import("bcryptjs").then((b) => b.hash("senha-nova", 10)) },
+  });
+  const verifyAfter = await verifyResetToken(resetToken);
+  check(
+    "10.5 Reset token DB valida e é single-use (inválido após trocar a senha)",
+    10,
+    verifyOk.ok === true &&
+      verifyOk.ok && verifyOk.userId === pwUser.id &&
+      verifyAfter.ok === false,
+    `before=${verifyOk.ok} after=${verifyAfter.ok}`,
+  );
+  await prisma.user.deleteMany({ where: { id: pwUser.id } });
+
+  // 10.6 Fluxo de reset montado (forgot não é mais stub + rota + página)
+  const forgotSrc = readFileSync(join(root, "src/app/api/auth/forgot-password/route.ts"), "utf8");
+  check(
+    "10.6 forgot-password envia email (não-stub) + reset-password + /redefinir-senha + email layout",
+    10,
+    forgotSrc.includes("sendPasswordResetEmail") &&
+      !forgotSrc.includes("email delivery not configured") &&
+      exists("src/app/api/auth/reset-password/route.ts") &&
+      exists("src/app/(auth)/redefinir-senha/page.tsx") &&
+      exists("src/lib/emails/layout.ts"),
+  );
+
   // ====================================================================
   // CLEANUP
   // ====================================================================

@@ -36,5 +36,14 @@ export const registerSchema = z.object({
   acceptedTerms: z.unknown().optional(),
 })
 
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10, "Token inválido"),
+  password: z
+    .string()
+    .min(6, "Senha deve ter pelo menos 6 caracteres")
+    .max(128, "Senha deve ter no máximo 128 caracteres"),
+})
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type RegisterInput = z.infer<typeof registerSchema>
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

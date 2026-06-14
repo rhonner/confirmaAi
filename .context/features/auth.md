@@ -12,7 +12,10 @@
 | Rota NextAuth       | `src/app/api/auth/[...nextauth]/route.ts`            |
 | Rota registro       | `src/app/api/auth/register/route.ts`                 |
 | Rota esqueci senha  | `src/app/api/auth/forgot-password/route.ts`          |
-| Páginas             | `src/app/(auth)/login/page.tsx`, `/registro`, `/esqueci-senha` |
+| Rota reset senha    | `src/app/api/auth/reset-password/route.ts` (Sprint 10/fatia 2) |
+| Token reset (stateless) | `src/lib/anti-fraud/password-reset.ts`           |
+| Layout de email     | `src/lib/emails/layout.ts`                           |
+| Páginas             | `src/app/(auth)/login/page.tsx`, `/registro`, `/esqueci-senha`, `/redefinir-senha` |
 | Layout              | `src/app/(auth)/layout.tsx`                          |
 | Tipos NextAuth      | `src/types/next-auth.d.ts`                           |
 | Modelo Prisma       | `User` em `prisma/schema.prisma`                     |
@@ -32,7 +35,8 @@
 | ------ | ----------------------------- | -------------------------------------- |
 | POST   | `/api/auth/register`          | Cria usuário + settings default        |
 | POST   | `/api/auth/[...nextauth]`     | Login/logout/csrf/session (NextAuth)   |
-| POST   | `/api/auth/forgot-password`   | Recuperação de senha (placeholder)     |
+| POST   | `/api/auth/forgot-password`   | Gera token + envia email de reset (anti-enumeration: sempre 200) |
+| POST   | `/api/auth/reset-password`    | Verifica token + troca a senha (single-use) |
 
 ## Helpers de resposta (em `auth-helpers.ts`)
 
@@ -56,7 +60,7 @@ serverErrorResponse(msg?)  // 500
 
 - **Não há refresh token explícito**: estratégia JWT pura, expiração padrão do NextAuth.
 - **Não há roles/permissões**: cada usuário só vê seus próprios dados (multi-tenancy por `userId`).
-- **`forgot-password`** existe como rota mas a implementação é placeholder — verificar antes de usar.
+- **Reset de senha (Sprint 10/fatia 2)** — implementado de verdade (era stub que não enviava nada): `forgot-password` gera **token assinado stateless** (`makeResetToken` — HMAC de `NEXTAUTH_SECRET + hash atual da senha`, TTL 1h) e envia o link via Resend (`sendPasswordResetEmail`, layout em `emails/layout.ts`); `reset-password` valida (`verifyResetToken`) e troca a senha. **Single-use sem coluna/migration**: ao trocar a senha o hash muda → o token deixa de validar. Anti-enumeration: forgot sempre responde 200. Dev sem `RESEND_API_KEY` → link no console (`[password-reset] link ...`).
 - **Frontend autoriza via `useSession`** em `(dashboard)/layout.tsx` (redireciona para `/login` se `unauthenticated`).
 - **Auditoria** (Sprint 1 — monetização v2): `authorize` emite `audit("auth.login.success" | "auth.login.failed" + reason)` com IP/UA capturados do `req` do NextAuth. `events.signOut` emite `auth.logout`. `register` emite `signup.attempt` (sempre) + `auth.register` (em sucesso) e cria `Subscription { plan: FREE, status: ACTIVE }` em transação atômica com User+Settings. `forgot-password` emite `auth.password_reset_requested`.
 - **Rate limit login** (Sprint 1 hardening, baseado em queries no `AuditLog`): bloqueia após **10 falhas em 5min** do mesmo IP (audit `auth.login.rate_limited`). Sem dependência de Redis.

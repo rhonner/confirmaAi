@@ -999,8 +999,9 @@ Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
 
 > Ex-Sprint 7. Dunning automático é motor de receita, não cosmético: recupera churn involuntário (cartão falhou) sem ação humana.
 
-- [ ] **Dunning**: pagamento falhou → emails nos dias 1/3/7 + aviso de suspensão iminente (lifecycle PAST_DUE → SUSPENDED já existe; isto é a camada de comunicação).
-- [ ] Emails transacionais (Resend): boas-vindas, pagamento confirmado, cancelamento, próximo do limite (3/5 e 5/5).
+- [ ] **Dunning**: pagamento falhou → emails nos dias 1/3/7 + aviso de suspensão iminente (lifecycle PAST_DUE → SUSPENDED já existe; isto é a camada de comunicação). _(fatia 2.3 — pendente)_
+- [ ] Emails transacionais (Resend): boas-vindas, pagamento confirmado, cancelamento, próximo do limite (3/5 e 5/5). _(fatia 2.2 — pendente; layout reutilizável já pronto)_
+- [x] **(fatia 2.1, 2026-06-14)** **Reset de senha real** (era stub que não enviava — bug achado ao vivo): `forgot-password` gera token **assinado stateless** (HMAC `NEXTAUTH_SECRET`+hash da senha, TTL 1h, single-use sem migration) + envia via Resend; `POST /api/auth/reset-password` + página `/redefinir-senha`; **layout de email reutilizável** (`src/lib/emails/layout.ts`) — fundação das demais. Ver [`../features/auth.md`](../features/auth.md). Régua: 194 vitest (+7), 99 sprints (+2: 10.5-10.6). UI: forgot gera link real no console (não-stub) + página renderiza; troca/single-use coberto por 10.5. Render do form a confirmar em prod (deslogado).
 - [x] **(fatia 1, 2026-06-13)** `/configuracoes/atividade` (audit do próprio user, tenant-scoped, paginado, labels PT-BR) — `GET /api/account/activity` + card linkado em `/configuracoes`. Ver [`../features/audit.md`](../features/audit.md).
 - [x] **(fatia 1, 2026-06-13)** `/admin/audit` (allowlist `ADMIN_EMAILS`, gate em layout+API) + painel: whatsappConnectedPct (métrica Sprint 8), usuários, pagantes ativos, casos `fraud.cpf_reused_owner` + auditoria recente cross-tenant. Gate negativo validado no Chrome. Ver [`../features/admin.md`](../features/admin.md). Régua: 187 vitest (+5 admin allowlist), 97 sprints (+4: 10.1-10.4).
 - [ ] Reset de conta Free (1×, com check de zero agendamentos).

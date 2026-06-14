@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   "auth.register": "Cadastro de conta",
   "auth.password_reset_requested": "Pedido de recuperação de senha",
   "auth.password_reset_completed": "Senha redefinida",
+  "auth.password_reset_failed": "Falha ao redefinir senha",
   "auth.login.rate_limited": "Login bloqueado por excesso de tentativas",
   "auth.email_verified": "Email confirmado",
   "auth.email_verify_failed": "Falha ao confirmar email",
