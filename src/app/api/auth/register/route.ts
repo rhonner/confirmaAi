@@ -16,6 +16,7 @@ import {
   sendVerificationEmail,
 } from "@/lib/anti-fraud/email-verification"
 import { detectOwnerCpfReuse } from "@/lib/anti-fraud/owner-cpf-dedup"
+import { captureError } from "@/lib/observability"
 import type { ApiResponse } from "@/lib/types/api"
 
 export const POST = auditWrap(async (request: NextRequest) => {
@@ -236,7 +237,10 @@ export const POST = auditWrap(async (request: NextRequest) => {
       { status: 201 },
     )
   } catch (error) {
-    console.error("Register error:", error)
+    // 500 no signup = ninguém consegue se cadastrar. Reporta pro Sentry com
+    // contexto (este incidente — migration pendente em prod — ficou invisível
+    // 1 dia justamente por o erro ser engolido aqui sem alerta).
+    await captureError(error, { area: "request", extra: { route: "/api/auth/register" } })
     return NextResponse.json<ApiResponse>(
       { error: "Erro ao criar usuário" },
       { status: 500 },

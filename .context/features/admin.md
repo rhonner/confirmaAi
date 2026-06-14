@@ -45,6 +45,8 @@ Confirmado via Chrome MCP (seed user em `ADMIN_EMAILS`, dev server):
 2. ✅ **Gate**: removido o email do `ADMIN_EMAILS` + restart → `/admin/audit` **redireciona pra `/dashboard`** (sem painel, sem erro).
 3. ✅ Métricas batem com o DB local (Usuários 2, Pagantes 1, fraude 32).
 
+**Validado em PRODUÇÃO (2026-06-14)**: logado como `rhonner.matheus@gmail.com` (em `ADMIN_EMAILS` do Vercel) → painel renderiza (WhatsApp 33%, Usuários 11, Pagantes 2, fraude 0) + auditoria cross-tenant real. Gate negativo também validado em prod (testepagto2, não-admin → redirect `/dashboard`).
+
 ## Como estender
 
 - **Nova métrica**: adicionar no `Promise.all` da rota + card em `page.tsx`.

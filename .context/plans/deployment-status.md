@@ -1,7 +1,31 @@
 # Deployment Status — Stop & Resume Snapshot
 
 > Snapshot do progresso de subir a infraestrutura de produção do ConfirmaAí.
-> **Última atualização**: 2026-06-10 (Sprint 7 em andamento — auditoria completa do estado real).
+> **Última atualização**: 2026-06-14 (incidente de migration + runbook).
+
+---
+
+## 🔴→✅ INCIDENTE 2026-06-14 — migration pendente quebrou login/signup em prod (RESOLVIDO)
+
+> **RESOLVIDO 2026-06-14**: `prisma migrate deploy` aplicado em prod via URL **direct** do Neon (`ep-divine-recipe-acbdf1sw...` sem `-pooler`) — `migrate status` confirmou que só faltava a Sprint 8; aplicada (aditiva). Login + signup + painel admin (`/admin/audit` com `rhonner.matheus@gmail.com`) validados em produção logo após. Prevenção abaixo (vercel-build auto-migrate etc.) pendente de push.
+
+
+**Sintoma**: `POST /api/auth/register` → 500 "Erro ao criar usuário"; login novo → "email ou senha incorreto" (falso). **~1 dia** sem conseguir cadastrar/logar conta nova em produção.
+
+**Causa raiz**: a migration `20260612230508_whatsapp_disconnect_tracking` (Sprint 8, `ADD COLUMN whatsappDisconnectedAt/whatsappDisconnectNotifiedAt` em `User`) foi **deployada no código mas não aplicada no banco de prod** — o `build` da Vercel era só `next build`, não roda migration. O Prisma Client deployado faz `findUnique` em User **sem `select`** (em `authorize()` e no `register`), seleciona a coluna inexistente → `PrismaClientKnownRequestError: column does not exist`.
+
+**Por que ficou invisível 1 dia**: sessões JWT antigas usam `select:{id}` (não tocam a coluna); /api/health, dashboard, atividade idem. Só os 2 caminhos select-all (login + register-exists-check) quebraram. E o catch do register **engolia** o erro sem reportar (corrigido — agora `captureError` → Sentry).
+
+**Fix imediato**: `prisma migrate deploy` contra a URL **direct** do Neon (ver runbook abaixo). Sem redeploy — volta na hora.
+
+**Prevenção aplicada (2026-06-14)**:
+- `package.json` → **`vercel-build`: `prisma migrate deploy && next build`** — todo deploy aplica pendentes; migration que falha **bloqueia o deploy** (fail-safe). `build` local segue `next build` (DB-free).
+- `prisma.config.ts` → migrations usam `DIRECT_URL ?? DATABASE_URL` (DDL no Neon precisa de conexão direta, sem pgbouncer).
+- `scripts/migrate-prod.sh` → runbook manual/emergência (status + deploy, com confirmação).
+- `captureError` no catch do `register` → 500 de signup agora alerta no Sentry.
+- **Ação do fundador (1×)**: cadastrar **`DIRECT_URL`** no Vercel (conexão direta Neon, host **sem** `-pooler`) pra o `vercel-build` migrar de forma robusta. Sem ela, cai no `DATABASE_URL` pooled (DDL pode falhar no pgbouncer).
+
+> Pattern relacionado: [`.wiki/pages/concepts/neon-pooled-vs-direct-url.md`](../../.wiki/pages/concepts/neon-pooled-vs-direct-url.md).
 
 ---
 

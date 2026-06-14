@@ -10,6 +10,10 @@ export default defineConfig({
     seed: "npx tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations (DDL) preferem a conexão DIRECT (sem pgbouncer/-pooler):
+    // o pooler do Neon em transaction mode quebra advisory locks que o
+    // `prisma migrate` usa. Runtime continua na pooled (ver src/lib/prisma.ts).
+    // Fallback p/ DATABASE_URL mantém o dev local (sem pooler) funcionando.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
