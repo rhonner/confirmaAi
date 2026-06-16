@@ -95,6 +95,8 @@ function getStatusColor(status: string) {
       return "bg-green-500/10 text-green-700 dark:text-green-400";
     case "PENDING":
       return "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400";
+    case "NOT_CONFIRMED":
+      return "bg-orange-500/10 text-orange-700 dark:text-orange-400";
     case "NO_SHOW":
       return "bg-red-500/10 text-red-700 dark:text-red-400";
     case "CANCELED":
@@ -110,6 +112,8 @@ function getStatusLabel(status: string) {
       return "Confirmado";
     case "PENDING":
       return "Pendente";
+    case "NOT_CONFIRMED":
+      return "Não confirmado";
     case "NO_SHOW":
       return "Faltou";
     case "CANCELED":
@@ -258,20 +262,8 @@ function UpcomingAppointments() {
                       </p>
                     </div>
                   </div>
-                  <Badge
-                    className={
-                      apt.status === "CONFIRMED"
-                        ? "bg-green-500/10 text-green-700 dark:text-green-400"
-                        : apt.status === "PENDING"
-                        ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400"
-                        : "bg-gray-500/10 text-gray-700 dark:text-gray-400"
-                    }
-                  >
-                    {apt.status === "CONFIRMED"
-                      ? "Confirmado"
-                      : apt.status === "PENDING"
-                      ? "Pendente"
-                      : apt.status}
+                  <Badge className={getStatusColor(apt.status)}>
+                    {getStatusLabel(apt.status)}
                   </Badge>
                 </div>
               );
