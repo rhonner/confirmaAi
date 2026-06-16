@@ -227,6 +227,15 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
   }
+  /* Native <select> dropdowns: the option popup doesn't inherit the trigger's
+     (translucent) background. On Chromium/Windows that renders a white menu
+     with near-invisible light text in dark mode (macOS uses the OS menu and is
+     unaffected). Force solid theme colors on the options so the popup is
+     readable on every platform. */
+  select option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
 }
 
 /* Glassmorphism Utilities - work in BOTH light and dark modes */
