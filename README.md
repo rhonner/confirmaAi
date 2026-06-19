@@ -4,9 +4,11 @@ Sistema de Controle de Faltas com Confirmacao Automatica via WhatsApp.
 
 SaaS para clinicas, psicologos, dentistas, estetica e saloes que resolve o problema de faltas e no-shows em agendamentos. Envia confirmacoes automaticas via WhatsApp, rastreia taxas de faltas e ajuda profissionais a reduzirem prejuizos.
 
+> **Para agentes/IA:** a fonte de verdade operacional é [`.context/README.md`](.context/README.md). Fluxogramas (sistema + fluxo de dev com agentes): [`fluxogramas.html`](fluxogramas.html).
+
 ## Stack
 
-- **Framework**: Next.js 14+ (App Router) com TypeScript
+- **Framework**: Next.js 16 (App Router) com TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui
 - **ORM**: Prisma v7 com PostgreSQL
 - **Auth**: NextAuth.js v4 (credentials provider, JWT)
@@ -49,9 +51,9 @@ O app estara disponivel em `http://localhost:3000`.
 
 ### Credenciais de Teste (apos seed)
 
-- **Email**: admin@teste.com
+- **Email**: rhonner.matheus@gmail.com
 - **Senha**: 123456
-- **Clinica**: Clinica Saude Total
+- **Clinica**: Clínica Saúde Total
 
 ## Variaveis de Ambiente
 
@@ -60,15 +62,18 @@ O app estara disponivel em `http://localhost:3000`.
 | `DATABASE_URL` | Connection string PostgreSQL |
 | `NEXTAUTH_SECRET` | Segredo para JWT do NextAuth |
 | `NEXTAUTH_URL` | URL da aplicacao (http://localhost:3000) |
-| `EVOLUTION_API_URL` | URL da instancia Evolution API |
+| `DIRECT_URL` | Connection string PostgreSQL **direta** (Neon, host sem `-pooler`) — usada para migrations no deploy |
+| `EVOLUTION_API_URL` | URL da Evolution API |
 | `EVOLUTION_API_KEY` | API key da Evolution API |
-| `EVOLUTION_INSTANCE_NAME` | Nome da instancia no Evolution |
+| `EVOLUTION_WEBHOOK_BASE_URL` | URL base p/ o webhook da Evolution (fallback: `NEXT_PUBLIC_APP_URL`) |
+
+> ℹ️ A instância da Evolution é **uma por usuário**, criada/nomeada automaticamente e conectada via QR code em `/configuracoes` — não há nome de instância global em env.
 
 ## Configurar Evolution API
 
 1. Instale a [Evolution API](https://github.com/EvolutionAPI/evolution-api) via Docker
 2. Crie uma instancia e conecte seu WhatsApp via QR code
-3. Configure o webhook da instancia para apontar para `{SUA_URL}/api/webhook/whatsapp`
+3. Configure o webhook da instancia para apontar para `{SUA_URL}/api/webhook/evolution/[instance]`
 4. Preencha as variaveis `EVOLUTION_API_*` no `.env`
 
 ## Telas
@@ -164,4 +169,4 @@ npm run db:studio  # Prisma Studio (GUI do banco)
 | GET/PUT/DELETE | /api/appointments/[id] | Detalhe/editar/remover agendamento |
 | GET | /api/dashboard | Metricas do mes |
 | GET/PUT | /api/settings | Configuracoes |
-| POST | /api/webhook/whatsapp | Webhook Evolution API |
+| POST | /api/webhook/evolution/[instance] | Webhook Evolution API |

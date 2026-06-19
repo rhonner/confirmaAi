@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fluxogramas · ConfirmaAí</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  :root{
+    --primary:#0891B2; --secondary:#22D3EE; --cta:#059669; --amber:#E6A33E;
+    --bg:#ECFEFF; --bg2:#F6FEFF; --ink:#0F3A47; --ink2:#164E63; --muted:#5B7780; --line:#CFE6EC;
+    --red:#DC2626; --slate:#5B7780;
+    --font:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:
+     radial-gradient(1100px 600px at 80% -10%, #d6f6fb 0%, rgba(214,246,251,0) 55%),
+     radial-gradient(900px 520px at -5% 0%, #e3fff4 0%, rgba(227,255,244,0) 50%),
+     var(--bg);
+    color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .wrap{max-width:1320px;margin:0 auto;padding:26px 22px 80px}
+
+  /* header */
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--primary),var(--cta));
+    display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 6px 18px rgba(8,145,178,.28)}
+  .logo svg{width:21px;height:21px}
+  h1{font-size:22px;font-weight:800;margin:0;letter-spacing:-.01em;color:var(--ink2)}
+  h1 small{display:block;font-size:12.5px;font-weight:500;color:var(--muted);margin-top:2px;letter-spacing:0}
+
+  /* tabs */
+  .tabs{display:flex;gap:8px;margin:22px 0 6px;flex-wrap:wrap}
+  .tab{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:#fff;color:var(--ink2);
+    padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all .18s ease;
+    box-shadow:0 1px 2px rgba(20,78,99,.05)}
+  .tab:hover{border-color:var(--secondary);box-shadow:0 4px 14px rgba(8,145,178,.12);transform:translateY(-1px)}
+  .tab .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .tab.sel{background:linear-gradient(135deg,var(--primary),var(--cta));color:#fff;border-color:transparent;
+    box-shadow:0 8px 20px rgba(8,145,178,.28)}
+  .tab.sel .dot{background:#fff !important}
+
+  /* panel */
+  .panel{display:none;margin-top:14px}
+  .panel.show{display:block;animation:fade .4s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .caption{font-size:14px;color:var(--ink2);line-height:1.55;background:#fff;border:1px solid var(--line);
+    border-left:4px solid var(--primary);border-radius:12px;padding:13px 16px;margin-bottom:14px;max-width:none}
+  .caption b{color:var(--ink2)}
+  .meta{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 2px 12px;font-size:12.5px;color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap}
+  .legend .li{display:flex;align-items:center;gap:7px}
+  .legend .sw{width:13px;height:13px;border-radius:4px;flex:none}
+  .hint{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+
+  /* transport bar */
+  .transport{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);
+    border-radius:14px;padding:9px 12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(20,78,99,.06)}
+  .tp{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:#f4fdff;color:var(--ink2);
+    padding:8px 13px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s ease}
+  .tp:hover{border-color:var(--secondary);background:#eafbff}
+  .tp.play{background:linear-gradient(135deg,var(--primary),var(--cta));color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(8,145,178,.25);min-width:138px;justify-content:center}
+  .tp.play:hover{filter:brightness(1.06)}
+  .tsep{width:1px;height:24px;background:var(--line)}
+  .transport .lbl{font-size:12px;color:var(--muted)}
+  .transport input[type=range]{accent-color:var(--primary);width:118px;cursor:pointer}
+  .transport .amb{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);cursor:pointer;user-select:none}
+  .transport .amb input{accent-color:var(--cta);cursor:pointer}
+
+  /* svg shell */
+  .stage{background:linear-gradient(180deg,#ffffff, #fbfeff);border:1px solid var(--line);border-radius:18px;
+    padding:6px;box-shadow:0 12px 34px rgba(20,78,99,.08);overflow-x:auto}
+  .svgwrap{display:block}
+  .svgwrap svg{display:block;width:100%;height:auto}
+
+  /* nodes (inside foreignObject) */
+  .node{width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:3px;
+    border-radius:13px;padding:9px 13px;background:#fff;border:1px solid var(--line);
+    border-left:5px solid var(--nc);box-shadow:0 2px 6px rgba(20,78,99,.09);overflow:hidden;
+    transition:box-shadow .25s ease, border-color .25s ease}
+  .node .nt{font-weight:700;font-size:13px;color:var(--ink);line-height:1.18}
+  .node .ns{font-size:11px;color:var(--muted);line-height:1.32}
+  .node.auto{border-style:dashed;background:#f3fffb;border-left-style:solid}
+  .node.note{background:#fff8ea;border-style:dashed;border-left-style:dashed}
+  .node.note .nt{font-size:12px;color:#8a6a1e}
+  .node.note .ns{color:#9b7d35}
+  .node.startend{align-items:center;justify-content:center;text-align:center;border-radius:34px;border:none;
+    background:linear-gradient(135deg,var(--nc),var(--nc2));box-shadow:0 6px 16px rgba(8,145,178,.22)}
+  .node.startend .nt{color:#fff;font-size:13.5px;font-weight:800}
+  .node.startend .ns{color:rgba(255,255,255,.9)}
+  .chip{align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    padding:2px 7px;border-radius:20px;color:#fff;background:var(--nc);margin-bottom:1px}
+  .dec{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;padding:0 16px}
+  .dec .nt{font-size:12.5px;font-weight:800;color:var(--ink);line-height:1.15}
+  .dec .ns{font-size:10px;color:var(--muted);line-height:1.25}
+
+  .nd{cursor:default}
+  .decpoly{transition:stroke-width .25s ease, filter .25s ease}
+  .edge{fill:none;transition:opacity .18s ease}
+  .elab rect{transition:opacity .18s ease}.elab text{font-weight:700}
+
+  /* hover highlight */
+  .svgwrap.on .nd:not(.hot){opacity:.32}
+  .svgwrap.on .edge:not(.hot){opacity:.12}
+  .svgwrap.on .elab:not(.hot){opacity:.12}
+
+  /* ===== animação ===== */
+  @keyframes march{to{stroke-dashoffset:-30}}
+  .svgwrap .edge.flow{stroke-dasharray:8 7;animation:march 1.05s linear infinite}
+  .svgwrap .edge.loop{animation:march 1.5s linear infinite}
+  .svgwrap.noamb .edge.flow,.svgwrap.noamb .edge.loop{animation:none}
+  .token{pointer-events:none}
+  .nd.active .node{box-shadow:0 0 0 3px var(--nc), 0 12px 30px rgba(8,145,178,.30)}
+  .nd.active .node.startend{box-shadow:0 0 0 4px rgba(255,255,255,.75), 0 14px 32px rgba(8,145,178,.5)}
+  .nd.active .decpoly{stroke-width:3.6;filter:drop-shadow(0 0 11px var(--nc))}
+  .nd.active .node, .nd.active .decpoly{animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{filter:drop-shadow(0 0 4px var(--nc))}50%{filter:drop-shadow(0 0 14px var(--nc))}}
+  .nd.active .node{animation:pulseShadow 1.2s ease-in-out infinite}
+  @keyframes pulseShadow{0%,100%{box-shadow:0 0 0 3px var(--nc),0 10px 24px rgba(8,145,178,.22)}50%{box-shadow:0 0 0 4px var(--nc),0 12px 34px rgba(8,145,178,.42)}}
+
+  @media (prefers-reduced-motion: reduce){
+    .svgwrap .edge.flow,.svgwrap .edge.loop{animation:none !important}
+    .nd.active .node,.nd.active .decpoly{animation:none !important}
+    .panel.show{animation:none}
+  }
+
+  footer{margin-top:26px;font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
+  footer code{background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink2)}
+  @media print{.tabs,.hint,.transport{display:none}.panel{display:block !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h1>Fluxogramas · ConfirmaAí<small>Como o sistema funciona · Como codar com os agentes do projeto</small></h1>
+  </header>
+
+  <div class="tabs">
+    <button class="tab sel" data-tab="sistema"><span class="dot" style="background:var(--primary)"></span>Como o sistema funciona</button>
+    <button class="tab" data-tab="dev"><span class="dot" style="background:var(--cta)"></span>Como codar com os agentes</button>
+  </div>
+
+  <section class="panel show" id="panel-sistema">
+    <div class="caption" id="cap-sistema"></div>
+    <div class="meta">
+      <div class="legend" id="leg-sistema"></div>
+      <div class="hint">↳ passe o mouse num passo para destacar as conexões</div>
+    </div>
+    <div class="transport" data-for="sistema">
+      <button class="tp play" data-act="toggle">▶ <span class="t">Animar fluxo</span></button>
+      <button class="tp" data-act="restart" title="Reiniciar">↺ Reiniciar</button>
+      <span class="tsep"></span>
+      <span class="lbl">Velocidade</span>
+      <input type="range" class="speed" min="0.5" max="2.2" step="0.1" value="1">
+      <span class="tsep"></span>
+      <label class="amb"><input type="checkbox" class="ambchk" checked> fluxo contínuo</label>
+    </div>
+    <div class="stage"><div class="svgwrap" id="svg-sistema"></div></div>
+  </section>
+
+  <section class="panel" id="panel-dev">
+    <div class="caption" id="cap-dev"></div>
+    <div class="meta">
+      <div class="legend" id="leg-dev"></div>
+      <div class="hint">↳ as setas tracejadas vermelhas são os loops de "volta e corrige"</div>
+    </div>
+    <div class="transport" data-for="dev">
+      <button class="tp play" data-act="toggle">▶ <span class="t">Animar fluxo</span></button>
+      <button class="tp" data-act="restart" title="Reiniciar">↺ Reiniciar</button>
+      <span class="tsep"></span>
+      <span class="lbl">Velocidade</span>
+      <input type="range" class="speed" min="0.5" max="2.2" step="0.1" value="1">
+      <span class="tsep"></span>
+      <label class="amb"><input type="checkbox" class="ambchk" checked> fluxo contínuo</label>
+    </div>
+    <div class="stage"><div class="svgwrap" id="svg-dev"></div></div>
+  </section>
+
+  <footer>
+    Gerado para o ConfirmaAí · fonte de verdade operacional: <code>.context/README.md</code> · feito para abrir no navegador (também imprime / vira PDF via Ctrl/Cmd+P).
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   Renderizador declarativo de fluxograma (SVG) + animação:
+   token brilhante percorrendo o fluxo, nós acendendo em
+   sequência e arestas "marchando" — controlado pela barra.
+   Suporta swimlanes (várias raias) e pipeline (1 coluna).
+   ============================================================ */
+const SVGNS='http://www.w3.org/2000/svg', XHTML='http://www.w3.org/1999/xhtml';
+function E(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function fo(x,y,w,h,html,parent){const f=E('foreignObject',{x,y,width:w,height:h},parent);const d=document.createElementNS(XHTML,'div');d.style.width='100%';d.style.height='100%';d.innerHTML=html;f.appendChild(d);return f;}
+function esc(s){return (s==null?'':s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const PAL={primary:'#0891B2',secondary:'#22D3EE',cta:'#059669',amber:'#E6A33E'};
+
+/* ---------------- DIAGRAMA 1 — SISTEMA (swimlanes) ---------------- */
+const SISTEMA={
+  caption:'Jornada de ponta a ponta do produto: o <b>profissional</b> cria a conta e configura, o <b>sistema</b> automatiza a confirmação via WhatsApp e mede as faltas, e o <b>paciente</b> responde pelo WhatsApp. As três raias mostram quem faz o quê; as setas cruzando as raias são as interações.',
+  lanes:[
+    {title:'Profissional (dono da clínica)',color:PAL.primary},
+    {title:'Sistema ConfirmaAí',color:PAL.cta},
+    {title:'Paciente (WhatsApp)',color:PAL.amber},
+  ],
+  legend:[
+    {label:'Profissional',color:PAL.primary},
+    {label:'Sistema / automação',color:PAL.cta},
+    {label:'Paciente',color:PAL.amber},
+  ],
+  nodes:[
+    {id:'s0',lane:0,row:0,type:'start',title:'Acessa o ConfirmaAí'},
+    {id:'s1',lane:0,row:1,type:'process',title:'Cria a conta',sub:'nome, e-mail, senha, clínica, CPF'},
+    {id:'s2',lane:1,row:2,type:'process',title:'Cria a conta com anti-fraude',sub:'User + Settings + assinatura FREE · envia e-mail de verificação'},
+    {id:'s3',lane:1,row:3,type:'decision',title:'E-mail verificado?'},
+    {id:'s3b',lane:0,row:3,type:'note',title:'Sem verificar',sub:'criar paciente / agendamento fica bloqueado (paywall)'},
+    {id:'s4',lane:0,row:4,type:'process',title:'Faz login',sub:'NextAuth · sessão JWT'},
+    {id:'s5',lane:0,row:5,type:'process',title:'Configura a clínica',sub:'valor médio · antecedência 24h e 6h · templates {nome}{data}{hora}{clinica}'},
+    {id:'s6',lane:0,row:6,type:'process',title:'Conecta o WhatsApp',sub:'escaneia o QR — Evolution, 1 instância por conta → CONNECTED'},
+    {id:'s7',lane:0,row:7,type:'process',title:'Cadastra pacientes',sub:'nome + WhatsApp · plano FREE = 5 vagas vitalícias'},
+    {id:'s8',lane:0,row:8,type:'process',title:'Cria agendamento',sub:'valida conflito + data futura → status PENDING'},
+    {id:'s9',lane:1,row:9,type:'auto',title:'Cron a cada 30 min',sub:'varre os agendamentos PENDING'},
+    {id:'s10',lane:1,row:10,type:'process',title:'T-24h: envia confirmação',sub:'WhatsApp (só se CONNECTED) + registra MessageLog'},
+    {id:'s11',lane:2,row:11,type:'process',title:'Recebe no WhatsApp',sub:'"responda 1 para confirmar ou 2 para cancelar"'},
+    {id:'s12',lane:2,row:12,type:'decision',title:'Responde a tempo?'},
+    {id:'s13',lane:1,row:13,type:'process',title:'Sim → atualiza status',sub:'1 → CONFIRMED · 2 → CANCELED (webhook + confirmedAt)'},
+    {id:'s14',lane:2,row:13,type:'process',title:'Não responde',sub:'T-6h envia lembrete; passou do horário e ainda PENDING → NO_SHOW'},
+    {id:'s16',lane:1,row:14,type:'process',title:'Dashboard atualiza',sub:'taxa de confirmação, faltas, prejuízo estimado, gráfico semanal'},
+    {id:'s17',lane:0,row:15,type:'end',title:'Acompanha e reduz faltas',sub:'cresceu? assina o PRO — R$ 97/mês'},
+  ],
+  edges:[
+    {from:'s0',to:'s1'},
+    {from:'s1',to:'s2'},
+    {from:'s2',to:'s3'},
+    {from:'s3',to:'s3b',label:'Não',kind:'no'},
+    {from:'s3',to:'s4',label:'Sim',kind:'yes'},
+    {from:'s4',to:'s5'},
+    {from:'s5',to:'s6'},
+    {from:'s6',to:'s7'},
+    {from:'s7',to:'s8'},
+    {from:'s8',to:'s9'},
+    {from:'s9',to:'s10'},
+    {from:'s10',to:'s11'},
+    {from:'s11',to:'s12'},
+    {from:'s12',to:'s13',label:'responde 1 ou 2',kind:'yes'},
+    {from:'s12',to:'s14',label:'ignora',kind:'no'},
+    {from:'s13',to:'s16'},
+    {from:'s14',to:'s16'},
+    {from:'s16',to:'s17'},
+  ],
+  walk:['s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','s12','s13','s16','s17'],
+};
+
+/* ---------------- DIAGRAMA 2 — DEV COM AGENTES (pipeline 1 coluna) ---------------- */
+const A=PAL.primary, H=PAL.amber;
+const DEV={
+  caption:'Como uma tarefa vira código no ConfirmaAí. O <b>orquestrador + agentes</b> (azul) fazem o trabalho; <b>você</b> (âmbar) só decide nos checkpoints e comita. As setas <b>tracejadas vermelhas</b> são os loops de "reprovado → volta e corrige" — incluindo a regra de ouro do projeto: nada é "feito" sem passar a Definição de feito e o teste no Chrome.',
+  single:true,
+  lanes:[{title:'',color:A}],
+  legend:[
+    {label:'Agentes · Claude Code',color:A},
+    {label:'Você (humano)',color:H},
+    {label:'Loop de correção',color:PAL.amber,dash:true,red:true},
+  ],
+  nodes:[
+    {id:'d0',lane:0,row:0,type:'start',title:'Você descreve a tarefa',sub:'feature ou bug',color:H},
+    {id:'d1',lane:0,row:1,type:'process',title:'Lê .context/README.md',sub:'identifica a feature afetada',color:A,chip:'Agente'},
+    {id:'d2',lane:0,row:2,type:'process',title:'Lê a feature + .wiki',sub:'.context/features/<feature>.md · regras: multi-tenancy por userId, convenções',color:A,chip:'Agente'},
+    {id:'d3',lane:0,row:3,type:'process',title:'Monta o plano + specs',color:A,chip:'Agente'},
+    {id:'d4',lane:0,row:4,type:'decision',title:'Aprova o plano?',color:H},
+    {id:'d5',lane:0,row:5,type:'process',title:'Prisma: schema + migration',sub:'aplica via DIRECT_URL no deploy',color:A,chip:'Agente'},
+    {id:'d6',lane:0,row:6,type:'process',title:'Congela o contrato de API',sub:'{ data } + Zod',color:A,chip:'Agente'},
+    {id:'d7',lane:0,row:7,type:'decision',title:'Aprova schema + contratos?',color:H},
+    {id:'d8',lane:0,row:8,type:'process',title:'Backend: route handlers',sub:'src/app/api · Zod · filtro por userId · await params',color:A,chip:'Agente'},
+    {id:'d9',lane:0,row:9,type:'decision',title:'Code review passou?',sub:'sem vazamento entre tenants · inputs validados · sem N+1',color:A},
+    {id:'d10',lane:0,row:10,type:'process',title:'Frontend + UX',sub:'App Router · TanStack · RHF · fetchApi · shadcn (≤3 cliques)',color:A,chip:'Agente'},
+    {id:'d11',lane:0,row:11,type:'decision',title:'Definição de feito 100%?',sub:'tsc · vitest (TZ=UTC) · build · test:sprints',color:A},
+    {id:'d12',lane:0,row:12,type:'decision',title:'Passou no Chrome (MCP)?',sub:'walk-through real + screenshots (golden path + edge cases)',color:A},
+    {id:'d13',lane:0,row:13,type:'decision',title:'Aprova deploy + migration?',color:H},
+    {id:'d14',lane:0,row:14,type:'process',title:'Deploy na Vercel',sub:'migration aplicada via DIRECT_URL',color:A,chip:'Agente'},
+    {id:'d15',lane:0,row:15,type:'process',title:'Curadoria de conhecimento',sub:'wiki-ingest + atualiza .context',color:A,chip:'Agente'},
+    {id:'d16',lane:0,row:16,type:'end',title:'Você comita via gh',sub:'os agentes não commitam',color:H},
+  ],
+  edges:[
+    {from:'d0',to:'d1'},
+    {from:'d1',to:'d2'},
+    {from:'d2',to:'d3'},
+    {from:'d3',to:'d4'},
+    {from:'d4',to:'d3',label:'Não · ajustar',kind:'no',loop:true,rail:0},
+    {from:'d4',to:'d5',label:'Sim',kind:'yes'},
+    {from:'d5',to:'d6'},
+    {from:'d6',to:'d7'},
+    {from:'d7',to:'d5',label:'Não',kind:'no',loop:true,rail:1},
+    {from:'d7',to:'d8',label:'Sim',kind:'yes'},
+    {from:'d8',to:'d9'},
+    {from:'d9',to:'d8',label:'Não · corrige',kind:'no',loop:true,rail:2},
+    {from:'d9',to:'d10',label:'Sim',kind:'yes'},
+    {from:'d10',to:'d11'},
+    {from:'d11',to:'d8',label:'Falhou',kind:'no',loop:true,rail:4},
+    {from:'d11',to:'d12',label:'Sim',kind:'yes'},
+    {from:'d12',to:'d10',label:'Falhou',kind:'no',loop:true,rail:3},
+    {from:'d12',to:'d13',label:'Sim',kind:'yes'},
+    {from:'d13',to:'d8',label:'Não',kind:'no',loop:true,rail:5},
+    {from:'d13',to:'d14',label:'Sim',kind:'yes'},
+    {from:'d14',to:'d15'},
+    {from:'d15',to:'d16'},
+  ],
+  walk:['d0','d1','d2','d3','d4','d5','d6','d7','d8','d9','d10','d11','d12','d13','d14','d15','d16'],
+};
+
+/* ---------------- layout + render ---------------- */
+const PAD_L=148, PAD_R=44, PAD_T=18, HEADER_H=46, ROWH=120;
+function render(diagram, mountId, legId, capId){
+  document.getElementById(capId).innerHTML=diagram.caption;
+  const leg=document.getElementById(legId);leg.innerHTML='';
+  diagram.legend.forEach(l=>{
+    const d=document.createElement('div');d.className='li';
+    d.innerHTML=`<span class="sw" style="background:${l.red?'transparent':l.color};${l.red?`border:2px ${l.dash?'dashed':'solid'} #DC2626`:''}"></span>${esc(l.label)}`;
+    leg.appendChild(d);
+  });
+
+  const nLanes=diagram.lanes.length;
+  const single=!!diagram.single;
+  const LANEW = single?520:300, LANEGAP=72;
+  const NODEW = LANEW-34;
+  const totalLanesW = nLanes*LANEW + (nLanes-1)*LANEGAP;
+  const W = PAD_L + totalLanesW + PAD_R;
+  const maxRow = Math.max(...diagram.nodes.map(n=>n.row));
+  const rowsTop = PAD_T + HEADER_H + 8;
+  const Hgt = rowsTop + (maxRow+1)*ROWH + 24;
+
+  const laneCenter = i => PAD_L + i*(LANEW+LANEGAP) + LANEW/2;
+  const byId={}; diagram.nodes.forEach(n=>byId[n.id]=n);
+  function geo(n){
+    const cx=laneCenter(n.lane);
+    const cy=rowsTop + n.row*ROWH + ROWH/2;
+    const h=(n.type==='decision')?92:(n.type==='start'||n.type==='end')?56:68;
+    const w=(n.type==='start'||n.type==='end')?Math.min(NODEW,300):NODEW;
+    return {cx,cy,w,h,left:cx-w/2,right:cx+w/2,top:cy-h/2,bottom:cy+h/2};
+  }
+
+  const wrap=document.getElementById(mountId);wrap.innerHTML='';
+  const svg=E('svg',{viewBox:`0 0 ${W} ${Hgt}`,xmlns:SVGNS});wrap.appendChild(svg);
+
+  const defs=E('defs',{},svg);
+  [['mk-slate','#5B7780'],['mk-green','#059669'],['mk-red','#DC2626']].forEach(([id,col])=>{
+    const m=E('marker',{id:id+'-'+mountId,markerWidth:9,markerHeight:9,refX:6.5,refY:3,orient:'auto'},defs);
+    E('path',{d:'M0,0 L7,3 L0,6 Z',fill:col},m);
+  });
+
+  const gBands=E('g',{},svg), gEdges=E('g',{},svg), gLabels=E('g',{},svg), gNodes=E('g',{},svg), gFx=E('g',{},svg);
+
+  if(!single){
+    diagram.lanes.forEach((l,i)=>{
+      const x=PAD_L + i*(LANEW+LANEGAP);
+      E('rect',{x,y:PAD_T,width:LANEW,height:Hgt-PAD_T-14,rx:16,fill:l.color,'fill-opacity':.045,stroke:l.color,'stroke-opacity':.18},gBands);
+      const hp=E('g',{},gBands);
+      E('rect',{x:x+12,y:PAD_T+10,width:LANEW-24,height:30,rx:9,fill:l.color},hp);
+      const t=E('text',{x:x+LANEW/2,y:PAD_T+30,'text-anchor':'middle','font-size':13,'font-weight':800,fill:'#fff'},hp);
+      t.textContent=l.title;
+    });
+  }
+
+  const LEFTRAIL=116;
+  const edgeByKey={};
+  diagram.edges.forEach(e=>{
+    const a=geo(byId[e.from]), b=geo(byId[e.to]);
+    let d,lx,ly;
+    const col = e.kind==='yes'?'#059669':e.kind==='no'?'#DC2626':'#5B7780';
+    const mk = (e.kind==='yes'?'mk-green':e.kind==='no'?'mk-red':'mk-slate')+'-'+mountId;
+    const isLoop = e.loop || byId[e.to].row < byId[e.from].row;
+    if(isLoop){
+      const rail=LEFTRAIL - (e.rail||0)*17;
+      d=`M ${a.left} ${a.cy} H ${rail} V ${b.cy} H ${b.left}`;
+      lx=rail; ly=(a.cy+b.cy)/2;
+    } else if(byId[e.from].lane===byId[e.to].lane){
+      d=`M ${a.cx} ${a.bottom} V ${b.top}`;
+      lx=a.cx; ly=(a.bottom+b.top)/2;
+    } else if(byId[e.to].row===byId[e.from].row){
+      const dir=b.cx>a.cx; const sx=dir?a.right:a.left, tx=dir?b.left:b.right;
+      d=`M ${sx} ${a.cy} H ${tx}`; lx=(sx+tx)/2; ly=a.cy-11;
+    } else {
+      const midY=(a.bottom+b.top)/2;
+      d=`M ${a.cx} ${a.bottom} V ${midY} H ${b.cx} V ${b.top}`;
+      lx=(a.cx+b.cx)/2; ly=midY-11;
+    }
+    const p=E('path',{class:'edge '+(isLoop?'loop':'flow'),d,fill:'none',stroke:col,'stroke-width':isLoop?2:2.4,
+      'stroke-linecap':'round','marker-end':`url(#${mk})`},gEdges);
+    if(e.kind==='no') p.setAttribute('stroke-dasharray','7 6');
+    p.dataset.from=e.from; p.dataset.to=e.to;
+    edgeByKey[e.from+'>'+e.to]=p;
+    if(e.label){
+      const w=e.label.length*6.0+16;
+      const g=E('g',{class:'elab'},gLabels);
+      g.dataset.from=e.from; g.dataset.to=e.to;
+      E('rect',{x:lx-w/2,y:ly-10,width:w,height:20,rx:10,fill:'#fff',stroke:col,'stroke-opacity':.5},g);
+      const t=E('text',{x:lx,y:ly+4,'text-anchor':'middle','font-size':10.5,fill:col},g);
+      t.textContent=e.label;
+    }
+  });
+
+  const ndG={};
+  diagram.nodes.forEach(n=>{
+    const g=geo(n);
+    const col=n.color||diagram.lanes[n.lane].color;
+    const col2 = col===PAL.primary?PAL.cta : (col===PAL.amber? '#d98e1f' : '#0E7C8C');
+    const grp=E('g',{class:'nd'},gNodes);grp.dataset.id=n.id;grp.style.setProperty('--nc',col);
+    ndG[n.id]=grp;
+    if(n.type==='decision'){
+      E('polygon',{class:'decpoly',
+        points:`${g.cx},${g.top} ${g.right},${g.cy} ${g.cx},${g.bottom} ${g.left},${g.cy}`,
+        fill:'#fff',stroke:col,'stroke-width':2.2},grp);
+      const inner=`<div class="dec"><div class="nt">${esc(n.title)}</div>${n.sub?`<div class="ns">${esc(n.sub)}</div>`:''}</div>`;
+      fo(g.cx-g.w*0.40, g.cy-g.h*0.36, g.w*0.80, g.h*0.72, inner, grp);
+    } else {
+      let cls='node';
+      if(n.type==='start'||n.type==='end') cls+=' startend';
+      else if(n.type==='auto') cls+=' auto';
+      else if(n.type==='note') cls+=' note';
+      const style=`--nc:${col};--nc2:${col2}`;
+      const html=`<div class="${cls}" style="${style}">${n.chip?`<span class="chip">${esc(n.chip)}</span>`:''}<div class="nt">${esc(n.title)}</div>${n.sub?`<div class="ns">${esc(n.sub)}</div>`:''}</div>`;
+      fo(g.left,g.top,g.w,g.h,html,grp);
+    }
+    grp.addEventListener('mouseenter',()=>highlight(n.id));
+    grp.addEventListener('mouseleave',clearHi);
+  });
+
+  /* hover highlight */
+  const adj={}; diagram.edges.forEach(e=>{(adj[e.from]=adj[e.from]||new Set()).add(e.to);(adj[e.to]=adj[e.to]||new Set()).add(e.from);});
+  function highlight(id){
+    if(sim.playing) return;
+    wrap.classList.add('on');
+    const keep=new Set([id]); (adj[id]||new Set()).forEach(x=>keep.add(x));
+    gNodes.querySelectorAll('.nd').forEach(g=>g.classList.toggle('hot',keep.has(g.dataset.id)));
+    [...gEdges.children,...gLabels.children].forEach(el=>el.classList.toggle('hot',(el.dataset.from===id||el.dataset.to===id)));
+  }
+  function clearHi(){wrap.classList.remove('on');gNodes.querySelectorAll('.hot').forEach(g=>g.classList.remove('hot'));[...gEdges.children,...gLabels.children].forEach(el=>el.classList.remove('hot'));}
+
+  /* ===== motor de animação (token + acende nós) ===== */
+  const sim={playing:false,i:0,speed:1,runId:0};
+  function setActive(id,on){const g=ndG[id];if(g)g.classList.toggle('active',on!==false);}
+  function clearActive(){Object.values(ndG).forEach(g=>g.classList.remove('active'));}
+  function geoOf(id){return geo(byId[id]);}
+  function pathFor(from,to){
+    let p=edgeByKey[from+'>'+to];
+    if(p) return p;
+    // sem aresta direta no walk: cria um caminho temporário vertical/manhattan
+    const a=geoOf(from), b=geoOf(to);
+    const d=(a.cx===b.cx)?`M ${a.cx} ${a.bottom} V ${b.top}`:`M ${a.cx} ${a.bottom} V ${(a.bottom+b.top)/2} H ${b.cx} V ${b.top}`;
+    return E('path',{d,fill:'none',stroke:'transparent'},gFx);
+  }
+  function tokenAlong(pathEl,dur){
+    return new Promise(res=>{
+      if(!pathEl){res();return;}
+      let len=0; try{len=pathEl.getTotalLength();}catch(e){res();return;}
+      const col=pathEl.getAttribute('stroke')||'#0891B2';
+      const c=E('circle',{class:'token',r:6,fill:'#fff'},gFx);
+      c.style.filter=`drop-shadow(0 0 7px ${col==='transparent'?'#0891B2':col})`;
+      const t0=performance.now(); let done=false;
+      const fin=()=>{if(done)return;done=true;clearTimeout(fb);c.remove();if(pathEl.parentNode===gFx&&pathEl.getAttribute('stroke')==='transparent')pathEl.remove();res();};
+      const fb=setTimeout(fin,dur+700);
+      (function step(now){if(done)return;const k=Math.min(1,(now-t0)/dur);const p=pathEl.getPointAtLength(k*len);c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',6+Math.sin(k*Math.PI)*2.6);if(k<1)requestAnimationFrame(step);else fin();})(t0);
+    });
+  }
+  const walk = diagram.walk || diagram.nodes.map(n=>n.id);
+  async function loop(){
+    const my=++sim.runId; sim.playing=true; if(controller.onState)controller.onState(true);
+    if(sim.i>=walk.length-1){sim.i=0;clearActive();}
+    setActive(walk[Math.max(0,sim.i)]);
+    while(sim.playing && my===sim.runId){
+      if(sim.i>=walk.length-1){
+        await sleep(1100/sim.speed); if(my!==sim.runId)return;
+        sim.i=0; clearActive(); setActive(walk[0]); continue;
+      }
+      const from=walk[sim.i], to=walk[sim.i+1];
+      setActive(from);
+      await tokenAlong(pathFor(from,to), 760/sim.speed); if(my!==sim.runId)return;
+      setActive(to);
+      sim.i++;
+      await sleep(260/sim.speed); if(my!==sim.runId)return;
+    }
+  }
+  const controller={
+    onState:null,
+    play(){ if(sim.playing)return; clearHi(); loop(); },
+    pause(){ sim.playing=false; sim.runId++; if(controller.onState)controller.onState(false); },
+    toggle(){ sim.playing?controller.pause():controller.play(); },
+    restart(){ sim.runId++; sim.playing=false; sim.i=0; clearActive(); setActive(walk[0]); },
+    setSpeed(v){ sim.speed=v; },
+    setAmbient(on){ wrap.classList.toggle('noamb',!on); },
+    isPlaying(){ return sim.playing; },
+  };
+  if(REDUCED) controller.setAmbient(false);
+  setActive(walk[0]);
+  return controller;
+}
+
+/* ---------------- wiring ---------------- */
+const ctrl={
+  sistema: render(SISTEMA,'svg-sistema','leg-sistema','cap-sistema'),
+  dev: render(DEV,'svg-dev','leg-dev','cap-dev'),
+};
+function wire(name){
+  const p=document.getElementById('panel-'+name);
+  const tr=p.querySelector('.transport');
+  const playBtn=tr.querySelector('[data-act=toggle]');
+  const c=ctrl[name];
+  c.onState=(on)=>{ playBtn.innerHTML = on?'⏸ <span class="t">Pausar</span>':'▶ <span class="t">Animar fluxo</span>'; };
+  playBtn.onclick=()=>c.toggle();
+  tr.querySelector('[data-act=restart]').onclick=()=>{c.restart();c.play();};
+  tr.querySelector('.speed').oninput=e=>c.setSpeed(parseFloat(e.target.value));
+  tr.querySelector('.ambchk').onchange=e=>c.setAmbient(e.target.checked);
+}
+wire('sistema'); wire('dev');
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  const name=b.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('sel',x===b));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'));
+  document.getElementById('panel-'+name).classList.add('show');
+  // pausa o outro, anima o ativo
+  Object.keys(ctrl).forEach(k=>{ if(k!==name) ctrl[k].pause(); });
+  if(!REDUCED) ctrl[name].play();
+});
+
+/* autoplay do diagrama visível */
+if(!REDUCED) ctrl.sistema.play();
+</script>
+</body>
+</html>

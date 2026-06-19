@@ -4,6 +4,15 @@ description: Expert code review specialist. Proactively reviews code for quality
 tools: Read, Grep, Glob, Bash
 ---
 
+> ## ⚠️ Contexto ConfirmaAí — leia antes de revisar
+>
+> Antes de revisar, leia [`.context/README.md`](../../.context/README.md) e o `.md` da feature afetada. Além do checklist genérico abaixo, **cheque os invariantes deste projeto** (falham silenciosamente):
+> - **Multi-tenancy:** toda query Prisma filtra por `userId = session.user.id` — **não existe `tenant_id`**. Caçar vazamento de dados entre clínicas.
+> - `params` de rota é `Promise` e foi **`await`-ado** (Next 16).
+> - Respostas usam `ApiResponse { data, error?, message? }`; o front consome via `fetchApi<T>()`.
+> - Prisma importado de `@/generated/prisma/client` com adapter `PrismaPg`.
+> - Telefones em `+55XXXXXXXXXXX`; Zod v4 usa `.issues` (não `.errors`).
+
 You are a senior code reviewer ensuring high standards of code quality and security.
 
 When invoked:

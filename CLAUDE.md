@@ -9,6 +9,8 @@
 > - Toda nova funcionalidade DEVE ser registrada em `.context/features/<nome>.md` (use `_TEMPLATE.md`).
 > - Alterações estruturais em features existentes DEVEM atualizar o `.md` correspondente.
 > - Em caso de conflito entre `CLAUDE.md` e `.context/`, o `.context/` é a fonte de verdade operacional.
+>
+> ⚠️ **As seções _Stack Tecnológica_, _Estrutura de Pastas_, _Modelo de Dados_ e _Regras para os Agents_ abaixo são ASPIRACIONAIS e não refletem o código** (não há Fastify, Redis/BullMQ, `backend/`+`frontend/`, nem `tenant_id`). Realidade: monolito **Next.js 16**, **node-cron**, multi-tenancy por **`userId`**, rotas em `src/app/api` sem `/v1`. Detalhes na seção "⚠️ REALIDADE DO CÓDIGO" abaixo e em [`.context/README.md`](.context/README.md). Use o restante deste arquivo só para princípios (multi-tenancy, validação Zod, modular por feature).
 
 ## Sobre o Projeto
 
@@ -18,7 +20,26 @@ SaaS para clínicas, psicólogos, dentistas, estética e salões que resolve o p
 
 ## Arquitetura
 
+> ## ⚠️ REALIDADE DO CÓDIGO ≠ stack aspiracional abaixo
+>
+> A “Stack Tecnológica” e a “Estrutura de Pastas” descritas nesta seção são **aspiracionais/legadas** (Fastify + monorepo `backend/`+`frontend/` + Redis/BullMQ + Supabase). **O código real é outro.** Antes de codar, a fonte da verdade operacional é **[`.context/README.md`](.context/README.md)**.
+>
+> **Stack real (resumo):**
+> - **Monolito Next.js 16 (App Router)**, TypeScript strict, React 19 — **um único `src/`** (não há pasta `backend/`). Rotas de API = `src/app/api/<recurso>/route.ts`.
+> - **Auth: NextAuth v4** (Credentials, JWT) — não há refresh tokens próprios.
+> - **ORM: Prisma v7** com `@prisma/adapter-pg` **obrigatório**; client gerado em `src/generated/prisma` → importe de `@/generated/prisma/client`.
+> - **DB: PostgreSQL** (Neon em prod — atenção a `DATABASE_URL` pooled vs `DIRECT_URL` para migrations).
+> - **Scheduler: `node-cron`** iniciado via `instrumentation.ts` (a cada 30 min) — **não** há Redis/BullMQ.
+> - **UI: Tailwind v4 + shadcn/ui**; server state TanStack Query v5; client state Zustand v5; forms RHF; charts Recharts.
+> - **Deploy: Vercel** (front+API juntos).
+>
+> **Convenções não-óbvias que mais quebram IA:** multi-tenancy por `userId` (cada `User` é um tenant; não existe `tenant_id`); `params` é `Promise` no Next 16 (sempre `await params`); toda resposta de API é `{ data }` (`ApiResponse<T>`, desempacotado por `fetchApi<T>()`); Zod v4 usa `.issues`. A lista completa está em `.context/README.md`.
+>
+> **🗺️ Fluxogramas visuais:** abra [`fluxogramas.html`](fluxogramas.html) no navegador — (1) como o **sistema** funciona (conta → configurar → WhatsApp → agenda → confirmação automática → no-show → dashboard) e (2) como **codar com os agentes** (ler `.context` → plano → backend/frontend → definição de feito + teste no Chrome MCP → deploy → curadoria `.wiki`).
+
 ### Stack Tecnológica
+
+> ⚠️ Seção aspiracional — ver “Stack real” acima e `.context/README.md`.
 
 **Backend:**
 - **Runtime**: Node.js com TypeScript

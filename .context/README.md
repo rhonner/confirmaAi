@@ -80,6 +80,13 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Monetização + Auditoria (roadmap antigo)    | [plans/billing-and-audit-roadmap.md](plans/billing-and-audit-roadmap.md) |
 | Deployment status (stop & resume)    | [plans/deployment-status.md](plans/deployment-status.md)                 |
 
+## Fluxogramas visuais
+
+[`../fluxogramas.html`](../fluxogramas.html) — dois fluxogramas (abrir no navegador), úteis como onboarding:
+
+1. **Como o sistema funciona** (swimlanes Profissional × Sistema × Paciente): criar conta → verificar e-mail → configurar (antecedências 24h/6h, templates) → conectar WhatsApp (QR) → cadastrar pacientes (FREE = 5 vagas) → criar agendamento (PENDING) → cron 30 min envia confirmação T-24h → paciente responde 1/2 (CONFIRMED/CANCELED) ou não responde (lembrete T-6h / NO_SHOW) → dashboard de faltas.
+2. **Como codar com os agentes**: ler `.context/README.md` + feature → plano → Prisma/migration → contrato `{ data }` + Zod → backend (filtro `userId`) ↔ code-review → frontend/UX → **definição de feito** (tsc/vitest/build/test:sprints) → **teste no Chrome (MCP)** → deploy Vercel (migration via `DIRECT_URL`) → curadoria `.wiki`/`.context` → commit via `gh`. Os loops de "reprovado → volta e corrige" são as setas tracejadas.
+
 ---
 
 ## Definição de "feito" — checklist obrigatório
