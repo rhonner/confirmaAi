@@ -95,3 +95,109 @@ export async function sendSubscriptionCanceledEmail(input: {
   const { subject, html } = buildSubscriptionCanceledEmail(input);
   return sendEmail({ to: input.to, subject, html });
 }
+
+// ---- Dunning (cobrança em atraso — dias 1/3/7, Sprint 10/fatia 2.3) ----
+type DunningStage = "DAY_1" | "DAY_3" | "DAY_7";
+
+export function buildDunningEmail(input: {
+  name: string;
+  planLabel: string;
+  stage: DunningStage;
+  suspendsInDays: number;
+}): Built {
+  const name = escapeHtml(input.name);
+  const plan = escapeHtml(input.planLabel);
+  if (input.stage === "DAY_1") {
+    return {
+      subject: "Não conseguimos confirmar seu pagamento — Clínica Organizada",
+      html: renderEmailLayout({
+        heading: "Pagamento pendente",
+        bodyHtml: `<p>Olá ${name},</p>
+          <p>Não conseguimos confirmar o pagamento da sua assinatura <strong>${plan}</strong>. Pode ter sido um problema temporário com o cartão ou o Pix.</p>
+          <p>Para manter seu acesso ativo, é só regularizar o pagamento.</p>`,
+        cta: { label: "Regularizar pagamento", url: `${APP_URL}/billing` },
+        footnote: "Se você já pagou, pode ignorar este aviso.",
+      }),
+    };
+  }
+  if (input.stage === "DAY_3") {
+    return {
+      subject: "Pagamento ainda pendente — atualize sua forma de pagamento",
+      html: renderEmailLayout({
+        heading: "Seu pagamento continua pendente",
+        bodyHtml: `<p>Olá ${name},</p>
+          <p>Ainda não recebemos o pagamento da sua assinatura <strong>${plan}</strong>. Para não perder o acesso, atualize sua forma de pagamento ou refaça o Pix.</p>`,
+        cta: { label: "Atualizar pagamento", url: `${APP_URL}/billing` },
+        footnote: "Precisa de ajuda? É só responder este email.",
+      }),
+    };
+  }
+  // DAY_7 — aviso de suspensão iminente
+  const when =
+    input.suspendsInDays <= 0 ? "hoje" : input.suspendsInDays === 1 ? "amanhã" : `em ${input.suspendsInDays} dias`;
+  return {
+    subject: "⚠️ Sua conta será suspensa — regularize o pagamento",
+    html: renderEmailLayout({
+      heading: "Sua conta será suspensa",
+      bodyHtml: `<p>Olá ${name},</p>
+        <p>O pagamento da sua assinatura <strong>${plan}</strong> segue pendente. Para evitar a <strong>suspensão da sua conta (${when})</strong>, regularize agora — depois disso as confirmações automáticas param.</p>`,
+      cta: { label: "Regularizar agora", url: `${APP_URL}/billing` },
+      footnote: "Assim que o pagamento for confirmado, seu acesso volta automaticamente.",
+    }),
+  };
+}
+
+export async function sendDunningEmail(input: {
+  to: string;
+  name: string;
+  planLabel: string;
+  stage: DunningStage;
+  suspendsInDays: number;
+}): Promise<EmailSendResult> {
+  const { subject, html } = buildDunningEmail(input);
+  return sendEmail({ to: input.to, subject, html });
+}
+
+// ---- Perto do limite de mensagens (80% / 100%, Sprint 10/fatia 2.3) ----
+export function buildUsageLimitEmail(input: {
+  name: string;
+  threshold: 80 | 100;
+  messagesSent: number;
+  messagesIncluded: number;
+}): Built {
+  const name = escapeHtml(input.name);
+  const usage = `${input.messagesSent} de ${input.messagesIncluded}`;
+  if (input.threshold >= 100) {
+    return {
+      subject: "Você atingiu o limite de mensagens do seu plano",
+      html: renderEmailLayout({
+        heading: "Limite de mensagens atingido",
+        bodyHtml: `<p>Olá ${name},</p>
+          <p>Você usou <strong>${usage}</strong> mensagens do seu plano neste período. Novas confirmações automáticas ficam pausadas até a virada do período ou um upgrade de plano.</p>`,
+        cta: { label: "Ver planos", url: `${APP_URL}/billing` },
+        footnote: "Faça upgrade para continuar enviando confirmações sem interrupção.",
+      }),
+    };
+  }
+  return {
+    subject: "Você está perto do limite de mensagens",
+    html: renderEmailLayout({
+      heading: "Você está perto do limite",
+      bodyHtml: `<p>Olá ${name},</p>
+        <p>Você já usou <strong>${usage}</strong> mensagens do seu plano neste período. Ao atingir o limite, as confirmações automáticas pausam até a virada do período.</p>`,
+      cta: { label: "Ver meu plano", url: `${APP_URL}/billing` },
+      footnote: "Considere um upgrade se costuma enviar muitas confirmações.",
+    }),
+  };
+}
+
+export async function sendUsageLimitEmail(input: {
+  to: string;
+  name: string;
+  threshold: 80 | 100;
+  messagesSent: number;
+  messagesIncluded: number;
+}): Promise<EmailSendResult> {
+  const { subject, html } = buildUsageLimitEmail(input);
+  return sendEmail({ to: input.to, subject, html });
+}

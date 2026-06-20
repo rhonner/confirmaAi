@@ -64,6 +64,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Plan Quota           | [features/plan-quota.md](features/plan-quota.md)     | Vagas vitalícias de paciente (Free=5), CPF como identifier primário, anti-fraude por slot ledger |
 | Observabilidade      | [features/observability.md](features/observability.md) | `GET /api/health` (200/503) agrega cron/billing/evolution/db; captura de erros (console + Sentry opt-in via `SENTRY_DSN`); runbook |
 | Painel Admin         | [features/admin.md](features/admin.md)               | `/admin/audit` (allowlist `ADMIN_EMAILS`, gate em layout+API); métricas cross-tenant (WhatsApp %, pagantes, fraude) + auditoria. Atividade do user em `/configuracoes/atividade` |
+| Reset de conta Free  | [features/account-reset.md](features/account-reset.md) | `POST /api/account/reset` (1× vitalício): apaga Patient + PatientQuotaSlot e zera quota; guardas FREE + 0 agendamentos + dedup por audit |
 
 ## Índice de fluxos cruzados
 

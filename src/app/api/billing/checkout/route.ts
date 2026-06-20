@@ -10,6 +10,7 @@ import {
 import { audit, auditWrap } from "@/lib/audit";
 import { getBillingProvider, getPlanConfig, hashCpf, resolveCheckoutCpf } from "@/lib/billing";
 import { detectOwnerCpfReuse } from "@/lib/anti-fraud/owner-cpf-dedup";
+import { captureError } from "@/lib/observability";
 import type { ApiResponse } from "@/lib/types/api";
 import type { PlanTier } from "@/generated/prisma/client";
 
@@ -135,6 +136,41 @@ export const POST = auditWrap(async (request: NextRequest) => {
       // (POST /customers/{id} é idempotente) — não pode ficar preso a uma única
       // tentativa, senão uma falha de rede deixaria a assinatura travada no 400.
       await provider.updateCustomer({ providerCustomerId: customerId, cpf });
+    }
+
+    // Anti-duplicação: cada checkout cria uma assinatura recorrente no gateway.
+    // Se já existe uma assinatura pendente (NÃO-paga) referenciada, cancela ela
+    // no provider antes de criar a nova — senão a antiga vira órfã e segue
+    // gerando cobrança mensal. Só cancela quando não há assinatura paga ativa
+    // em vigor (FREE ou status != ACTIVE); same-plan/ACTIVE já saiu no early-return
+    // acima. Best-effort: falha aqui não bloqueia o novo checkout (reconciliação).
+    if (sub?.providerSubscriptionId && (sub.plan === "FREE" || sub.status !== "ACTIVE")) {
+      try {
+        await provider.cancelSubscription(sub.providerSubscriptionId);
+        await audit({
+          action: "billing.subscription.replaced",
+          tenantUserId: user.id,
+          entityType: "Subscription",
+          entityId: sub.id,
+          metadata: { canceledProviderSubscriptionId: sub.providerSubscriptionId, plan },
+        });
+      } catch (err) {
+        // O upsert abaixo vai sobrescrever providerSubscriptionId pro NEW, então
+        // registra o id da órfã num audit QUERYÁVEL (não só no Sentry) pra
+        // reconciliação posterior cancelar o DELETE que falhou aqui.
+        await audit({
+          action: "billing.subscription.orphan_cancel_failed",
+          tenantUserId: user.id,
+          entityType: "Subscription",
+          entityId: sub.id,
+          metadata: { orphanProviderSubscriptionId: sub.providerSubscriptionId, plan },
+        });
+        await captureError(err, {
+          area: "request",
+          tenantUserId: user.id,
+          extra: { route: "billing/checkout/cancel-orphan", providerSubscriptionId: sub.providerSubscriptionId },
+        });
+      }
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;

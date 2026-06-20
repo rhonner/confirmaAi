@@ -54,22 +54,33 @@ export const POST = withFixedActor(
       return NextResponse.json({ error: "invalid body" }, { status: 400 });
     }
 
-    // Resolve user via providerCustomerId (preferido) ou providerSubscriptionId.
+    // Resolve user via providerSubscriptionId (preferido) ou providerCustomerId.
     let userId: string | null = null;
+    let storedSubId: string | null = null;
     if (event.providerSubscriptionId) {
       const sub = await prisma.subscription.findFirst({
         where: { providerSubscriptionId: event.providerSubscriptionId },
-        select: { userId: true },
+        select: { userId: true, providerSubscriptionId: true },
       });
-      userId = sub?.userId ?? null;
+      if (sub) { userId = sub.userId; storedSubId = sub.providerSubscriptionId; }
     }
     if (!userId && event.providerCustomerId) {
       const sub = await prisma.subscription.findFirst({
         where: { providerCustomerId: event.providerCustomerId },
-        select: { userId: true },
+        select: { userId: true, providerSubscriptionId: true },
       });
-      userId = sub?.userId ?? null;
+      if (sub) { userId = sub.userId; storedSubId = sub.providerSubscriptionId; }
     }
+
+    // Evento "stale": refere-se a uma assinatura que NÃO é a atual do usuário —
+    // tipicamente o echo de `SUBSCRIPTION_DELETED` da assinatura ANTIGA que o
+    // checkout cancelou ao substituí-la (o checkout já reescreveu o row pro NEW).
+    // Resolvido pelo fallback de customer, aplicaria CANCELED na assinatura NEW
+    // (cancelaria um checkout fresco/pago). NÃO aplica o patch — só registra.
+    const staleEvent =
+      event.providerSubscriptionId != null &&
+      storedSubId != null &&
+      event.providerSubscriptionId !== storedSubId;
 
     // Persiste BillingEvent (idempotência por providerEventId @unique).
     let billingEventRecord;
@@ -91,8 +102,23 @@ export const POST = withFixedActor(
       throw err;
     }
 
+    // Evento stale (assinatura já substituída): registra e ignora o patch.
+    if (userId && staleEvent) {
+      await audit({
+        action: "billing.webhook.stale_ignored",
+        tenantUserId: userId,
+        entityType: "Subscription",
+        metadata: {
+          eventType: event.eventType,
+          providerEventId: event.providerEventId,
+          eventSubscriptionId: event.providerSubscriptionId,
+          currentSubscriptionId: storedSubId,
+        },
+      });
+    }
+
     // Aplica mudança no Subscription, se houver patch derivável.
-    if (userId) {
+    if (userId && !staleEvent) {
       const patch = eventToSubscriptionPatch(event);
       if (Object.keys(patch).length > 0) {
         try {

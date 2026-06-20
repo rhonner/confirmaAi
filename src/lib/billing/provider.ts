@@ -73,6 +73,27 @@ export interface BillingProviderImpl {
 
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;
 
+  /**
+   * Regenera o QR Pix da assinatura JÁ EXISTENTE (re-busca a cobrança pendente
+   * da recorrência) — **NÃO cria assinatura nova** (senão recria o bug de
+   * duplicação). Usado quando o QR do checkout expira (TTL curto do produto).
+   * Retorna o mesmo shape do checkout, com `expiresAt` curto recalculado.
+   */
+  refreshPixCharge(input: {
+    providerSubscriptionId: string;
+    customerId: string;
+    plan: PlanTier;
+    userId: string;
+  }): Promise<CheckoutResult>;
+
+  /**
+   * Cancela/remove uma assinatura no gateway (para futuras cobranças). Usado
+   * (a) no checkout, para cancelar uma assinatura pendente não-paga antes de
+   * criar a nova (evita acúmulo de assinaturas órfãs no retry), e (b) no
+   * cancelamento, para parar a cobrança recorrente no provider.
+   */
+  cancelSubscription(providerSubscriptionId: string): Promise<void>;
+
   createPortalSession(input: { providerCustomerId: string; returnUrl: string }): Promise<PortalSession>;
 
   verifyWebhookSignature(input: { rawBody: string; signature: string | null }): boolean;

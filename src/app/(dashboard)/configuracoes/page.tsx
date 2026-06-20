@@ -14,6 +14,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { DollarSign, Save, History, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { WhatsappConnection } from "@/components/settings/whatsapp-connection";
+import { ResetAccountCard } from "@/components/settings/reset-account-card";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -420,6 +421,8 @@ export default function ConfiguracoesPage() {
           </CardContent>
         </Card>
       </Link>
+
+      <ResetAccountCard />
     </div>
   );
 }

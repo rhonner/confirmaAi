@@ -7,6 +7,7 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { audit, auditWrap } from "@/lib/audit";
+import { getBillingProvider } from "@/lib/billing";
 import { sendSubscriptionCanceledEmail } from "@/lib/emails/transactional";
 import { captureError } from "@/lib/observability";
 import { formatInTimeZone, APP_TIMEZONE } from "@/lib/timezone";
@@ -18,8 +19,11 @@ import type { ApiResponse } from "@/lib/types/api";
  * com benefícios até `currentPeriodEnd`). O cron diário de billing-maintenance
  * detecta e faz o downgrade efetivo.
  *
- * Em produção, também precisa cancelar no provider (Asaas) — TBD em Sprint 5
- * extension. Por ora, marca local.
+ * Também cancela a assinatura recorrente no provider (Asaas) para PARAR as
+ * cobranças futuras — sem isso o gateway seguiria cobrando mesmo após o
+ * cancelamento. A cobrança do ciclo já paga não é afetada (acesso até
+ * `currentPeriodEnd`). Best-effort: falha no provider não trava o cancelamento
+ * local (reconciliação posterior).
  */
 export const POST = auditWrap(async (_req: NextRequest) => {
   try {
@@ -31,6 +35,19 @@ export const POST = auditWrap(async (_req: NextRequest) => {
     });
     if (!sub) return badRequestResponse("Sem assinatura");
     if (sub.plan === "FREE") return badRequestResponse("Plano Free não pode ser cancelado");
+
+    // Para a cobrança recorrente no gateway (best-effort — não trava o cancel local).
+    if (sub.providerSubscriptionId) {
+      try {
+        await getBillingProvider().cancelSubscription(sub.providerSubscriptionId);
+      } catch (err) {
+        await captureError(err, {
+          area: "request",
+          tenantUserId: session.user.id,
+          extra: { route: "billing/cancel/provider", providerSubscriptionId: sub.providerSubscriptionId },
+        });
+      }
+    }
 
     await prisma.subscription.update({
       where: { id: sub.id },

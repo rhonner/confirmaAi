@@ -38,6 +38,28 @@ describe("MockProvider", () => {
     expect(r.qrCodeBase64).toBeNull();
   });
 
+  it("updateCustomer e cancelSubscription existem e resolvem (no-op no mock)", async () => {
+    await expect(provider.updateCustomer({ providerCustomerId: "mock_cus_1", cpf: "11144477735" })).resolves.toBeUndefined();
+    await expect(provider.cancelSubscription("mock_chk_abc")).resolves.toBeUndefined();
+  });
+
+  it("refreshPixCharge reusa o providerSubscriptionId (não cria assinatura) + QR novo + expiresAt curto", async () => {
+    const before = Date.now();
+    const r = await provider.refreshPixCharge({
+      providerSubscriptionId: "mock_chk_xyz",
+      customerId: "mock_cus_1",
+      plan: "PRO",
+      userId: "u1",
+    });
+    expect(r.sessionId).toBe("mock_chk_xyz"); // mesma assinatura
+    expect(r.qrCodeBase64).toBeTruthy();
+    expect(r.qrCodePayload).toContain("BR.GOV.BCB.PIX");
+    expect(r.expiresAt).toBeInstanceOf(Date);
+    // TTL curto: expira em ≤ 10 min a partir de agora.
+    expect(r.expiresAt!.getTime()).toBeGreaterThan(before);
+    expect(r.expiresAt!.getTime()).toBeLessThanOrEqual(before + 600_000 + 2000);
+  });
+
   it("verifyWebhookSignature aceita HMAC válido e rejeita inválido", () => {
     const body = JSON.stringify({ id: "e1", event: "PAYMENT_RECEIVED" });
     const sig = provider.signForMock(body);

@@ -1,5 +1,6 @@
 import { randomBytes, createHmac } from "node:crypto";
 import { addDays } from "date-fns";
+import { computePixExpiresAt } from "./pix-ttl";
 import type {
   BillingProviderImpl,
   CreateCustomerInput,
@@ -7,6 +8,7 @@ import type {
   CheckoutResult,
   ParsedEvent,
 } from "./provider";
+import type { PlanTier } from "@/generated/prisma/client";
 
 /**
  * MockProvider: simulação local de gateway de pagamento.
@@ -41,7 +43,6 @@ export class MockProvider implements BillingProviderImpl {
 
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
     const sessionId = `mock_chk_${randomBytes(8).toString("hex")}`;
-    const expiresAt = addDays(new Date(), 1);
 
     if (input.method === "PIX") {
       return {
@@ -49,7 +50,8 @@ export class MockProvider implements BillingProviderImpl {
         qrCodeBase64: MOCK_QR_PNG_BASE64,
         qrCodePayload: `00020126360014BR.GOV.BCB.PIX0114${sessionId}5204000053039865802BR5913MOCK PROVIDER6008TESTE006304ABCD`,
         paymentUrl: null,
-        expiresAt,
+        // TTL curto do produto (mesmo no mock, pra exercitar o countdown/refresh).
+        expiresAt: computePixExpiresAt(new Date()),
       };
     }
     return {
@@ -57,8 +59,29 @@ export class MockProvider implements BillingProviderImpl {
       qrCodeBase64: null,
       qrCodePayload: null,
       paymentUrl: `${input.returnUrl}?mock_session=${sessionId}`,
-      expiresAt,
+      expiresAt: addDays(new Date(), 1),
     };
+  }
+
+  async refreshPixCharge(input: {
+    providerSubscriptionId: string;
+    customerId: string;
+    plan: PlanTier;
+    userId: string;
+  }): Promise<CheckoutResult> {
+    // Reusa a "assinatura" (mantém sessionId) e devolve um QR/payload novo + TTL curto.
+    const sessionId = input.providerSubscriptionId;
+    return {
+      sessionId,
+      qrCodeBase64: MOCK_QR_PNG_BASE64,
+      qrCodePayload: `00020126360014BR.GOV.BCB.PIX0114${randomBytes(8).toString("hex")}5204000053039865802BR5913MOCK PROVIDER6008TESTE006304ABCD`,
+      paymentUrl: null,
+      expiresAt: computePixExpiresAt(new Date()),
+    };
+  }
+
+  async cancelSubscription(_providerSubscriptionId: string) {
+    // no-op: mock não mantém estado de assinatura.
   }
 
   async createPortalSession({ returnUrl }: { providerCustomerId: string; returnUrl: string }) {

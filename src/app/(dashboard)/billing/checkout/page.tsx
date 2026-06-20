@@ -37,6 +37,9 @@ export default function CheckoutPage() {
   // Conta grandfathered (sem CPF): backend responde CPF_REQUIRED → pedimos o campo.
   const [cpfRequired, setCpfRequired] = React.useState(false);
   const [cpf, setCpf] = React.useState("");
+  // TTL curto do QR Pix: countdown + estado expirado → "Gerar novo QR".
+  const [expired, setExpired] = React.useState(false);
+  const [secondsLeft, setSecondsLeft] = React.useState<number | null>(null);
 
   const subQuery = useSubscription();
 
@@ -65,6 +68,7 @@ export default function CheckoutPage() {
           return;
         }
         setCheckout(json.data);
+        setExpired(false);
         setPolling(true);
       } catch (e) {
         toast.error("Erro de rede");
@@ -76,6 +80,54 @@ export default function CheckoutPage() {
   );
 
   const cpfDigits = cpf.replace(/\D/g, "");
+
+  // Countdown do QR Pix a partir de checkout.expiresAt. Ao zerar → expired.
+  React.useEffect(() => {
+    if (!checkout || checkout.method !== "PIX" || !checkout.expiresAt) {
+      setSecondsLeft(null);
+      return;
+    }
+    const target = new Date(checkout.expiresAt).getTime();
+    const tick = () => {
+      const left = Math.max(0, Math.round((target - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left <= 0) setExpired(true);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [checkout]);
+
+  // Gera um novo QR reusando a assinatura (NÃO cria assinatura nova). Mantém o polling.
+  const refreshQr = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/billing/checkout/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: planParam }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json?.message || json?.error || "Erro ao gerar novo QR");
+        return;
+      }
+      // Sem cobrança pendente (provavelmente já pago, ou lista vazia momentânea):
+      // não apaga a tela — mantém o QR antigo + estado expirado; o polling resolve.
+      if (!json.data?.qrCodeBase64) {
+        toast.info("Sem cobrança pendente. Se você já pagou, ativaremos em instantes.");
+        return;
+      }
+      setCheckout(json.data);
+      setExpired(false);
+    } catch (e) {
+      toast.error("Erro de rede");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   // Poll status — quando subscription vira o plano-alvo ACTIVE, redireciona pra /sucesso.
   React.useEffect(() => {
@@ -194,29 +246,57 @@ export default function CheckoutPage() {
           {checkout && checkout.method === "PIX" && checkout.qrCodeBase64 && (
             <div className="space-y-3 text-center">
               <p className="text-sm font-semibold">Escaneie o QR code Pix</p>
-              <img
-                src={`data:image/png;base64,${checkout.qrCodeBase64}`}
-                alt="QR code Pix"
-                className="mx-auto h-64 w-64 rounded border bg-white p-3"
-                data-testid="checkout-qr"
-              />
-              {checkout.qrCodePayload && (
+              <div className="relative mx-auto h-64 w-64">
+                <img
+                  src={`data:image/png;base64,${checkout.qrCodeBase64}`}
+                  alt="QR code Pix"
+                  className={`h-64 w-64 rounded border bg-white p-3 transition-opacity ${expired ? "opacity-20" : ""}`}
+                  data-testid="checkout-qr"
+                />
+                {expired && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="rounded bg-background/80 px-2 py-1 text-sm font-medium text-destructive">
+                      QR expirado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {expired ? (
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(checkout.qrCodePayload!);
-                    toast.success("Código copiado");
-                  }}
+                  className="w-full"
+                  onClick={refreshQr}
+                  disabled={loading}
+                  data-testid="checkout-refresh-qr"
                 >
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copiar código
+                  {loading ? "Gerando..." : "Gerar novo QR"}
                 </Button>
+              ) : (
+                <>
+                  {checkout.qrCodePayload && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(checkout.qrCodePayload!);
+                        toast.success("Código copiado");
+                      }}
+                    >
+                      <Copy className="mr-2 h-3.5 w-3.5" />
+                      Copiar código
+                    </Button>
+                  )}
+                  {secondsLeft !== null && (
+                    <p className="text-xs text-muted-foreground" data-testid="checkout-qr-countdown">
+                      Este QR expira em <span className="font-mono font-medium">{mmss(secondsLeft)}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Após o pagamento, ativamos sua assinatura automaticamente.
+                  </p>
+                  {polling && <Skeleton className="h-2 w-full" />}
+                </>
               )}
-              <p className="text-xs text-muted-foreground">
-                Após o pagamento, ativamos sua assinatura automaticamente.
-              </p>
-              {polling && <Skeleton className="h-2 w-full" />}
             </div>
           )}
 

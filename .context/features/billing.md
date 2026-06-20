@@ -55,7 +55,13 @@ Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas
 4. Válido → persiste `User.cpf/cpfHash`. **Como este é o 2º ponto que grava `User.cpfHash` (além do register), aplica os MESMOS controles anti-fraude**: hard-block `>=4` (`CPF_LIMIT` 409) + `detectOwnerCpfReuse` (audit `fraud.cpf_reused_owner` + auto-suspend `>3`). Audit `billing.checkout.cpf_added`. Ver [`auth.md`](auth.md).
 5. `provider.updateCustomer({ providerCustomerId, cpf })` (Asaas `POST /customers/{id}`, Mock no-op) sincroniza o CPF no customer. **Idempotente**: roda em TODO checkout com customer existente (não one-shot) — recupera customer órfão sem CPF mesmo após falha de rede anterior, em vez de a assinatura ficar presa no 400 pra sempre.
 
-> ⏳ **Backlog (pedido do fundador 2026-06-19) — expiração curta do QR Pix**: hoje a cobrança nasce com janela longa (`asaas.ts`: `nextDueDate = hoje + 3d`; o QR herda a `expirationDate`), então o Pix fica **aberto por muito tempo no gateway** (cliente pode pagar código velho; cobranças pendentes acumulam). Plano: TTL curto (~3 min) com countdown no checkout → ao expirar, **cancela a cobrança Pix no Asaas e gera uma nova reusando a MESMA assinatura** (cuidar pra não duplicar — ver bug "checkout retry duplica assinatura"). Checklist/detalhes em [`../plans/monetization-v2.md`](../plans/monetization-v2.md) → Sprint 10.
+#### Anti-duplicação de assinatura (fix 2026-06-20)
+
+Cada `createCheckout` cria uma assinatura recorrente nova no Asaas (`POST /subscriptions`). Sem cuidado, retry/abandono acumulava **assinaturas órfãs pendentes** cobrando mensalmente. Agora, **antes de criar a nova**, o checkout cancela a pendente referenciada quando não há assinatura paga ativa em vigor (`sub.plan === "FREE" || sub.status !== "ACTIVE"` — same-plan/ACTIVE já saiu no early-return "Você já está nesse plano") via `provider.cancelSubscription(providerSubscriptionId)` + audit `billing.subscription.replaced`. **Best-effort**: falha no cancel não bloqueia o checkout — emite audit `billing.subscription.orphan_cancel_failed` (com o id da órfã, **queryável** pra reconciliação, já que o upsert sobrescreve o `providerSubscriptionId`) + `captureError`. Primitiva: `cancelSubscription` (Asaas `DELETE /subscriptions/{id}` → `deleted:true`; Mock no-op). **Interação com o webhook**: o `DELETE` da OLD dispara um echo `SUBSCRIPTION_DELETED` — neutralizado pelo guard de evento stale no webhook (acima). Órfãs criadas ANTES do fix = limpeza manual no painel.
+
+#### QR Pix com TTL curto + regenerar (fix 2026-06-20 — Opção A)
+
+O Asaas mantém o QR dinâmico válido **~12 meses** (não dá pra encurtar no gateway). Então o "QR expira em N min" é **política do produto**: o checkout devolve `expiresAt = now + PIX_QR_TTL_SECONDS` (`src/lib/billing/pix-ttl.ts`, default **300s/5min**, calibrável por env) — o gateway segue com a validade longa, mas o front mostra um **countdown** (`mm:ss`). Ao zerar, o QR é marcado expirado e aparece **"Gerar novo QR"** → `POST /api/billing/checkout/refresh` chama `provider.refreshPixCharge` que **re-busca a cobrança Pix pendente da MESMA assinatura** (`GET /subscriptions/{id}/payments` → `pixQrCode`) — **NÃO cria assinatura nova** (não recria o bug de duplicação; `providerSubscriptionId` permanece a âncora do tenant no webhook). Audit `billing.checkout.qr_refreshed`. Decisão (founder 2026-06-20): **Opção A** (TTL visual, custo zero no gateway) em vez de Opção B (deletar+recriar cobrança — só vale se o objetivo for *invalidar* o código antigo, o que o Asaas não garante p/ QR dinâmico).
 
 ### Webhook
 
@@ -63,7 +69,7 @@ Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas
 
 1. **HMAC** via `provider.verifyWebhookSignature(rawBody, signature)`. Inválido → 401 + audit `billing.webhook.invalid_signature`.
 2. **Idempotência**: `BillingEvent.create({ providerEventId })`. P2002 → no-op idempotente, retorna 200.
-3. Resolve `userId` via `providerSubscriptionId` ou `providerCustomerId`.
+3. Resolve `userId` via `providerSubscriptionId` (preferido) ou `providerCustomerId` (fallback). **Guard de evento stale (fix 2026-06-20)**: se o evento traz um `providerSubscriptionId` que **não bate** com o armazenado na `Subscription` atual (`storedSubId`), é um echo de uma assinatura já substituída (ex: `SUBSCRIPTION_DELETED` da OLD que o checkout cancelou ao trocar pela NEW) — **o patch NÃO é aplicado** (senão cancelaria a NEW via fallback de customer); registra `billing.webhook.stale_ignored` + marca `processedAt`.
 4. Aplica `eventToSubscriptionPatch(event)` em `Subscription`:
    - `PAYMENT_RECEIVED|CONFIRMED` → `status=ACTIVE`, `currentPeriodEnd = nextDueDate`.
      **⚠️ Shape real do Asaas (fix 2026-06-13)**: o payload de eventos `PAYMENT_*` NÃO traz `nextDueDate` no objeto `payment` (o campo vive na subscription, que não vem no webhook). Sem fallback, `currentPeriodEnd` ficava null → cancelamento nunca expiraria no cron (`CANCELED + currentPeriodEnd < now`). `deriveNextDueDate` em `asaas.ts` usa `payment.dueDate + 1 mês` como fallback. Regressão em `tests/unit/billing-provider.test.ts` com payload real capturado da sandbox.
@@ -77,6 +83,8 @@ Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas
 
 > **Emails transacionais (Sprint 10/fatia 2.2)**: no branch `PAYMENT_RECEIVED` (status→ACTIVE) o webhook dispara `sendPaymentConfirmedEmail` em **try/catch ISOLADO** — falha de email NÃO pode cair no catch externo (senão marcaria `apply_failed`/`processedAt=null` e o /api/health acharia o webhook travado). Cancelamento via `/api/billing/cancel` dispara `sendSubscriptionCanceledEmail` (best-effort). Senders em `src/lib/emails/transactional.ts`.
 
+> **Cancelamento no provider (fix 2026-06-20)**: `/api/billing/cancel` agora chama `provider.cancelSubscription(providerSubscriptionId)` (best-effort) ANTES do update local — **interrompe a cobrança recorrente no Asaas** (antes era só marca local com TBD, e o gateway seguia cobrando após o cancelamento). Semântica preservada: cancela ao FIM do ciclo (acesso até `currentPeriodEnd`, downgrade pelo cron); só as cobranças FUTURAS param. Mesma primitiva do anti-duplicação do checkout.
+
 ### Lifecycle (cron diário — defesa em profundidade)
 
 `runBillingMaintenance()` em `src/lib/services/billing-maintenance.ts`, chamado pelo `runSchedulerJobs()` (mesmo cron `/api/cron/run`):
@@ -85,6 +93,15 @@ Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas
 - **`CANCELED` + `currentPeriodEnd < now`** → downgrade para `plan=FREE, status=ACTIVE`, limpa providerIds + audit `subscription.downgraded`.
 
 Defende contra webhooks perdidos / atrasados.
+
+### Dunning + perto-do-limite (Sprint 10 / fatia 2.3)
+
+Camada de **comunicação** de cobrança no cron — `runBillingNotifications()` em `src/lib/services/billing-notifications.ts`, chamada por `runSchedulerJobs()` **ANTES** do `runBillingMaintenance` (a suspensão PAST_DUE>7d limparia o status e o email do dia 7 não sairia). Best-effort (nunca lança). Espelha o padrão Sprint 8 (fns puras + dedup por audit, **sem schema novo**).
+
+- **Dunning** (assinaturas `PAST_DUE`): emails nos dias **1/3/7** desde o início do atraso. `dunningStageDue` (pura) escolhe o **maior marco vencido ainda não enviado** (não regride nem reenvia; se o cron pula dias, vai direto ao mais urgente). Âncora "início do atraso" = `createdAt` do 1º `billing.payment.failed` desde o último `billing.payment.received` (reinicia em PAST_DUE→ACTIVE→PAST_DUE); **fallback `Subscription.updatedAt`** quando o PAST_DUE veio fora do webhook (mock-trigger/backfill). DAY_7 traz aviso de **suspensão iminente** (`suspendsInDays`). Dedup: audit `billing.dunning.sent` (lê `metadata.stage` desde a âncora).
+- **Perto do limite** (mensagens): ao cruzar **80%/100%** do uso do período (`usageThresholdDue` pura, 100% com precedência), 1 email por marco por período. **Free incluído** (gancho de conversão). Dedup naturalmente por-período: audit `billing.usage.threshold_notified` com `metadata.periodStart` (vira linha nova no período seguinte, sem job de reset — igual ao `UsageCounter`).
+- Emails em `src/lib/emails/transactional.ts` (`buildDunningEmail`/`buildUsageLimitEmail` puros + senders). Stats novas em `SchedulerStats`: `dunningEmailsSent`, `usageWarningsSent`. Falha por-tenant → `captureError({ area: "cron" })` (observável, não só console).
+- ⚠️ **DAY_7 é best-effort**: se o cron ficar fora durante toda a janela do dia 7 e a suspensão (`billing-maintenance`, >7d) ocorrer antes do próximo run, o aviso de suspensão iminente pode não sair (a ordem notifications-antes-de-maintenance só protege dentro de um mesmo tick). Aceitável p/ camada de comunicação.
 
 ### Mock trigger (dev-only)
 
@@ -118,6 +135,17 @@ Modo Mock, seed user posto em FREE + `cpf=null` + providerIds limpos (estado gra
 3. ✅ CPF válido digitado → máscara formatou + botão habilitou → "Continuar" → avançou pro **QR code Pix** (sem erro).
 4. ✅ DB confirmado: `User.cpf` + `cpfHash` persistidos (hash com pepper), `Subscription.providerCustomerId/providerSubscriptionId` gravados (checkout completou), audit `billing.checkout.cpf_added` registrado.
 5. Estado do seed restaurado (PRO/ACTIVE + cpf original) ao fim. Branches `invalid`/`required`/dedup cobertos por unit (`tests/unit/checkout-cpf.test.ts`) + sprints 10.8/10.9.
+
+### Validação (cancelSubscription — anti-duplicação + cancel no provider, 2026-06-20)
+
+Backend-only (sem mudança de UI). Risco central = o `DELETE /subscriptions/{id}` do Asaas funcionar de verdade (senão o catch best-effort engole e o fix vira no-op). Validado contra o **sandbox real** via script descartável:
+
+1. ✅ `createCustomer` (com CPF) → `createCheckout` PIX cria sub A (`ACTIVE`, QR gerado).
+2. ✅ `GET /subscriptions/{A}` antes → `deleted:false, status:ACTIVE`.
+3. ✅ `provider.cancelSubscription(A)` (`DELETE`) → `GET /subscriptions/{A}` depois → `deleted:true, status:INACTIVE`.
+4. ✅ Customer de teste removido no cleanup (zero órfão deixado).
+
+Wiring (checkout cancela órfã antes de criar + cancel chama provider + Mock no-op) coberto por sprint 10.10 + unit `billing-provider.test.ts`.
 
 ### Validação manual no browser (Sprint 5)
 

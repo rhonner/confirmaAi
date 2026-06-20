@@ -27,6 +27,11 @@ export type SchedulerStats = {
   evolutionHealth: string;
   /** % de tenants com instância que estão CONNECTED (null sem instâncias). */
   whatsappConnectedPct: number | null;
+  // Sprint 10 fatia 2.3 — notificações de billing (ver billing-notifications.ts):
+  /** Emails de dunning (cobrança em atraso, dias 1/3/7) enviados. */
+  dunningEmailsSent: number;
+  /** Avisos de "perto do limite" de mensagens (80%/100%) enviados. */
+  usageWarningsSent: number;
 };
 
 // A rota /api/cron/run tem maxDuration = 60s; paramos a varredura em 45s
@@ -238,6 +243,8 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     whatsappDisconnectedWithPending: 0,
     evolutionHealth: "NOT_CONFIGURED",
     whatsappConnectedPct: null,
+    dunningEmailsSent: 0,
+    usageWarningsSent: 0,
   };
 
   try {
@@ -251,6 +258,19 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     console.error("Error in sendReminders:", error);
   }
   await markNoShows(stats);
+
+  // Notificações de billing (Sprint 10 fatia 2.3): dunning (dias 1/3/7) +
+  // aviso de "perto do limite". Roda ANTES do billing-maintenance de propósito:
+  // a suspensão (PAST_DUE>7d) limparia o status PAST_DUE e o email do dia 7
+  // (aviso de suspensão iminente) não sairia. Best-effort, try/catch isolado.
+  try {
+    const { runBillingNotifications } = await import("./billing-notifications");
+    const n = await runBillingNotifications();
+    stats.dunningEmailsSent = n.dunningEmailsSent;
+    stats.usageWarningsSent = n.usageWarningsSent;
+  } catch (err) {
+    console.error("billing-notifications failed:", err);
+  }
 
   // Billing maintenance (Sprint 5): defesa em profundidade contra webhooks
   // perdidos. Roda no mesmo cron pra economizar invocações Vercel.

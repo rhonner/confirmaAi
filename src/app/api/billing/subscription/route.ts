@@ -6,6 +6,7 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { PLANS, getCurrentUsage } from "@/lib/billing";
+import { resetEligibility } from "@/lib/account/reset-eligibility";
 import type { ApiResponse } from "@/lib/types/api";
 
 export type SubscriptionResponse = {
@@ -17,6 +18,8 @@ export type SubscriptionResponse = {
   cancelAtPeriodEnd: boolean;
   messagesSent: number;
   messagesIncluded: number;
+  /** Reset de conta Free disponível agora (gate na UI; backend revalida). */
+  canResetFreeAccount: boolean;
 };
 
 export async function GET() {
@@ -24,13 +27,15 @@ export async function GET() {
     const session = await getAuthSession();
     if (!session?.user?.id) return unauthorizedResponse();
 
-    const [sub, user, usage] = await Promise.all([
+    const [sub, user, usage, appointmentCount, priorResetCount] = await Promise.all([
       prisma.subscription.findUnique({ where: { userId: session.user.id } }),
       prisma.user.findUnique({
         where: { id: session.user.id },
         select: { patientSlotCount: true },
       }),
       getCurrentUsage(session.user.id),
+      prisma.appointment.count({ where: { userId: session.user.id } }),
+      prisma.auditLog.count({ where: { tenantUserId: session.user.id, action: "account.reset" } }),
     ]);
 
     const plan = sub?.plan ?? "FREE";
@@ -45,6 +50,7 @@ export async function GET() {
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
       messagesSent: usage.messagesSent,
       messagesIncluded: usage.messagesIncluded,
+      canResetFreeAccount: resetEligibility({ plan, appointmentCount, priorResetCount }).allowed,
     };
 
     return NextResponse.json<ApiResponse<SubscriptionResponse>>({ data });

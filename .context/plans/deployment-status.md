@@ -63,7 +63,7 @@ Existem (v1): `CRON_SECRET`, `EVOLUTION_API_KEY`, `EVOLUTION_API_URL`, `EVOLUTIO
 
 1. **Cancelar assinaturas de teste no Asaas** (senão cobram em ~30d): `sub_yd62rxxzokuelolp` (conta testepagto), a da testepagto2, e a órfã `sub_3m1b00oia8grmdp2`. Painel Asaas → Assinaturas → cancelar.
 2. **Safe Browsing**: domínio `clinicaorganizada.com` apareceu como "Dangerous/phishing" em perfil Chrome com Enhanced Safe Browsing. Search Console verificado (DNS TXT `google-site-verification`) e **sem issue listado** → heurística de tempo real. Marca unificada (ConfirmaAí→Clínica Organizada) removeu o sinal nome≠domínio. Acompanhar; "Request review" se virar listagem central.
-3. **Bugs no backlog (Sprint 10)**: ~~checkout com `User.cpf` null (contas grandfathered pré-Sprint 4) rejeita assinatura~~ ✅ **resolvido 2026-06-20** (CPF_REQUIRED + `resolveCheckoutCpf` + `updateCustomer` idempotente + paridade anti-fraude — ver `monetization-v2.md` Sprint 10 / `features/billing.md`). **Ainda aberto**: checkout retry duplica assinatura no gateway.
+3. **Bugs no backlog (Sprint 10)** — ✅ **ambos resolvidos 2026-06-20**: ~~checkout com `User.cpf` null (contas grandfathered) rejeita assinatura~~ (CPF_REQUIRED + `resolveCheckoutCpf` + `updateCustomer` idempotente + paridade anti-fraude) e ~~checkout retry duplica assinatura no gateway~~ (primitiva `cancelSubscription` cancela a pendente antes de criar; a rota de cancel também cancela no Asaas agora). Ver `monetization-v2.md` Sprint 10 / `features/billing.md`. **Limpeza manual pendente**: assinaturas órfãs criadas em prod ANTES deste fix continuam no Asaas — cancelar pelo painel (Assinaturas → cancelar) pra parar cobrança.
 
 ## 🔑 Recursos de produção (referência rápida)
 

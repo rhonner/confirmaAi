@@ -26,6 +26,9 @@ import {
   PLANS,
 } from "../src/lib/billing";
 import { canonicalizeCpf, validateCpf } from "../src/lib/anti-fraud/cpf-validator";
+import { resetEligibility } from "../src/lib/account/reset-eligibility";
+import { dunningStageDue, usageThresholdDue } from "../src/lib/services/billing-notifications";
+import { computePixExpiresAt, PIX_QR_TTL_SECONDS } from "../src/lib/billing/pix-ttl";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -1458,6 +1461,191 @@ async function main() {
       // o customer órfão nunca recupera o CPF e a assinatura fica presa no 400.
       !checkoutSrc10.includes("else if (cpfResult.persist)") &&
       readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8").includes("billing.checkout.cpf_added"),
+  );
+
+  // 10.10 Anti-duplicação de assinatura: checkout cancela a pendente antes de criar;
+  // cancel cancela no provider; primitiva existe no provider + mock
+  const cancelSrc10 = readFileSync(join(root, "src/app/api/billing/cancel/route.ts"), "utf8");
+  const labelsSrc10 = readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8");
+  const mockHasCancel = typeof new MockProvider().cancelSubscription === "function";
+  check(
+    "10.10 cancelSubscription: checkout cancela órfã antes de criar + cancel para cobrança no provider + mock no-op",
+    10,
+    mockHasCancel &&
+      checkoutSrc10.includes("cancelSubscription") &&
+      checkoutSrc10.includes("billing.subscription.replaced") &&
+      cancelSrc10.includes("cancelSubscription") &&
+      !cancelSrc10.includes("TBD em Sprint 5"),
+  );
+
+  // 10.11 Hardening da review: guard de webhook stale (não cancela a NEW pelo echo
+  // de DELETE da OLD) + audit reconciliável em falha de cancel + labels PT-BR
+  check(
+    "10.11 Hardening: webhook ignora evento stale + checkout audita órfã não-cancelada + labels dos 3 actions novos",
+    10,
+    webhookSrc10.includes("staleEvent") &&
+      webhookSrc10.includes("billing.webhook.stale_ignored") &&
+      checkoutSrc10.includes("billing.subscription.orphan_cancel_failed") &&
+      labelsSrc10.includes("billing.subscription.replaced") &&
+      labelsSrc10.includes("billing.subscription.orphan_cancel_failed") &&
+      labelsSrc10.includes("billing.webhook.stale_ignored"),
+  );
+
+  // ====================================================================
+  // SPRINT 10 — fatia 2.4: Reset de conta Free (F3)
+  // ====================================================================
+
+  // 10.12 Regra de elegibilidade (pura) + wiring da rota + labels
+  const resetRouteSrc = readFileSync(join(root, "src/app/api/account/reset/route.ts"), "utf8");
+  const labelsSrcReset = readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8");
+  check(
+    "10.12 resetEligibility: FREE/0/0 permite; pago, com agendamento e 2º reset bloqueiam + rota/labels",
+    10,
+    resetEligibility({ plan: "FREE", appointmentCount: 0, priorResetCount: 0 }).allowed === true &&
+      resetEligibility({ plan: "PRO", appointmentCount: 0, priorResetCount: 0 }).allowed === false &&
+      resetEligibility({ plan: "FREE", appointmentCount: 1, priorResetCount: 0 }).allowed === false &&
+      resetEligibility({ plan: "FREE", appointmentCount: 0, priorResetCount: 1 }).allowed === false &&
+      resetRouteSrc.includes("resetEligibility") &&
+      resetRouteSrc.includes('action: "account.reset"') &&
+      resetRouteSrc.includes("Serializable") &&
+      resetRouteSrc.includes("patientSlotCount: 0") &&
+      labelsSrcReset.includes("account.reset") &&
+      labelsSrcReset.includes("account.reset_blocked"),
+  );
+
+  // 10.13 Limpeza real no DB: apaga Patient + slots + cascade de Appointment + zera counter
+  const resetUser = await prisma.user.create({
+    data: { name: "Reset Test", email: `reset-${Date.now()}@test.local`, password: "x", clinicName: "Reset Clinic", emailVerifiedAt: new Date(), patientSlotCount: 1 },
+  });
+  await prisma.subscription.create({ data: { userId: resetUser.id, plan: "FREE", status: "ACTIVE" } });
+  const resetPhone = "+5511" + String(Math.floor(Math.random() * 1e9)).padStart(9, "0");
+  const resetPatient = await prisma.patient.create({
+    data: { name: "Reset Patient", phone: resetPhone, phoneCanonical: resetPhone.replace(/\D/g, ""), userId: resetUser.id },
+  });
+  await prisma.patientQuotaSlot.create({
+    data: { userId: resetUser.id, identifierType: "PHONE", identifierHash: hashPhone(resetPhone), patientId: resetPatient.id },
+  });
+  await prisma.appointment.create({
+    data: { userId: resetUser.id, patientId: resetPatient.id, dateTime: new Date(Date.now() + 86_400_000) },
+  });
+  // Replica a transação de limpeza da rota (a rota em si exige sessão HTTP).
+  await prisma.$transaction(async (tx) => {
+    await tx.patientQuotaSlot.deleteMany({ where: { userId: resetUser.id } });
+    await tx.patient.deleteMany({ where: { userId: resetUser.id } });
+    await tx.user.update({ where: { id: resetUser.id }, data: { patientSlotCount: 0 } });
+  }, { isolationLevel: "Serializable" });
+  const [rPatients, rSlots, rAppts, rUserAfter] = await Promise.all([
+    prisma.patient.count({ where: { userId: resetUser.id } }),
+    prisma.patientQuotaSlot.count({ where: { userId: resetUser.id } }),
+    prisma.appointment.count({ where: { userId: resetUser.id } }),
+    prisma.user.findUnique({ where: { id: resetUser.id }, select: { patientSlotCount: true } }),
+  ]);
+  check(
+    "10.13 Reset limpa Patient + slots + cascade Appointment + zera patientSlotCount",
+    10,
+    rPatients === 0 && rSlots === 0 && rAppts === 0 && rUserAfter?.patientSlotCount === 0,
+  );
+  await prisma.user.delete({ where: { id: resetUser.id } });
+
+  // 10.14 canResetFreeAccount exposto na subscription + card de UI fiado
+  const subRouteSrc = readFileSync(join(root, "src/app/api/billing/subscription/route.ts"), "utf8");
+  const configSrcReset = readFileSync(join(root, "src/app/(dashboard)/configuracoes/page.tsx"), "utf8");
+  const resetCardSrc = readFileSync(join(root, "src/components/settings/reset-account-card.tsx"), "utf8");
+  check(
+    "10.14 subscription expõe canResetFreeAccount + configuracoes renderiza ResetAccountCard + usa useResetAccount",
+    10,
+    subRouteSrc.includes("canResetFreeAccount") &&
+      subRouteSrc.includes("resetEligibility") &&
+      configSrcReset.includes("ResetAccountCard") &&
+      resetCardSrc.includes("useResetAccount") &&
+      resetCardSrc.includes("canResetFreeAccount"),
+  );
+
+  // ====================================================================
+  // SPRINT 10 — fatia 2.3: Dunning + perto-do-limite (F2)
+  // ====================================================================
+  const DAY = 24 * 60 * 60 * 1000;
+  const baseDue = new Date(Date.now() - 10 * DAY);
+  const { buildDunningEmail, buildUsageLimitEmail } = await import("../src/lib/emails/transactional");
+  const schedulerSrcF2 = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+  const labelsSrcF2 = readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8");
+  const transactionalSrcF2 = readFileSync(join(root, "src/lib/emails/transactional.ts"), "utf8");
+
+  // 10.15 Dunning: função pura (limiares 1/3/7, maior vencido, não-reenvio) +
+  // wiring no cron ANTES do billing-maintenance + email DAY_7 com aviso + label
+  const day7 = buildDunningEmail({ name: "x", planLabel: "Pro", stage: "DAY_7", suspendsInDays: 0 });
+  check(
+    "10.15 Dunning: dunningStageDue limiares + ordem cron (notifications antes de maintenance) + email DAY_7 + label",
+    10,
+    dunningStageDue({ pastDueSince: new Date(), now: new Date(), alreadySentStages: [] }) === null &&
+      dunningStageDue({ pastDueSince: baseDue, now: new Date(baseDue.getTime() + 1 * DAY), alreadySentStages: [] })?.stage === "DAY_1" &&
+      dunningStageDue({ pastDueSince: baseDue, now: new Date(baseDue.getTime() + 9 * DAY), alreadySentStages: [] })?.stage === "DAY_7" &&
+      dunningStageDue({ pastDueSince: baseDue, now: new Date(baseDue.getTime() + 7 * DAY), alreadySentStages: ["DAY_7"] }) === null &&
+      schedulerSrcF2.includes("runBillingNotifications") &&
+      schedulerSrcF2.indexOf("runBillingNotifications") < schedulerSrcF2.indexOf("runBillingMaintenance") &&
+      transactionalSrcF2.includes("sendDunningEmail") &&
+      day7.subject.length > 0 && day7.html.includes("suspensa") &&
+      labelsSrcF2.includes("billing.dunning.sent"),
+  );
+
+  // 10.16 Near-limit: função pura (80/100 + precedência + dedup) + email + label
+  const usage100 = buildUsageLimitEmail({ name: "x", threshold: 100, messagesSent: 1000, messagesIncluded: 1000 });
+  check(
+    "10.16 Near-limit: usageThresholdDue 80/100 + precedência + dedup + email + label",
+    10,
+    usageThresholdDue({ messagesSent: 790, messagesIncluded: 1000, alreadyNotified: [] }) === null &&
+      usageThresholdDue({ messagesSent: 800, messagesIncluded: 1000, alreadyNotified: [] }) === 80 &&
+      usageThresholdDue({ messagesSent: 1000, messagesIncluded: 1000, alreadyNotified: [80] }) === 100 &&
+      usageThresholdDue({ messagesSent: 1000, messagesIncluded: 1000, alreadyNotified: [80, 100] }) === null &&
+      usageThresholdDue({ messagesSent: 5, messagesIncluded: 0, alreadyNotified: [] }) === null &&
+      transactionalSrcF2.includes("sendUsageLimitEmail") &&
+      usage100.html.includes("1000 de 1000") &&
+      labelsSrcF2.includes("billing.usage.threshold_notified"),
+  );
+
+  // ====================================================================
+  // SPRINT 10 — fatia 2.5: QR Pix com TTL curto + regenerar (F1, Opção A)
+  // ====================================================================
+  const refreshRouteSrc = readFileSync(join(root, "src/app/api/billing/checkout/refresh/route.ts"), "utf8");
+  const providerSrcF1 = readFileSync(join(root, "src/lib/billing/provider.ts"), "utf8");
+  const checkoutPageSrcF1 = readFileSync(join(root, "src/app/(dashboard)/billing/checkout/page.tsx"), "utf8");
+  const labelsSrcF1 = readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8");
+  const mockHasRefresh = typeof new MockProvider().refreshPixCharge === "function";
+  const mockRefresh = await new MockProvider().refreshPixCharge({
+    providerSubscriptionId: "mock_sub_1", customerId: "mock_cus_1", plan: "PRO", userId: "u1",
+  });
+
+  // 10.17 Refresh REUSA a assinatura (não cria nova) — interface + mock + rota
+  check(
+    "10.17 refreshPixCharge reusa providerSubscriptionId (sem createCheckout/POST subscriptions) + provider/mock",
+    10,
+    mockHasRefresh &&
+      mockRefresh.sessionId === "mock_sub_1" &&
+      providerSrcF1.includes("refreshPixCharge") &&
+      refreshRouteSrc.includes("refreshPixCharge") &&
+      !refreshRouteSrc.includes("createCheckout") &&
+      !refreshRouteSrc.includes('"/subscriptions"'),
+  );
+
+  // 10.18 TTL curto calibrável + expiresAt do mock dentro da janela + label
+  check(
+    "10.18 computePixExpiresAt(now,ttl) curto + PIX_QR_TTL_SECONDS finito + label qr_refreshed",
+    10,
+    computePixExpiresAt(new Date(0), 5).getTime() === 5000 &&
+      Number.isFinite(PIX_QR_TTL_SECONDS) && PIX_QR_TTL_SECONDS > 0 && PIX_QR_TTL_SECONDS <= 600 &&
+      mockRefresh.expiresAt instanceof Date &&
+      labelsSrcF1.includes("billing.checkout.qr_refreshed"),
+  );
+
+  // 10.19 Countdown + "Gerar novo QR" no checkout
+  check(
+    "10.19 checkout/page tem countdown (setInterval + expired) + botão Gerar novo QR + refresh",
+    10,
+    checkoutPageSrcF1.includes("checkout-refresh-qr") &&
+      checkoutPageSrcF1.includes("setInterval") &&
+      checkoutPageSrcF1.includes("expired") &&
+      checkoutPageSrcF1.includes("/api/billing/checkout/refresh") &&
+      checkoutPageSrcF1.includes("checkout-qr-countdown"),
   );
 
   // ====================================================================

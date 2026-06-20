@@ -398,6 +398,7 @@ export type Subscription = {
   cancelAtPeriodEnd: boolean;
   messagesSent: number;
   messagesIncluded: number;
+  canResetFreeAccount: boolean;
 };
 
 export function useSubscription() {
@@ -405,6 +406,25 @@ export function useSubscription() {
     queryKey: ["subscription"],
     queryFn: () => fetchApi<Subscription>("/api/billing/subscription"),
     staleTime: 60_000,
+  });
+}
+
+/** Reset de conta Free (1× vitalício): apaga pacientes + zera a quota. */
+export function useResetAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchApi<{ patientsDeleted: number; slotsDeleted: number }>("/api/account/reset", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Conta resetada. Suas vagas de paciente foram liberadas.");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 

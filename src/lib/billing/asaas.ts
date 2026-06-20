@@ -1,6 +1,8 @@
 import { addDays, addMonths } from "date-fns";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { PLANS } from "./plans";
+import { computePixExpiresAt } from "./pix-ttl";
+import type { PlanTier } from "@/generated/prisma/client";
 import type {
   BillingProviderImpl,
   CreateCustomerInput,
@@ -99,26 +101,11 @@ export class AsaasProvider implements BillingProviderImpl {
 
     // Para Pix, recupera a primeira cobrança e seu QR code.
     if (input.method === "PIX") {
-      const payments = await this.request<{ data: Array<{ id: string }> }>(
-        `/subscriptions/${sub.id}/payments`,
-      );
-      const firstPaymentId = payments.data?.[0]?.id;
+      const firstPaymentId = await this.pendingPaymentId(sub.id);
       if (!firstPaymentId) {
-        return { sessionId: sub.id, expiresAt: addDays(new Date(), 1) };
+        return { sessionId: sub.id, expiresAt: computePixExpiresAt(new Date()) };
       }
-      const pix = await this.request<{
-        success: boolean;
-        encodedImage: string;
-        payload: string;
-        expirationDate: string;
-      }>(`/payments/${firstPaymentId}/pixQrCode`);
-      return {
-        sessionId: sub.id,
-        qrCodeBase64: pix.encodedImage ?? null,
-        qrCodePayload: pix.payload ?? null,
-        paymentUrl: null,
-        expiresAt: pix.expirationDate ? new Date(pix.expirationDate) : null,
-      };
+      return this.fetchPixQrForPayment(firstPaymentId, sub.id);
     }
 
     // Cartão: link público de pagamento.
@@ -127,6 +114,58 @@ export class AsaasProvider implements BillingProviderImpl {
       paymentUrl: `${this.apiUrl.replace(/\/api\/v3$/, "")}/c/${sub.id}`,
       expiresAt: addDays(new Date(), 1),
     };
+  }
+
+  /** Regenera o QR Pix da assinatura existente — NÃO cria assinatura nova. */
+  async refreshPixCharge(input: {
+    providerSubscriptionId: string;
+    customerId: string;
+    plan: PlanTier;
+    userId: string;
+  }): Promise<CheckoutResult> {
+    const paymentId = await this.pendingPaymentId(input.providerSubscriptionId);
+    if (!paymentId) {
+      // Sem cobrança pendente (já paga/inexistente) — devolve sessão sem QR novo.
+      return { sessionId: input.providerSubscriptionId, expiresAt: computePixExpiresAt(new Date()) };
+    }
+    return this.fetchPixQrForPayment(paymentId, input.providerSubscriptionId);
+  }
+
+  /** Cobrança PENDENTE mais relevante de uma assinatura (pra (re)buscar o QR). */
+  private async pendingPaymentId(providerSubscriptionId: string): Promise<string | null> {
+    const payments = await this.request<{ data: Array<{ id: string; status?: string }> }>(
+      `/subscriptions/${providerSubscriptionId}/payments`,
+    );
+    const list = payments.data ?? [];
+    const pending = list.find((p) => {
+      const s = (p.status ?? "").toUpperCase();
+      return s === "PENDING" || s === "AWAITING_RISK_ANALYSIS" || s.startsWith("AWAIT");
+    });
+    return (pending ?? list[0])?.id ?? null;
+  }
+
+  /** Monta o CheckoutResult de uma cobrança Pix, com `expiresAt` curto (TTL do produto). */
+  private async fetchPixQrForPayment(paymentId: string, sessionId: string): Promise<CheckoutResult> {
+    const pix = await this.request<{
+      success: boolean;
+      encodedImage: string;
+      payload: string;
+      expirationDate: string;
+    }>(`/payments/${paymentId}/pixQrCode`);
+    return {
+      sessionId,
+      qrCodeBase64: pix.encodedImage ?? null,
+      qrCodePayload: pix.payload ?? null,
+      paymentUrl: null,
+      // O `expirationDate` do gateway é ~12 meses; o TTL curto é política do produto.
+      expiresAt: computePixExpiresAt(new Date()),
+    };
+  }
+
+  async cancelSubscription(providerSubscriptionId: string) {
+    // Asaas: DELETE /subscriptions/{id} remove a assinatura (interrompe cobranças
+    // futuras). Cobranças já confirmadas não são afetadas.
+    await this.request(`/subscriptions/${providerSubscriptionId}`, { method: "DELETE" });
   }
 
   async createPortalSession({ providerCustomerId, returnUrl }: { providerCustomerId: string; returnUrl: string }) {

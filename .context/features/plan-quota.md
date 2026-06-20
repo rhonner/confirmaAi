@@ -116,4 +116,4 @@ Helper de dev: `scripts/toggle-admin-plan.ts FREE|PRO|PREMIUM` para alternar o p
 - **Mudar limite do FREE** (ex: 10): `PLANS.FREE.patientSlots = 10` em `plans.ts`. Comunicar usuários ativos por email.
 - **Adicionar identificador novo** (ex: passport): adicionar valor no enum `IdentifierType`, helper de canonicalização/hash, atualizar `primaryIdentifier`/`allIdentifiers`. Slot continua único por hash.
 - **Permitir downgrade Pro → Free com >5 pacientes**: entitlements.check ja gateia criação, então tecnicamente já dá pra downgrade — só não permitir CRIAR novos. UI deve avisar antes do downgrade.
-- **Reset de conta Free** (Sprint 7): apagar Patient + slots de um user (com check de zero appointments confirmados). 1× vitalício.
+- **Reset de conta Free** — ✅ implementado (Sprint 10, 2026-06-20): apaga Patient + slots e zera a quota, 1× vitalício, só FREE + zero agendamentos. Ver [`account-reset.md`](account-reset.md).
