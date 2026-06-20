@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 
 export default function AuthLayout({
@@ -49,6 +50,11 @@ export default function AuthLayout({
         <Card className="p-8 border-border shadow-xl backdrop-blur-md bg-card">
           {children}
         </Card>
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          <Link href="/termos" className="hover:text-foreground">Termos de Uso</Link>
+          {" · "}
+          <Link href="/privacidade" className="hover:text-foreground">Política de Privacidade</Link>
+        </p>
       </div>
     </div>
   );

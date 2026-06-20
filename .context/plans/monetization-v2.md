@@ -1018,12 +1018,13 @@ Escopo (~meio dia) — **✅ CONCLUÍDO 2026-06-13**:
 
 > Ex-Sprint 8. **Pré-requisito para campanha de marketing ativa** — não escalar aquisição antes disto (CPF de paciente sem termos/privacidade publicados é passivo jurídico em saúde).
 
-- [ ] `/termos` e `/privacidade`.
-- [ ] Checkbox separado no signup.
-- [ ] `GET /api/account/export`.
-- [ ] `DELETE /api/account` com redaction.
-- [ ] NF-e via Asaas (validar emissão automática em produção — config feita na Sprint 7).
-- [ ] Razão social, CNPJ, endereço no rodapé (depende de abrir MEI — ver nota em `deployment-status.md`).
+- [x] **(2026-06-20)** `/termos` e `/privacidade` (públicas; conteúdo rascunho LGPD em `src/lib/legal/content.ts`, revisar c/ advogado) — ver [`../features/lgpd-account.md`](../features/lgpd-account.md).
+- [x] **(2026-06-20)** Checkbox separado no signup (aceite obrigatório + prova: `User.termsAcceptedAt/termsVersion/consentIp`).
+- [x] **(2026-06-20)** `GET /api/account/export` (portabilidade — JSON, não pago, omite segredos).
+- [x] **(2026-06-20)** `DELETE /api/account` — **soft delete** (anonimiza dono + `deletedAt` + cancela cobrança; 3 chokepoints de login rejeitam `deletedAt`) + **purga de pacientes após 30d** no cron (`runAccountPurge`). Migration única `20260620194121` (6 colunas + índice). ⚠️ deploy exige `DIRECT_URL` no Vercel.
+- [ ] ⏸️ **ADIADO (sem CNPJ ~2-3 meses)** NF-e via Asaas (validar emissão automática em produção — config feita na Sprint 7).
+- [ ] ⏸️ **ADIADO (sem CNPJ ~2-3 meses)** Razão social, CNPJ, endereço no rodapé (depende de abrir MEI — ver nota em `deployment-status.md`).
+- [ ] _(follow-up)_ Reconsent de usuários grandfathered (interstitial quando `termsAcceptedAt` null) — adiado nesta rodada (colide com gate de email-verify).
 
 ### Total: ~8-9 semanas de execução focada (5 concluídas + 6 sprints restantes)
 

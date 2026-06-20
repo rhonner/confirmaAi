@@ -8,12 +8,13 @@ export async function getAuthSession() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return null
 
-  // Defend against stale JWT: token contains a user.id that no longer exists in DB.
+  // Defend against stale JWT: token has a user.id that no longer exists OU a
+  // conta foi soft-deleted (Sprint 11). Revogação efetiva de sessão (JWT stateless).
   const exists = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true },
+    select: { id: true, deletedAt: true },
   })
-  if (!exists) return null
+  if (!exists || exists.deletedAt) return null
   return session
 }
 

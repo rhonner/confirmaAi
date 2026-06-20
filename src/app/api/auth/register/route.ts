@@ -17,6 +17,7 @@ import {
 } from "@/lib/anti-fraud/email-verification"
 import { detectOwnerCpfReuse } from "@/lib/anti-fraud/owner-cpf-dedup"
 import { captureError } from "@/lib/observability"
+import { LEGAL_VERSION } from "@/lib/legal/content"
 import type { ApiResponse } from "@/lib/types/api"
 
 export const POST = auditWrap(async (request: NextRequest) => {
@@ -165,6 +166,11 @@ export const POST = auditWrap(async (request: NextRequest) => {
     // 7. Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
+    // Consentimento: NÃO forjar — só grava a prova quando o aceite veio de fato
+    // (o front gateia com checkbox obrigatório; uma chamada direta sem aceite
+    // registra null em vez de consentimento fabricado). Ver review LGPD.
+    const consented = validation.data.acceptedTerms === true
+
     // 8. Cria User + Settings + Subscription atomicamente
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
@@ -176,6 +182,11 @@ export const POST = auditWrap(async (request: NextRequest) => {
           avgAppointmentValue: avgAppointmentValue || 0,
           cpf: cpfCanonical,
           cpfHash: cpfHashValue,
+          // Sprint 11 — prova de consentimento (só grava se aceitou de fato).
+          termsAcceptedAt: consented ? new Date() : null,
+          privacyAcceptedAt: consented ? new Date() : null,
+          termsVersion: consented ? LEGAL_VERSION : null,
+          consentIp: consented ? ipAddress : null,
         },
         select: {
           id: true,
@@ -220,7 +231,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
       entityType: "User",
       entityId: user.id,
       tenantUserId: user.id,
-      metadata: { email: user.email, clinicName: user.clinicName },
+      metadata: { email: user.email, clinicName: user.clinicName, termsVersion: LEGAL_VERSION },
     })
     await trackSignupAttempt({
       ipAddress,

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-helpers";
 
 export default async function RootPage() {
-  const session = await getServerSession(authOptions);
+  // getAuthSession rejeita JWT de conta inexistente OU soft-deleted (Sprint 11).
+  const session = await getAuthSession();
 
   if (session) {
     redirect("/dashboard");

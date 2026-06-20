@@ -66,6 +66,18 @@ export const authOptions: NextAuthOptions = {
             return null
           }
 
+          // Sprint 11 — conta soft-deleted não loga (mesmo retorno genérico, não
+          // vaza que a conta existiu). Checa ANTES do bcrypt.
+          if (user.deletedAt) {
+            await audit({
+              action: "auth.login.failed",
+              tenantUserId: user.id,
+              metadata: { email, reason: "account_deleted" },
+              contextOverride: { actorType: "ANONYMOUS", ...baseCtx },
+            })
+            return null
+          }
+
           const isPasswordValid = await bcrypt.compare(
             credentials.password,
             user.password

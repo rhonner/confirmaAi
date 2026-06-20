@@ -102,6 +102,16 @@ model User {
 
   patientSlotCount Int @default(0)
 
+  // Sprint 11 — LGPD soft-delete + purga (deletedAt != null = conta excluída;
+  // patientsPurgedAt = quando a purga 30d apagou os dados de pacientes).
+  deletedAt        DateTime?
+  patientsPurgedAt DateTime?
+  // Sprint 11 — prova de consentimento (um checkbox = termos + privacidade).
+  termsAcceptedAt   DateTime?
+  termsVersion      String?
+  privacyAcceptedAt DateTime?
+  consentIp         String?
+
   patients          Patient[]
   appointments      Appointment[]
   settings          Settings?
@@ -109,6 +119,7 @@ model User {
   patientQuotaSlots PatientQuotaSlot[]
 
   @@index([cpfHash])
+  @@index([deletedAt])
 }
 
 model SignupAttempt {

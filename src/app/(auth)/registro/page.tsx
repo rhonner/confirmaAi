@@ -213,11 +213,11 @@ export default function RegisterPage() {
           <div className="grid gap-1.5 leading-none">
             <label htmlFor="acceptedTerms" className="text-sm font-medium leading-none">
               Aceito os{" "}
-              <Link href="/precos" className="underline">
+              <Link href="/termos" className="underline" target="_blank">
                 Termos de Uso
               </Link>{" "}
               e{" "}
-              <Link href="/precos" className="underline">
+              <Link href="/privacidade" className="underline" target="_blank">
                 Política de Privacidade
               </Link>
             </label>

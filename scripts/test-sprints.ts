@@ -29,6 +29,7 @@ import { canonicalizeCpf, validateCpf } from "../src/lib/anti-fraud/cpf-validato
 import { resetEligibility } from "../src/lib/account/reset-eligibility";
 import { dunningStageDue, usageThresholdDue } from "../src/lib/services/billing-notifications";
 import { computePixExpiresAt, PIX_QR_TTL_SECONDS } from "../src/lib/billing/pix-ttl";
+import { isPatientPurgeDue, runAccountPurge } from "../src/lib/account/account-purge";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -1647,6 +1648,99 @@ async function main() {
       checkoutPageSrcF1.includes("/api/billing/checkout/refresh") &&
       checkoutPageSrcF1.includes("checkout-qr-countdown"),
   );
+
+  // ====================================================================
+  // SPRINT 11 — LGPD (consent, legal pages, export, soft-delete + purga)
+  // ====================================================================
+  const DAY11 = 24 * 60 * 60 * 1000;
+  const registerSrc11 = readFileSync(join(root, "src/app/api/auth/register/route.ts"), "utf8");
+  const registroPageSrc11 = readFileSync(join(root, "src/app/(auth)/registro/page.tsx"), "utf8");
+  const authSrc11 = readFileSync(join(root, "src/lib/auth.ts"), "utf8");
+  const authHelpersSrc11 = readFileSync(join(root, "src/lib/auth-helpers.ts"), "utf8");
+  const rootPageSrc11 = readFileSync(join(root, "src/app/page.tsx"), "utf8");
+  const deleteRouteSrc11 = readFileSync(join(root, "src/app/api/account/route.ts"), "utf8");
+  const exportSrc11 = readFileSync(join(root, "src/lib/account/export.ts"), "utf8");
+  const labelsSrc11 = readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8");
+  const schedulerSrc11 = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+
+  // 10.20 Consentimento no signup + páginas legais públicas + links
+  check(
+    "10.20 Consent: register grava termsAcceptedAt+LEGAL_VERSION; /termos+/privacidade existem; registro linka",
+    10,
+    registerSrc11.includes("termsAcceptedAt") &&
+      registerSrc11.includes("LEGAL_VERSION") &&
+      exists("src/app/termos/page.tsx") &&
+      exists("src/app/privacidade/page.tsx") &&
+      exists("src/lib/legal/content.ts") &&
+      registroPageSrc11.includes('href="/termos"') &&
+      registroPageSrc11.includes('href="/privacidade"'),
+  );
+
+  // 10.21 Soft-delete: 3 chokepoints de login rejeitam deletedAt + rota anonimiza
+  check(
+    "10.21 Soft-delete: authorize+getAuthSession+page rejeitam deletedAt; DELETE /api/account anonimiza",
+    10,
+    authSrc11.includes("account_deleted") &&
+      authHelpersSrc11.includes("deletedAt") &&
+      rootPageSrc11.includes("getAuthSession") &&
+      deleteRouteSrc11.includes("deletedAt: new Date()") &&
+      deleteRouteSrc11.includes("deleted-") &&
+      labelsSrc11.includes("account.deleted"),
+  );
+
+  // 10.22 Export LGPD: rota existe, OMITE segredos, label registrado
+  check(
+    "10.22 Export: rota existe + omite password/cpfHash/token + label account.exported",
+    10,
+    exists("src/app/api/account/export/route.ts") &&
+      !exportSrc11.includes("password: true") &&
+      !exportSrc11.includes("cpfHash: true") &&
+      !exportSrc11.includes("emailVerificationToken") &&
+      labelsSrc11.includes("account.exported"),
+  );
+
+  // 10.23 Purga 30d: função pura + sweep real no DB + wiring no cron + labels
+  const purgePure =
+    isPatientPurgeDue({ deletedAt: null, patientsPurgedAt: null, now: new Date() }) === false &&
+    isPatientPurgeDue({ deletedAt: new Date(Date.now() - 29 * DAY11), patientsPurgedAt: null, now: new Date() }) === false &&
+    isPatientPurgeDue({ deletedAt: new Date(Date.now() - 31 * DAY11), patientsPurgedAt: null, now: new Date() }) === true;
+
+  const purgeUser = await prisma.user.create({
+    data: {
+      name: "Purge Test", email: `purge-${Date.now()}@test.local`, password: "x", clinicName: "Purge",
+      emailVerifiedAt: new Date(), patientSlotCount: 1, deletedAt: new Date(Date.now() - 40 * DAY11),
+    },
+  });
+  const purgePhone = "+5511" + String(Math.floor(Math.random() * 1e9)).padStart(9, "0");
+  const purgePatient = await prisma.patient.create({
+    data: { name: "Purge Patient", phone: purgePhone, phoneCanonical: purgePhone.replace(/\D/g, ""), userId: purgeUser.id },
+  });
+  await prisma.patientQuotaSlot.create({
+    data: { userId: purgeUser.id, identifierType: "PHONE", identifierHash: hashPhone(purgePhone), patientId: purgePatient.id },
+  });
+  await runAccountPurge(new Date());
+  const [purgedPatients, purgedSlots, purgedUser] = await Promise.all([
+    prisma.patient.count({ where: { userId: purgeUser.id } }),
+    prisma.patientQuotaSlot.count({ where: { userId: purgeUser.id } }),
+    prisma.user.findUnique({ where: { id: purgeUser.id }, select: { patientsPurgedAt: true, patientSlotCount: true } }),
+  ]);
+  const purgeAudit = await prisma.auditLog.count({ where: { tenantUserId: purgeUser.id, action: "account.purged" } });
+  check(
+    "10.23 Purga 30d: pura + sweep apaga pacientes + patientsPurgedAt + audit + wiring no cron + labels",
+    10,
+    purgePure &&
+      purgedPatients === 0 && purgedSlots === 0 &&
+      !!purgedUser?.patientsPurgedAt && purgedUser?.patientSlotCount === 0 &&
+      purgeAudit === 1 &&
+      schedulerSrc11.includes("runAccountPurge") &&
+      labelsSrc11.includes("account.purged"),
+  );
+  // cleanup do purgeUser (audit é append-only → GUC bypass)
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: purgeUser.id } });
+  });
+  await prisma.user.delete({ where: { id: purgeUser.id } });
 
   // ====================================================================
   // CLEANUP

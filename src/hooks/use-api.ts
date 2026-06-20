@@ -409,6 +409,18 @@ export function useSubscription() {
   });
 }
 
+/** Exclusão de conta (LGPD, soft delete): anonimiza + desloga. */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: () => fetchApi<{ deleted: true }>("/api/account", { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Conta excluída.");
+      signOut({ callbackUrl: "/login" });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 /** Reset de conta Free (1× vitalício): apaga pacientes + zera a quota. */
 export function useResetAccount() {
   const queryClient = useQueryClient();

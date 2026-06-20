@@ -24,6 +24,7 @@
 - `scripts/migrate-prod.sh` → runbook manual/emergência (status + deploy, com confirmação).
 - `captureError` no catch do `register` → 500 de signup agora alerta no Sentry.
 - **Ação do fundador (1×)**: cadastrar **`DIRECT_URL`** no Vercel (conexão direta Neon, host **sem** `-pooler`) pra o `vercel-build` migrar de forma robusta. Sem ela, cai no `DATABASE_URL` pooled (DDL pode falhar no pgbouncer).
+  - ✅ **CADASTRADA em 2026-06-20** (Vercel Production, Encrypted; derivada da `DATABASE_URL` sem o `-pooler` via `vercel env pull` + `vercel env add`, valor nunca exposto). Confirmada com `vercel env ls`. A robustez do auto-migrate está garantida. **Falta apenas commit+push da Sprint 11** (fluxo gh) pra o `vercel-build` aplicar a migration `20260620194121_sprint11_lgpd_soft_delete_consent`.
 
 > Pattern relacionado: [`.wiki/pages/concepts/neon-pooled-vs-direct-url.md`](../../.wiki/pages/concepts/neon-pooled-vs-direct-url.md).
 

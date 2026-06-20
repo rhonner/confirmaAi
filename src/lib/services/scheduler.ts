@@ -32,6 +32,8 @@ export type SchedulerStats = {
   dunningEmailsSent: number;
   /** Avisos de "perto do limite" de mensagens (80%/100%) enviados. */
   usageWarningsSent: number;
+  // Sprint 11 — LGPD: contas soft-deleted cujos dados de pacientes foram purgados (30d).
+  accountsPurged: number;
 };
 
 // A rota /api/cron/run tem maxDuration = 60s; paramos a varredura em 45s
@@ -245,6 +247,7 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     whatsappConnectedPct: null,
     dunningEmailsSent: 0,
     usageWarningsSent: 0,
+    accountsPurged: 0,
   };
 
   try {
@@ -282,6 +285,16 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     }
   } catch (err) {
     console.error("billing-maintenance failed:", err);
+  }
+
+  // Purga LGPD (Sprint 11): apaga dados de pacientes de contas soft-deleted há
+  // mais de 30 dias. Best-effort, try/catch isolado.
+  try {
+    const { runAccountPurge } = await import("@/lib/account/account-purge");
+    const p = await runAccountPurge();
+    stats.accountsPurged = p.accountsPurged;
+  } catch (err) {
+    console.error("account-purge failed:", err);
   }
 
   // Resiliência WhatsApp (Sprint 8): health-check Evolution, métrica de
