@@ -45,6 +45,18 @@ Fábrica em `factory.ts` lê `BILLING_PROVIDER` env (`ASAAS` | `MOCK`) com fallb
 
 UI: `src/app/(dashboard)/billing/checkout/page.tsx` mostra QR + botão "Copiar código" + (em dev) "Simular pagamento". Polling em `useSubscription` redireciona pra `/billing/sucesso` quando vira ACTIVE.
 
+#### CPF obrigatório no checkout (grandfathered — fix 2026-06-20)
+
+Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas **rejeita a assinatura** (`400 "preencher o CPF ou CNPJ"`), e a falha (que acontecia no `createCheckout`, depois do `createCustomer`) ainda deixava um **customer órfão sem CPF** no gateway. Fluxo corrigido:
+
+1. Helper puro `resolveCheckoutCpf({ userCpf, providedCpf })` (em `src/lib/billing/checkout-cpf.ts`) → `ok | required | invalid`.
+2. `POST /api/billing/checkout` aceita `cpf?` no body. Se `user.cpf` null e nada informado → **`400 { error: "CPF_REQUIRED" }` ANTES de tocar o provider** (não cria customer órfão). A UI troca o seletor de método pelo campo CPF e reenvia com `cpf`.
+3. CPF informado → `validateCpf` (DV + sequencial); inválido → `400` com mensagem PT.
+4. Válido → persiste `User.cpf/cpfHash`. **Como este é o 2º ponto que grava `User.cpfHash` (além do register), aplica os MESMOS controles anti-fraude**: hard-block `>=4` (`CPF_LIMIT` 409) + `detectOwnerCpfReuse` (audit `fraud.cpf_reused_owner` + auto-suspend `>3`). Audit `billing.checkout.cpf_added`. Ver [`auth.md`](auth.md).
+5. `provider.updateCustomer({ providerCustomerId, cpf })` (Asaas `POST /customers/{id}`, Mock no-op) sincroniza o CPF no customer. **Idempotente**: roda em TODO checkout com customer existente (não one-shot) — recupera customer órfão sem CPF mesmo após falha de rede anterior, em vez de a assinatura ficar presa no 400 pra sempre.
+
+> ⏳ **Backlog (pedido do fundador 2026-06-19) — expiração curta do QR Pix**: hoje a cobrança nasce com janela longa (`asaas.ts`: `nextDueDate = hoje + 3d`; o QR herda a `expirationDate`), então o Pix fica **aberto por muito tempo no gateway** (cliente pode pagar código velho; cobranças pendentes acumulam). Plano: TTL curto (~3 min) com countdown no checkout → ao expirar, **cancela a cobrança Pix no Asaas e gera uma nova reusando a MESMA assinatura** (cuidar pra não duplicar — ver bug "checkout retry duplica assinatura"). Checklist/detalhes em [`../plans/monetization-v2.md`](../plans/monetization-v2.md) → Sprint 10.
+
 ### Webhook
 
 `POST /api/billing/webhook` (público — recebe do provider):
@@ -96,6 +108,16 @@ Ciclo completo validado em dev contra a sandbox real, via Chrome MCP:
 5. ✅ Pagamento de assinatura órfã → `BillingEvent` com `userId null`, sem patch (reconciliação).
 
 Bugs reais achados e corrigidos neste setup: (a) `$aact_` zerado pelo loader do Next mesmo com aspas simples → escape `\$`; (b) `currentPeriodEnd` null por `nextDueDate` ausente no payment → `deriveNextDueDate`; (c) aviso MockProvider em modo sandbox → gate por `provider`.
+
+### Validação manual no browser (Checkout CPF-null, 2026-06-20)
+
+Modo Mock, seed user posto em FREE + `cpf=null` + providerIds limpos (estado grandfathered), via Chrome MCP:
+
+1. ✅ Login → `/billing/checkout?plan=PRO` → seletor Pix/Cartão normal.
+2. ✅ "Continuar com Pix" → backend respondeu `CPF_REQUIRED` → UI trocou pro campo **"Informe seu CPF para continuar"** (máscara `000.000.000-00`, hint "Não é compartilhado", botão "Continuar" desabilitado enquanto CPF incompleto).
+3. ✅ CPF válido digitado → máscara formatou + botão habilitou → "Continuar" → avançou pro **QR code Pix** (sem erro).
+4. ✅ DB confirmado: `User.cpf` + `cpfHash` persistidos (hash com pepper), `Subscription.providerCustomerId/providerSubscriptionId` gravados (checkout completou), audit `billing.checkout.cpf_added` registrado.
+5. Estado do seed restaurado (PRO/ACTIVE + cpf original) ao fim. Branches `invalid`/`required`/dedup cobertos por unit (`tests/unit/checkout-cpf.test.ts`) + sprints 10.8/10.9.
 
 ### Validação manual no browser (Sprint 5)
 

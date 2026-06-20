@@ -69,6 +69,14 @@ export class AsaasProvider implements BillingProviderImpl {
     return { providerCustomerId: r.id };
   }
 
+  async updateCustomer({ providerCustomerId, cpf }: { providerCustomerId: string; cpf: string }) {
+    // Asaas usa POST (não PUT) para atualizar customer existente.
+    await this.request(`/customers/${providerCustomerId}`, {
+      method: "POST",
+      body: JSON.stringify({ cpfCnpj: cpf.replace(/\D/g, "") }),
+    });
+  }
+
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
     const plan = PLANS[input.plan];
     const value = plan.priceMonthly / 100;

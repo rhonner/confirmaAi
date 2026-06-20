@@ -61,6 +61,7 @@ const LABELS: Record<string, string> = {
   "subscription.backfill": "Assinatura criada por migração",
   "billing.checkout.created": "Checkout iniciado",
   "billing.checkout.completed": "Checkout concluído",
+  "billing.checkout.cpf_added": "CPF adicionado no checkout",
   "billing.payment.received": "Pagamento recebido",
   "billing.payment.failed": "Pagamento falhou",
   "billing.webhook.processed": "Webhook processado",

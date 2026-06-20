@@ -21,6 +21,8 @@ import {
   reserveSlotInTx,
   checkEntitlement,
   attachCpfToExistingSlot,
+  resolveCheckoutCpf,
+  MockProvider,
   PLANS,
 } from "../src/lib/billing";
 import { canonicalizeCpf, validateCpf } from "../src/lib/anti-fraud/cpf-validator";
@@ -1415,6 +1417,47 @@ async function main() {
       verifySrc.includes("sendWelcomeEmail") &&
       cancelSrc.includes("sendSubscriptionCanceledEmail") &&
       webhookSrc10.includes("sendPaymentConfirmedEmail"),
+  );
+
+  // 10.8 Checkout com CPF null (grandfathered): pede CPF, valida, persiste e sincroniza customer
+  const cpf108Valid = generateValidCpf(778899);
+  const cpfNullReq = resolveCheckoutCpf({ userCpf: null });
+  const cpfProvided = resolveCheckoutCpf({ userCpf: null, providedCpf: cpf108Valid });
+  const cpfInvalid = resolveCheckoutCpf({ userCpf: null, providedCpf: "111.111.111-11" });
+  const cpfExisting = resolveCheckoutCpf({ userCpf: cpf108Valid, providedCpf: generateValidCpf(112233) });
+  const mockHasUpdate = typeof new MockProvider().updateCustomer === "function";
+  const checkoutSrc10 = readFileSync(join(root, "src/app/api/billing/checkout/route.ts"), "utf8");
+  const checkoutPageSrc10 = readFileSync(
+    join(root, "src/app/(dashboard)/billing/checkout/page.tsx"),
+    "utf8",
+  );
+  check(
+    "10.8 Checkout CPF-null: required → persist no CPF válido → invalid + provider.updateCustomer + UI CPF_REQUIRED",
+    10,
+    cpfNullReq.status === "required" &&
+      cpfProvided.status === "ok" &&
+      (cpfProvided.status === "ok" && cpfProvided.persist === true) &&
+      cpfInvalid.status === "invalid" &&
+      (cpfExisting.status === "ok" && cpfExisting.persist === false) &&
+      mockHasUpdate &&
+      checkoutSrc10.includes("CPF_REQUIRED") &&
+      checkoutSrc10.includes("resolveCheckoutCpf") &&
+      checkoutSrc10.includes("updateCustomer") &&
+      checkoutPageSrc10.includes("CPF_REQUIRED"),
+  );
+
+  // 10.9 Checkout CPF-set aplica os mesmos controles anti-fraude do register
+  // (hard-block + detectOwnerCpfReuse) e sincroniza o customer de forma idempotente
+  check(
+    "10.9 Checkout grava cpfHash com anti-fraude: detectOwnerCpfReuse + hard-block CPF_LIMIT + updateCustomer no else",
+    10,
+    checkoutSrc10.includes("detectOwnerCpfReuse") &&
+      checkoutSrc10.includes("CPF_LIMIT") &&
+      checkoutSrc10.includes("updateCustomer") &&
+      // updateCustomer não pode mais ser one-shot (gated em persist): se travar,
+      // o customer órfão nunca recupera o CPF e a assinatura fica presa no 400.
+      !checkoutSrc10.includes("else if (cpfResult.persist)") &&
+      readFileSync(join(root, "src/lib/audit/labels.ts"), "utf8").includes("billing.checkout.cpf_added"),
   );
 
   // ====================================================================

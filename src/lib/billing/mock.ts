@@ -35,6 +35,10 @@ export class MockProvider implements BillingProviderImpl {
     return { providerCustomerId: `mock_cus_${input.userId.slice(-8)}` };
   }
 
+  async updateCustomer(_input: { providerCustomerId: string; cpf: string }) {
+    // no-op: mock não mantém estado de customer.
+  }
+
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
     const sessionId = `mock_chk_${randomBytes(8).toString("hex")}`;
     const expiresAt = addDays(new Date(), 1);

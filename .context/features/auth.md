@@ -105,6 +105,8 @@ Mesmo `cpfHash` em **N contas** é tratado em camadas:
 
 `@unique` em `User.cpfHash` foi **removida** intencionalmente pra permitir o caso legítimo (≤3). Defesa fica no detector + threshold.
 
+> ⚠️ **Dois pontos gravam `User.cpfHash`** (mantenha os controles em paridade): o `register` e, desde 2026-06-20, o `POST /api/billing/checkout` (conta grandfathered sem CPF preenchendo no checkout — ver [`billing.md`](billing.md)). Ambos aplicam o hard-block `>=4` + `detectOwnerCpfReuse` (auto-suspend `>3`). Ao criar um 3º write path de `cpfHash`, replique esses controles — ou extraia o trio "valida + dedup + persiste cpfHash" num helper único.
+
 ### Validação manual no browser (Sprint 4)
 
 Confirmado em 2026-05-07 via Chrome MCP + API:

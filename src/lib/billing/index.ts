@@ -21,6 +21,7 @@ export {
   primaryIdentifier,
   allIdentifiers,
 } from "./identifiers";
+export { resolveCheckoutCpf, type CheckoutCpfResult } from "./checkout-cpf";
 export {
   type BillingProviderImpl,
   type CheckoutMethod,

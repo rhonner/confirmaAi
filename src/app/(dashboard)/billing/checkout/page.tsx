@@ -5,11 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Copy, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { PLAN_LABELS, formatBRL } from "@/components/billing/plan-meta";
 import { PLANS } from "@/lib/billing/plans";
+import { formatCpf } from "@/lib/anti-fraud/cpf-validator";
 import { useSubscription } from "@/hooks/use-api";
 
 type CheckoutResponse = {
@@ -31,21 +34,34 @@ export default function CheckoutPage() {
   const [checkout, setCheckout] = React.useState<CheckoutResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [polling, setPolling] = React.useState(false);
+  // Conta grandfathered (sem CPF): backend responde CPF_REQUIRED → pedimos o campo.
+  const [cpfRequired, setCpfRequired] = React.useState(false);
+  const [cpf, setCpf] = React.useState("");
 
   const subQuery = useSubscription();
 
   const startCheckout = React.useCallback(
-    async (m: "PIX" | "CREDIT_CARD") => {
+    async (m: "PIX" | "CREDIT_CARD", cpfValue?: string) => {
       setLoading(true);
       try {
         const res = await fetch("/api/billing/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: planParam, method: m }),
+          body: JSON.stringify({
+            plan: planParam,
+            method: m,
+            ...(cpfValue ? { cpf: cpfValue } : {}),
+          }),
         });
         const json = await res.json();
         if (!res.ok) {
-          toast.error(json?.error || json?.message || "Erro ao criar checkout");
+          if (json?.error === "CPF_REQUIRED") {
+            setCpfRequired(true);
+            return;
+          }
+          // CPF informado mas inválido/bloqueado: mantém o campo aberto + mostra
+          // a mensagem PT (prefere `message`; cai pra `error` p/ erros legados).
+          toast.error(json?.message || json?.error || "Erro ao criar checkout");
           return;
         }
         setCheckout(json.data);
@@ -58,6 +74,8 @@ export default function CheckoutPage() {
     },
     [planParam],
   );
+
+  const cpfDigits = cpf.replace(/\D/g, "");
 
   // Poll status — quando subscription vira o plano-alvo ACTIVE, redireciona pra /sucesso.
   React.useEffect(() => {
@@ -115,7 +133,36 @@ export default function CheckoutPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!checkout && (
+          {!checkout && cpfRequired && (
+            <div className="space-y-2" data-testid="checkout-cpf-block">
+              <Label htmlFor="checkout-cpf">Informe seu CPF para continuar</Label>
+              <Input
+                id="checkout-cpf"
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                value={cpf}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
+                  setCpf(digits.length === 11 ? formatCpf(digits) : digits);
+                }}
+                disabled={loading}
+                data-testid="checkout-cpf-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Necessário para emitir a cobrança. Não é compartilhado.
+              </p>
+              <Button
+                className="w-full"
+                onClick={() => startCheckout(method, cpf)}
+                disabled={loading || cpfDigits.length !== 11}
+                data-testid="checkout-cpf-submit"
+              >
+                {loading ? "Gerando..." : "Continuar"}
+              </Button>
+            </div>
+          )}
+
+          {!checkout && !cpfRequired && (
             <>
               <div className="grid grid-cols-2 gap-2">
                 <Button

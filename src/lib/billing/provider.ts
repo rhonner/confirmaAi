@@ -63,6 +63,14 @@ export interface BillingProviderImpl {
 
   createCustomer(input: CreateCustomerInput): Promise<{ providerCustomerId: string }>;
 
+  /**
+   * Atualiza o CPF de um customer já criado no provider. Usado quando uma conta
+   * grandfathered (sem `User.cpf`) informa o CPF no checkout e já existe um
+   * customer no gateway (criado antes sem CPF) — sem isso a assinatura segue
+   * sendo rejeitada por falta de CPF.
+   */
+  updateCustomer(input: { providerCustomerId: string; cpf: string }): Promise<void>;
+
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;
 
   createPortalSession(input: { providerCustomerId: string; returnUrl: string }): Promise<PortalSession>;
