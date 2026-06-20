@@ -81,6 +81,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | **Monetização v2 — pacientes únicos** (vigente) | [plans/monetization-v2.md](plans/monetization-v2.md)                 |
 | Monetização + Auditoria (roadmap antigo)    | [plans/billing-and-audit-roadmap.md](plans/billing-and-audit-roadmap.md) |
 | Deployment status (stop & resume)    | [plans/deployment-status.md](plans/deployment-status.md)                 |
+| **Go-to-market — checklist final** (vigente) | [plans/go-to-market-checklist.md](plans/go-to-market-checklist.md)  |
 
 ## Fluxogramas visuais
 
