@@ -13,6 +13,7 @@
 | Rota registro       | `src/app/api/auth/register/route.ts`                 |
 | Rota esqueci senha  | `src/app/api/auth/forgot-password/route.ts`          |
 | Rota reset senha    | `src/app/api/auth/reset-password/route.ts` (Sprint 10/fatia 2) |
+| Rota reenviar verificação | `src/app/api/auth/resend-verification/route.ts` (bugfix 2026-06-24) |
 | Token reset (stateless) | `src/lib/anti-fraud/password-reset.ts`           |
 | Layout de email     | `src/lib/emails/layout.ts`                           |
 | Páginas             | `src/app/(auth)/login/page.tsx`, `/registro`, `/esqueci-senha`, `/redefinir-senha` |
@@ -37,6 +38,7 @@
 | POST   | `/api/auth/[...nextauth]`     | Login/logout/csrf/session (NextAuth)   |
 | POST   | `/api/auth/forgot-password`   | Gera token + envia email de reset (anti-enumeration: sempre 200) |
 | POST   | `/api/auth/reset-password`    | Verifica token + troca a senha (single-use) |
+| POST   | `/api/auth/resend-verification` | Reenvia link de verificação (anti-enumeration: sempre 200; rate-limit **3/10min por IP + 3/60min por conta**) |
 
 ## Helpers de resposta (em `auth-helpers.ts`)
 
@@ -65,6 +67,7 @@ serverErrorResponse(msg?)  // 500
 - **Frontend autoriza via `useSession`** em `(dashboard)/layout.tsx` (redireciona para `/login` se `unauthenticated`).
 - **Auditoria** (Sprint 1 — monetização v2): `authorize` emite `audit("auth.login.success" | "auth.login.failed" + reason)` com IP/UA capturados do `req` do NextAuth. `events.signOut` emite `auth.logout`. `register` emite `signup.attempt` (sempre) + `auth.register` (em sucesso) e cria `Subscription { plan: FREE, status: ACTIVE }` em transação atômica com User+Settings. `forgot-password` emite `auth.password_reset_requested`.
 - **Rate limit login** (Sprint 1 hardening, baseado em queries no `AuditLog`): bloqueia após **10 falhas em 5min** do mesmo IP (audit `auth.login.rate_limited`). Sem dependência de Redis.
+- **⚠️ Follow-up conhecido — normalização de e-mail (pré-existente, NÃO bloqueante)**: nenhum fluxo (`login`, `register`, `forgot-password`, `resend`) faz `trim()`/`toLowerCase()` no e-mail, e `User.email @unique` é case-sensitive no Postgres. Consequências: (1) contas duplicadas (`User@x.com` ≠ `user@x.com`); (2) com o novo gate, quem cadastrou com maiúsculas e loga em minúsculas cai em `user_not_found` (toast genérico, sem painel de verificação nem reenvio). Achado do review adversarial 2026-06-24. **Não corrigido junto** porque é codebase-wide e um meio-fix (normalizar só na leitura) quebraria contas mixed-case já existentes — o fix correto exige normalizar nos schemas Zod (`.transform`) **+ migration** pra unicidade case-insensitive (`citext`/índice `lower(email)`) **+ dedup** dos dados atuais. Tratar como tarefa própria.
 
 ## Anti-fraude no signup (Sprint 4 — 2026-05-07)
 
@@ -91,9 +94,16 @@ Fluxo do `POST /api/auth/register` em ordem:
 10. **`SignupAttempt` track**: cada tentativa (sucesso/falha) é registrada com `ipAddress`, `emailHash`, `cpfHash`, `failureReason`. Counter dos rate limits.
 11. **Resposta**: 201 + `{ data, message: "Conta criada. Verifique seu email para ativá-la." }`. Frontend redireciona pra `/verificar-email`.
 
-### Email não verificado bloqueia ações
+### Email não verificado bloqueia o LOGIN (bugfix 2026-06-24)
 
-`entitlements.check(userId, "patient.create" | "patient.import" | "appointment.create")` retorna `EMAIL_NOT_VERIFIED` se `User.emailVerifiedAt === null`. Frontend captura via `PaywallError` + `<PaywallModal reason="EMAIL_NOT_VERIFIED" />`. Grandfathering: usuários pré-Sprint-4 (`rhonner.matheus@gmail.com` etc) recebem `emailVerifiedAt = createdAt` na migration.
+> ⚠️ Mudança de comportamento. Até 2026-06-24 o e-mail não verificado **só bloqueava ações** (login passava). Um sócio relatou "consegui logar sem confirmar e-mail" como bug → decisão do dono: **bloquear o login em si**.
+
+- **`authorize` (`src/lib/auth.ts`)**: após validar a senha (ordem importa — não vaza o estado de verificação a quem não tem a senha), se `user.emailVerifiedAt === null` → lança `EmailNotVerifiedError` (classe exportada, `message === "EMAIL_NOT_VERIFIED"`). O `catch` do authorize **re-propaga só essa classe** (qualquer outro erro → `null` genérico). Audit `auth.login.email_not_verified`.
+  - ⚠️ **Gotcha NextAuth v4 ao testar**: `CredentialsProvider(opts)` retorna `{ ...defaults, authorize: () => null, options: opts }`. O merge (suas opções vencem) só acontece quando o NextAuth **normaliza os providers em runtime**. Para unit-test, chame `authOptions.providers[0].options.authorize`, **não** `.authorize` (esse é o stub `() => null`). O passthrough da `message` do throw até `signIn(...).error` no client **funciona** em v4 (validado no browser).
+- **Frontend login (`(auth)/login/page.tsx`)**: se `result.error.includes("EMAIL_NOT_VERIFIED")` → mostra painel "Confirme seu e-mail para entrar" + botão **Reenviar e-mail de confirmação** (chama `POST /api/auth/resend-verification`; toast genérico por anti-enumeration). Sem isso, quem perdeu o e-mail ficaria travado.
+- **Reenvio (`/api/auth/resend-verification`)**: sempre 200 (não revela existência/estado). **Rate-limit em 2 dimensões** (conta `auth.verification_resent` no AuditLog, inclusive os `skipped`): (a) **3/10min por IP** — pega abuso ingênuo; (b) **3/60min por conta-alvo (`tenantUserId`)** — defesa real contra inbox-bombing, **robusta a spoofing de `X-Forwarded-For`** (o atacante não controla o userId). Achado do review adversarial 2026-06-24. Só reenvia p/ conta existente + não-deletada + `emailVerifiedAt === null`. Regenera o token (`createVerificationToken` sobrescreve → token antigo invalida). Dev sem `RESEND_API_KEY`: link no console.
+- **Defense-in-depth mantida**: `entitlements.check(userId, "patient.create" | "patient.import" | "appointment.create")` ainda retorna `EMAIL_NOT_VERIFIED` se `emailVerifiedAt === null` (agora raramente atingido, pois o login já barra). Frontend captura via `PaywallError` + `<PaywallModal reason="EMAIL_NOT_VERIFIED" />`.
+- **Grandfathering**: usuários pré-Sprint-4 (`rhonner.matheus@gmail.com` etc) recebem `emailVerifiedAt = createdAt` na migration → logam normalmente.
 
 ### CPF do dono — política
 
@@ -120,6 +130,20 @@ Confirmado em 2026-05-07 via Chrome MCP + API:
 7. ✅ CPF inválido (DV errado): backend retorna `"CPF inválido (dígito verificador)"`.
 8. ✅ CPF sequencial: backend retorna `"CPF inválido (sequência repetida)"`.
 9. ✅ Honeypot (campo `website` preenchido): backend retorna 201 fake-success "Cadastro recebido" silenciosamente, sem criar usuário.
+
+### Validação manual no browser (bugfix 2026-06-24)
+
+Confirmado via Chrome MCP + DB local (usuário descartável, depois removido):
+
+1. ✅ `/registro`: links "Termos de Uso" / "Política de Privacidade" abrem **modal** na mesma aba (não nova aba); clicar neles **não** marca o checkbox de consentimento; conteúdo legal real renderiza e scrolla.
+2. ✅ Sem scroll horizontal no viewport estreito, **inclusive com os 6 erros de validação na tela** (`scrollWidth === clientWidth`); atribuição "Protegido por reCAPTCHA" presente.
+3. ✅ Cadastro válido → redireciona para `/verificar-email` (sem auto-login).
+4. ✅ Login com senha **correta** de conta não-verificada → **bloqueado** (continua em `/login`, painel "Confirme seu e-mail" + botão de reenvio); não vai pro dashboard. (Prova que o NextAuth v4 propaga `EMAIL_NOT_VERIFIED` até `signIn(...).error`.)
+5. ✅ "Reenviar e-mail de confirmação" → toast + novo link logado (`POST /api/auth/resend-verification` 200); token antigo invalidado.
+6. ✅ Visitar o link de verificação → `/verificar-email?status=ok`; login subsequente → `/dashboard`.
+7. ✅ Regressão: seed `rhonner.matheus@gmail.com` (verificado) loga normalmente → `/dashboard`.
+
+Regressão automatizada: `npm run test:sprints` checks **11.30–11.34** (authorize bloqueia/permite, ciclo do token de reenvio, modal de termos, fix do scroll).
 
 ## Como estender
 

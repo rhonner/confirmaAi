@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LegalDialog } from "@/components/legal/legal-dialog";
 import { toast } from "sonner";
 import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator";
 import { useRecaptcha } from "@/hooks/use-recaptcha";
@@ -211,32 +212,50 @@ export default function RegisterPage() {
             )}
           />
           <div className="grid gap-1.5 leading-none">
-            <label htmlFor="acceptedTerms" className="text-sm font-medium leading-none">
-              Aceito os{" "}
-              <Link href="/termos" className="underline" target="_blank">
-                Termos de Uso
-              </Link>{" "}
+            <p className="text-sm font-medium leading-none">
+              <label htmlFor="acceptedTerms" className="cursor-pointer">
+                Aceito os
+              </label>{" "}
+              <LegalDialog doc="terms">
+                <button
+                  type="button"
+                  className="text-primary underline underline-offset-2 hover:no-underline"
+                >
+                  Termos de Uso
+                </button>
+              </LegalDialog>{" "}
               e{" "}
-              <Link href="/privacidade" className="underline" target="_blank">
-                Política de Privacidade
-              </Link>
-            </label>
+              <LegalDialog doc="privacy">
+                <button
+                  type="button"
+                  className="text-primary underline underline-offset-2 hover:no-underline"
+                >
+                  Política de Privacidade
+                </button>
+              </LegalDialog>
+            </p>
             {errors.acceptedTerms && (
               <p className="text-sm text-destructive">{errors.acceptedTerms.message}</p>
             )}
           </div>
         </div>
 
-        {/* Honeypot — escondido visualmente e por aria. Bots preenchem; humanos não. */}
+        {/* Honeypot — escondido visualmente e por aria. Bots preenchem; humanos não.
+            Usa o padrão `clip`/sr-only (offset negativo gigante off-screen vazava
+            overflow horizontal e causava scroll lateral no mobile — fix 2026-06-24). */}
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
-            left: "-9999px",
-            top: "-9999px",
-            width: 0,
-            height: 0,
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
             overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            clipPath: "inset(50%)",
+            whiteSpace: "nowrap",
+            border: 0,
           }}
         >
           <label htmlFor="website-hp">Website (não preencher)</label>
@@ -252,6 +271,30 @@ export default function RegisterPage() {
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading ? "Criando conta..." : "Criar conta"}
         </Button>
+
+        {/* Atribuição do reCAPTCHA — exigida pelo Google quando o badge é
+            escondido via CSS (o badge fixed causava scroll lateral no mobile). */}
+        <p className="text-center text-xs text-muted-foreground">
+          Protegido por reCAPTCHA. Aplicam-se a{" "}
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground"
+          >
+            Privacidade
+          </a>{" "}
+          e os{" "}
+          <a
+            href="https://policies.google.com/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground"
+          >
+            Termos
+          </a>{" "}
+          do Google.
+        </p>
       </form>
 
       <div className="text-center text-sm">

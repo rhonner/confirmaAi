@@ -236,6 +236,13 @@
     background-color: var(--popover);
     color: var(--popover-foreground);
   }
+  /* reCAPTCHA v3 injeta um badge `position: fixed` ancorado em `right: -186px`,
+     que estoura a largura da viewport e gera scroll horizontal no mobile (bug
+     report 2026-06-24). O ToS do Google permite escondê-lo desde que a
+     atribuição reCAPTCHA fique visível — o que fazemos no form de /registro. */
+  .grecaptcha-badge {
+    visibility: hidden;
+  }
 }
 
 /* Glassmorphism Utilities - work in BOTH light and dark modes */

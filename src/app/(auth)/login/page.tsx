@@ -7,6 +7,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
+import { MailWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,9 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  // E-mail cuja conta existe mas ainda não foi confirmada (login bloqueado).
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
 
   const {
     register,
@@ -34,6 +38,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
+    setUnverifiedEmail(null);
     try {
       const result = await signIn("credentials", {
         email: data.email,
@@ -42,15 +47,39 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        toast.error("Email ou senha incorretos");
+        // authorize() lança EmailNotVerifiedError ("EMAIL_NOT_VERIFIED") quando
+        // a senha está certa mas o e-mail não foi confirmado.
+        if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+          setUnverifiedEmail(data.email);
+        } else {
+          toast.error("Email ou senha incorretos");
+        }
       } else if (result?.ok) {
         toast.success("Login realizado com sucesso");
         router.push("/dashboard");
       }
-    } catch (error) {
+    } catch {
       toast.error("Erro ao fazer login. Tente novamente.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!unverifiedEmail) return;
+    setIsResending(true);
+    try {
+      await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: unverifiedEmail }),
+      });
+      // Anti-enumeration: a resposta é sempre genérica, então o toast também é.
+      toast.success("E-mail de confirmação reenviado. Verifique a caixa de entrada e o spam.");
+    } catch {
+      toast.error("Não foi possível reenviar agora. Tente novamente em instantes.");
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -62,6 +91,36 @@ export default function LoginPage() {
           Entre com suas credenciais para acessar o sistema
         </p>
       </div>
+
+      {unverifiedEmail && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+        >
+          <div className="flex gap-3">
+            <MailWarning className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">
+                Confirme seu e-mail para entrar
+              </p>
+              <p className="text-muted-foreground">
+                Enviamos um link de confirmação para{" "}
+                <span className="font-medium text-foreground">{unverifiedEmail}</span>.
+                Clique nele para ativar sua conta. Não recebeu?
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResend}
+                disabled={isResending}
+              >
+                {isResending ? "Reenviando..." : "Reenviar e-mail de confirmação"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">

@@ -1664,16 +1664,19 @@ async function main() {
   const schedulerSrc11 = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
 
   // 10.20 Consentimento no signup + páginas legais públicas + links
+  // (Bug fix 2026-06-24: os links no /registro viraram MODAL via LegalDialog —
+  // não navegam mais para outra aba. As páginas públicas seguem existindo.)
   check(
-    "10.20 Consent: register grava termsAcceptedAt+LEGAL_VERSION; /termos+/privacidade existem; registro linka",
+    "10.20 Consent: register grava termsAcceptedAt+LEGAL_VERSION; /termos+/privacidade existem; registro abre modal",
     10,
     registerSrc11.includes("termsAcceptedAt") &&
       registerSrc11.includes("LEGAL_VERSION") &&
       exists("src/app/termos/page.tsx") &&
       exists("src/app/privacidade/page.tsx") &&
       exists("src/lib/legal/content.ts") &&
-      registroPageSrc11.includes('href="/termos"') &&
-      registroPageSrc11.includes('href="/privacidade"'),
+      registroPageSrc11.includes("LegalDialog") &&
+      registroPageSrc11.includes('doc="terms"') &&
+      registroPageSrc11.includes('doc="privacy"'),
   );
 
   // 10.21 Soft-delete: 3 chokepoints de login rejeitam deletedAt + rota anonimiza
@@ -1741,6 +1744,127 @@ async function main() {
     await tx.auditLog.deleteMany({ where: { tenantUserId: purgeUser.id } });
   });
   await prisma.user.delete({ where: { id: purgeUser.id } });
+
+  // ====================================================================
+  // BUGFIX 2026-06-24 — login exige e-mail confirmado + reenvio +
+  // termos como modal + fix do scroll lateral (relato dos sócios)
+  // ====================================================================
+  console.log("\n━━━ BUGFIX 2026-06-24 ━━━\n");
+
+  const { authOptions: bugAuthOptions, EmailNotVerifiedError: BugEmailErr } =
+    await import("../src/lib/auth");
+  const bugBcrypt = await import("bcryptjs");
+  // A função real fica em `.options.authorize` — o next-auth CredentialsProvider
+  // retorna `{ ...defaults, authorize: () => null, options: <as suas opções> }` e
+  // só faz o merge (suas opções vencem) ao normalizar os providers em runtime.
+  const authorizeFn = (bugAuthOptions.providers[0] as unknown as {
+    options: { authorize: (creds: Record<string, string>, req: { headers: Record<string, string> }) => Promise<unknown> };
+  }).options.authorize;
+
+  const bugPwd = "senha123";
+  const bugHash = await bugBcrypt.hash(bugPwd, 10);
+  const unverUser = await prisma.user.create({
+    data: {
+      name: "Bug Unverif",
+      email: `bug-unverif-${Date.now()}@test.local`,
+      password: bugHash,
+      clinicName: "Bug Clinic",
+      emailVerifiedAt: null,
+    },
+  });
+
+  // 11.30 — login bloqueado quando e-mail não verificado (mesmo com senha certa);
+  // senha errada continua retornando null (não distingue o caso de verificação).
+  let blockedThrew = false;
+  try {
+    await authorizeFn({ email: unverUser.email, password: bugPwd }, { headers: {} });
+  } catch (e) {
+    blockedThrew = e instanceof BugEmailErr;
+  }
+  const wrongPwdRes = await authorizeFn(
+    { email: unverUser.email, password: "errada" },
+    { headers: {} },
+  );
+  check(
+    "11.30 Login bloqueado p/ e-mail não verificado (throw EmailNotVerifiedError); senha errada → null",
+    10,
+    blockedThrew && wrongPwdRes === null,
+  );
+
+  // 11.31 — após verificar o e-mail, authorize passa e retorna o usuário.
+  await prisma.user.update({
+    where: { id: unverUser.id },
+    data: { emailVerifiedAt: new Date() },
+  });
+  const okRes = (await authorizeFn(
+    { email: unverUser.email, password: bugPwd },
+    { headers: {} },
+  )) as { id: string } | null;
+  check(
+    "11.31 Após emailVerifiedAt setado, authorize retorna o usuário",
+    10,
+    !!okRes && okRes.id === unverUser.id,
+  );
+
+  // 11.32 — endpoint de reenvio existe + ciclo de token (volta a não-verificado,
+  // gera token, verifica e zera o token).
+  await prisma.user.update({
+    where: { id: unverUser.id },
+    data: { emailVerifiedAt: null },
+  });
+  const { createVerificationToken: bugCreateTok, verifyEmailToken: bugVerifyTok } =
+    await import("../src/lib/anti-fraud/email-verification");
+  const vtoken = await bugCreateTok(unverUser.id);
+  const afterCreate = await prisma.user.findUnique({
+    where: { id: unverUser.id },
+    select: { emailVerificationToken: true },
+  });
+  const verifyRes = await bugVerifyTok(vtoken);
+  const afterVerify = await prisma.user.findUnique({
+    where: { id: unverUser.id },
+    select: { emailVerifiedAt: true, emailVerificationToken: true },
+  });
+  check(
+    "11.32 Reenvio: endpoint existe + createVerificationToken/verifyEmailToken faz o ciclo",
+    10,
+    exists("src/app/api/auth/resend-verification/route.ts") &&
+      !!afterCreate?.emailVerificationToken &&
+      verifyRes.ok &&
+      !!afterVerify?.emailVerifiedAt &&
+      afterVerify?.emailVerificationToken === null,
+  );
+
+  // cleanup do unverUser
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: unverUser.id } });
+  });
+  await prisma.user.delete({ where: { id: unverUser.id } });
+
+  // 11.33 — Termos/Privacidade como MODAL (LegalDialog) no cadastro e no layout
+  // auth; o /registro não navega mais para /termos (abria outra aba).
+  const layoutSrcBug = readFileSync(join(root, "src/app/(auth)/layout.tsx"), "utf8");
+  check(
+    "11.33 Termos/Privacidade como modal (LegalDialog) no cadastro+layout — sem abrir nova aba",
+    10,
+    exists("src/components/legal/legal-dialog.tsx") &&
+      registroPageSrc11.includes("LegalDialog") &&
+      !registroPageSrc11.includes('href="/termos"') &&
+      layoutSrcBug.includes("LegalDialog") &&
+      !layoutSrcBug.includes('href="/termos"'),
+  );
+
+  // 11.34 — Scroll lateral: honeypot usa clip (não left:-9999px); badge do
+  // reCAPTCHA escondido via CSS; atribuição obrigatória presente no form.
+  const globalsSrcBug = readFileSync(join(root, "src/app/globals.css"), "utf8");
+  check(
+    "11.34 Scroll lateral: honeypot com clip (sem -9999px) + badge reCAPTCHA escondido + atribuição",
+    10,
+    !registroPageSrc11.includes("-9999px") &&
+      registroPageSrc11.includes("clipPath") &&
+      globalsSrcBug.includes(".grecaptcha-badge") &&
+      registroPageSrc11.includes("Protegido por reCAPTCHA"),
+  );
 
   // ====================================================================
   // CLEANUP

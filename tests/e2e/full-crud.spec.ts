@@ -538,34 +538,65 @@ test.describe("Full CRUD Lifecycle", () => {
   //  AUTH - Register new user
   // ═══════════════════════════════════════════
 
-  test("Register a new user account and auto-login", async ({ page }) => {
+  test("Register a new user account → must verify email before login", async ({ page }) => {
     const regEmail = `novo${TS}@clinica.com`;
 
     await page.goto("/registro");
 
     // Verify registration form elements
     await expect(page.locator('input[id="name"]')).toBeVisible();
+    await expect(page.locator('input[id="cpf"]')).toBeVisible();
     await expect(page.locator('input[id="clinicName"]')).toBeVisible();
     await expect(page.locator('input[id="email"]')).toBeVisible();
     await expect(page.locator('input[id="password"]')).toBeVisible();
 
-    // Fill registration form
+    // Fill registration form (CPF é obrigatório desde Sprint 4; usa um CPF
+    // de DV válido). reCAPTCHA usa bypass em dev (sem NEXT_PUBLIC_RECAPTCHA_SITE_KEY).
     await page.fill('input[id="name"]', "Dr. Teste E2E");
+    await page.locator('input[id="cpf"]').pressSequentially("11144477735");
     await page.fill('input[id="clinicName"]', `Clinica E2E ${TS}`);
     await page.fill('input[id="email"]', regEmail);
     await page.fill('input[id="password"]', "senha123");
 
+    // Aceite de termos é obrigatório (Sprint 11). O checkbox tem id acceptedTerms.
+    await page.click('button#acceptedTerms, input#acceptedTerms');
+
     // Submit
     await page.click('button[type="submit"]:has-text("Criar conta")');
 
-    // Should auto-login and redirect to dashboard
-    await page.waitForURL("**/dashboard", { timeout: 15000 });
-    await expect(page).toHaveURL(/.*dashboard/);
+    // Bug fix 2026-06-24: NÃO auto-loga. Redireciona para /verificar-email —
+    // a conta só entra após confirmar o e-mail.
+    await page.waitForURL("**/verificar-email", { timeout: 15000 });
+    await expect(page).toHaveURL(/.*verificar-email/);
+    await expect(page.locator("text=Verifique seu email")).toBeVisible({ timeout: 10000 });
+  });
 
-    // Verify the new clinic name is shown in the header
+  test("Login is blocked for an unverified account, with resend option", async ({ page }) => {
+    const regEmail = `naoverif${TS}@clinica.com`;
+
+    // Cria a conta (fica não verificada).
+    await page.goto("/registro");
+    await page.fill('input[id="name"]', "Dr. Nao Verificado");
+    await page.locator('input[id="cpf"]').pressSequentially("15350946056");
+    await page.fill('input[id="clinicName"]', `Clinica NV ${TS}`);
+    await page.fill('input[id="email"]', regEmail);
+    await page.fill('input[id="password"]', "senha123");
+    await page.click('button#acceptedTerms, input#acceptedTerms');
+    await page.click('button[type="submit"]:has-text("Criar conta")');
+    await page.waitForURL("**/verificar-email", { timeout: 15000 });
+
+    // Tenta logar com a senha CORRETA → bloqueado por e-mail não confirmado.
+    await page.goto("/login");
+    await page.fill('input[id="email"]', regEmail);
+    await page.fill('input[id="password"]', "senha123");
+    await page.click('button[type="submit"]:has-text("Entrar")');
+
+    // Não vai pro dashboard; aparece o painel de "Confirme seu e-mail" + reenvio.
+    await expect(page.locator("text=Confirme seu e-mail para entrar")).toBeVisible({ timeout: 10000 });
     await expect(
-      page.locator(`text=Clinica E2E ${TS}`)
-    ).toBeVisible({ timeout: 10000 });
+      page.locator('button:has-text("Reenviar e-mail de confirmação")')
+    ).toBeVisible();
+    await expect(page).not.toHaveURL(/.*dashboard/);
   });
 
   // ═══════════════════════════════════════════

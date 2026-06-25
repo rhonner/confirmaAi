@@ -10,7 +10,8 @@
 | ------ | ------- |
 | Conteúdo legal | `src/lib/legal/content.ts` (`LEGAL_VERSION`, `TERMS_SECTIONS`, `PRIVACY_SECTIONS` — **rascunho, revisar com advogado**) |
 | Páginas públicas | `src/app/termos/page.tsx`, `src/app/privacidade/page.tsx` + `src/components/legal/legal-page.tsx` |
-| Consentimento | `src/app/api/auth/register/route.ts` (grava `termsAcceptedAt/privacyAcceptedAt/termsVersion/consentIp`), `(auth)/registro/page.tsx` (checkbox + links) |
+| Modal legal (bugfix 2026-06-24) | `src/components/legal/legal-dialog.tsx` — mostra `TERMS_SECTIONS`/`PRIVACY_SECTIONS` em modal (shadcn Dialog) |
+| Consentimento | `src/app/api/auth/register/route.ts` (grava `termsAcceptedAt/privacyAcceptedAt/termsVersion/consentIp`), `(auth)/registro/page.tsx` (checkbox + **links em modal `<LegalDialog>`**) |
 | Export | `src/lib/account/export.ts` (`buildAccountExport`) + `src/app/api/account/export/route.ts` |
 | Soft-delete | `src/app/api/account/route.ts` (`DELETE`) |
 | Bloqueio de login | `src/lib/auth.ts` (authorize), `src/lib/auth-helpers.ts` (getAuthSession), `src/app/page.tsx` |

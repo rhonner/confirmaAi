@@ -5,6 +5,18 @@ import * as bcrypt from "bcryptjs"
 import { loginSchema } from "./validations/auth"
 import { audit } from "@/lib/audit"
 
+/**
+ * Sinaliza ao NextAuth que a senha estava correta mas o e-mail ainda não foi
+ * confirmado. A `message` ("EMAIL_NOT_VERIFIED") chega ao client em
+ * `signIn(...).error`, que então oferece o reenvio do link de verificação.
+ */
+export class EmailNotVerifiedError extends Error {
+  constructor() {
+    super("EMAIL_NOT_VERIFIED")
+    this.name = "EmailNotVerifiedError"
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -93,6 +105,23 @@ export const authOptions: NextAuthOptions = {
             return null
           }
 
+          // Bug report 2026-06-24 — login exige e-mail confirmado. Checa só
+          // DEPOIS da senha válida (não vaza estado de verificação a quem não
+          // tem a senha). Contas antigas (grandfathered) têm emailVerifiedAt
+          // setado na migration, então não são afetadas. O reenvio do link
+          // fica em POST /api/auth/resend-verification.
+          if (!user.emailVerifiedAt) {
+            await audit({
+              action: "auth.login.email_not_verified",
+              tenantUserId: user.id,
+              metadata: { email, reason: "email_not_verified" },
+              contextOverride: { actorType: "ANONYMOUS", ...baseCtx },
+            })
+            // Throw (não return null) pra que o client distinga este caso de
+            // "senha errada" e ofereça reenvio. Re-propagado no catch abaixo.
+            throw new EmailNotVerifiedError()
+          }
+
           await audit({
             action: "auth.login.success",
             tenantUserId: user.id,
@@ -108,6 +137,11 @@ export const authOptions: NextAuthOptions = {
             clinicName: user.clinicName,
           }
         } catch (error) {
+          // Propaga o caso de e-mail não verificado pro client (NextAuth expõe
+          // a message em signIn(...).error). Qualquer outro erro → null genérico.
+          if (error instanceof EmailNotVerifiedError) {
+            throw error
+          }
           console.error("Auth error:", error)
           return null
         }

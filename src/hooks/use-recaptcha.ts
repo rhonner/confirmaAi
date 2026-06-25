@@ -10,6 +10,14 @@ import { useEffect, useRef } from "react";
  * trata como bypass dev (ver `src/lib/anti-fraud/recaptcha.ts`).
  *
  * **Não recarrega o script em re-renders** (referência por window flag).
+ *
+ * ⚠️ **Invariante de compliance (ToS do reCAPTCHA)**: o badge do reCAPTCHA é
+ * escondido globalmente via CSS (`.grecaptcha-badge { visibility: hidden }` em
+ * `globals.css`, pra evitar scroll lateral no mobile). O Google só permite
+ * esconder o badge se a **atribuição visível** ("Protegido por reCAPTCHA…" com
+ * links de Privacidade/Termos do Google) estiver na MESMA tela. Portanto, toda
+ * tela que usar este hook DEVE renderizar essa atribuição (ver o form em
+ * `(auth)/registro/page.tsx`). Hoje só o /registro usa reCAPTCHA.
  */
 
 declare global {
