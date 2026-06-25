@@ -1866,6 +1866,29 @@ async function main() {
       registroPageSrc11.includes("Protegido por reCAPTCHA"),
   );
 
+  // 11.35 — Normalização de e-mail (achado do review): conta gravada em lowercase
+  // é encontrada no login mesmo digitando em MAIÚSCULAS/com espaços (loginSchema
+  // faz trim().toLowerCase() e authorize usa o valor normalizado no lookup).
+  const normEmail = `norm-${Date.now()}@test.local`;
+  const normHash = await bugBcrypt.hash("senha123", 10);
+  const normUser = await prisma.user.create({
+    data: { name: "Norm Test", email: normEmail, password: normHash, clinicName: "Norm", emailVerifiedAt: new Date() },
+  });
+  const normRes = (await authorizeFn(
+    { email: `  ${normEmail.toUpperCase()}  `, password: "senha123" },
+    { headers: {} },
+  )) as { id: string } | null;
+  check(
+    "11.35 Login normaliza e-mail (MAIÚSCULAS/espaços) e acha a conta lowercase",
+    10,
+    !!normRes && normRes.id === normUser.id,
+  );
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: normUser.id } });
+  });
+  await prisma.user.delete({ where: { id: normUser.id } });
+
   // ====================================================================
   // CLEANUP
   // ====================================================================

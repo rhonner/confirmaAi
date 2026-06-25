@@ -1,14 +1,18 @@
 import { z } from "zod"
 import { validateCpf } from "@/lib/anti-fraud/cpf-validator"
 
+// E-mail é normalizado (trim + lowercase) em TODA superfície de auth para evitar
+// contas duplicadas (User@x.com ≠ user@x.com no índice @unique case-sensitive do
+// Postgres) e logins que "não acham" a conta por diferença de caixa. Migration
+// `normalize_emails_lowercase` alinha os dados já existentes.
 export const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
+  email: z.string().trim().toLowerCase().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
 })
 
 export const registerSchema = z.object({
   name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres").max(200, "Nome deve ter no máximo 200 caracteres"),
-  email: z.string().email("Email inválido").max(320, "Email deve ter no máximo 320 caracteres"),
+  email: z.string().trim().toLowerCase().email("Email inválido").max(320, "Email deve ter no máximo 320 caracteres"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres").max(128, "Senha deve ter no máximo 128 caracteres"),
   clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200, "Nome da clínica deve ter no máximo 200 caracteres"),
   avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo").optional().default(0),

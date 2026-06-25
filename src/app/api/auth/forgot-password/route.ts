@@ -6,7 +6,7 @@ import { makeResetToken, sendPasswordResetEmail } from "@/lib/anti-fraud/passwor
 import { captureError } from "@/lib/observability"
 import type { ApiResponse } from "@/lib/types/api"
 
-const bodySchema = z.object({ email: z.string().email() })
+const bodySchema = z.object({ email: z.string().trim().toLowerCase().email() })
 
 /**
  * Pede reset de senha (Sprint 10 / fatia 2 — antes era stub que não enviava).

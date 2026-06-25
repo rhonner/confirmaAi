@@ -9,7 +9,7 @@ import {
 import { captureError } from "@/lib/observability"
 import type { ApiResponse } from "@/lib/types/api"
 
-const bodySchema = z.object({ email: z.string().email() })
+const bodySchema = z.object({ email: z.string().trim().toLowerCase().email() })
 
 // Limite por IP — pega abuso ingênuo. NÃO é confiável sozinho: o IP vem do
 // header X-Forwarded-For, que o atacante pode forjar a cada request.

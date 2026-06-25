@@ -2,10 +2,11 @@
 title: Rate limit via AuditLog (sem Redis)
 type: concept
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-24
 tags: [rate-limit, audit, anti-fraud, postgres]
 sources:
   - raw/sessions/2026-05-07-sprint-1-3-monetizacao.md
+  - raw/sessions/2026-06-24-bugfix-cadastro-login.md
 related:
   - .context/features/auth.md
   - .context/features/audit.md
@@ -65,6 +66,7 @@ Mantém o pattern via AuditLog para login (volume menor) ou migra também — TB
 - `ipAddress` pode ser `null` (request sem `x-forwarded-for`) — guardar `if (ipAddress)` antes de rate-limit, pra não bloquear quando o counter ficaria igual a 0.
 - Curl localhost sem header de proxy → IP `null` → bypass natural. Bom em dev.
 - Rate limit não bloqueia usuário autenticado por `actorId` — autoescalonamento por IP serve o caso de bruteforce / fraud massivo.
+- **⚠️ Limite só por IP é spoofável (achado do review 2026-06-24)**: o IP vem de `X-Forwarded-For` (`extractIp`), que o atacante forja a cada request → rotacionar o header zera o counter. Não há `middleware.ts` nem validação de proxy confiável. Para proteção que o atacante **não controla**, adicione uma **segunda dimensão keyed no recurso/alvo** (ex.: `tenantUserId`), não no IP. Caso concreto: `POST /api/auth/resend-verification` usa **IP (3/10min)** _e_ **conta-alvo (`tenantUserId`, 3/60min)** — a 2ª dimensão é a defesa real contra inbox-bombing (validado: 4 requests com XFF diferentes → 3 enviados, 4º bloqueado por `rate_limited_user`). Mesma lição vale pro rate-limit de login (hoje só por IP).
 
 ## Wikilinks
 

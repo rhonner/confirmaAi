@@ -30,7 +30,7 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        const email = credentials.email
+        let email = credentials.email
         const ipAddress = extractIp(req?.headers as Record<string, string | string[]> | undefined)
         const userAgent = readHeader(req?.headers as Record<string, string | string[]> | undefined, "user-agent")
         const baseCtx = { ipAddress, userAgent }
@@ -45,6 +45,10 @@ export const authOptions: NextAuthOptions = {
             })
             return null
           }
+
+          // Usa o e-mail normalizado (trim + lowercase) do schema p/ o lookup —
+          // casa com contas gravadas em lowercase e evita "user_not_found" por caixa.
+          email = validation.data.email
 
           // Rate limit: > 10 falhas em 5min do mesmo IP → bloqueia.
           if (ipAddress) {
