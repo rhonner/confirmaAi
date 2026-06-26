@@ -2,12 +2,14 @@
 title: Vercel Hobby limita cron a 1×/dia — workaround via crontab da VPS
 type: concept
 created: 2026-06-10
-updated: 2026-06-10
+updated: 2026-06-26
 tags: [vercel, cron, scheduler, hobby, infra]
 sources:
   - raw/sessions/2026-06-10-sprint6-and-golive.md
+  - raw/sessions/2026-06-26-neon-cost-scale-to-zero.md
 related:
   - pages/concepts/defense-in-depth-cron.md
+  - pages/concepts/scale-to-zero-defeated-by-db-health-pings.md
   - .context/features/scheduler.md
 status: stable
 ---
@@ -37,6 +39,10 @@ Vercel Cron (vercel.json: "0 3 * * *")
 
 ## Vigilância (Sprint 9)
 
-O run audita `cron.run` com stats — o futuro `/api/health` alerta se o último run tem >90 min, cobrindo "crontab da VPS morreu e ninguém viu".
+O run audita `cron.run` com stats — o `/api/health` alerta se o último run tem >90 min, cobrindo "crontab da VPS morreu e ninguém viu".
+
+## Efeito colateral: piso de "acordar o banco" (2026-06-26)
+
+Esse crontab a cada 30 min é também o **piso residual** de wake do Neon depois do fix de [[scale-to-zero-defeated-by-db-health-pings]]: cada `/api/cron/run` faz queries → acorda o compute por alguns minutos. É um custo **legítimo e baixo** (~30-40 CU-hrs/mês, sob o cap Free). Se precisar economizar mais, afrouxar pra `0 * * * *` (60 min) corta esses wakes pela metade — ao preço de janelas de confirmação/lembrete um pouco menos pontuais.
 
 > Fonte: raw/sessions/2026-06-10-sprint6-and-golive.md — crontab descoberto em auditoria SSH; já estava em produção desde ~maio (commits "fixed cron", "added manual route to cron").

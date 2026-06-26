@@ -14,6 +14,7 @@ Coisas concretas: libs, serviços, integrações, ferramentas.
 | [prisma-v7-extensions](pages/entities/prisma-v7-extensions.md) | `$extends({ query })` para auditoria automática; cuidados com recursão, ALS, tx | 2026-05-07 |
 | [radix-popover-and-dialog](pages/entities/radix-popover-and-dialog.md) | Gotchas: `.click()` programático não dispara Popover; variant `hard` em Dialog | 2026-05-07 |
 | [asaas-integration](pages/entities/asaas-integration.md) | Endpoints, config env, sem portal-style Stripe; **PF sem CNPJ ok (NF-e não), painel não-automatizável** | 2026-06-10 |
+| [neon-postgres](pages/entities/neon-postgres.md) | DB de prod no Neon (projeto `confirmaai`, SP): cap Free 100 CU-hrs, **billing gerenciado pela Vercel**, Launch usage-based ($0.106/CU-h), scale-to-zero | 2026-06-26 |
 
 ## Concepts (`pages/concepts/`)
 
@@ -34,13 +35,15 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [asaas-external-reference-in-payment](pages/concepts/asaas-external-reference-in-payment.md) | Asaas manda externalReference em `payment`, não `subscription` → cliente pagava e ficava FREE; fix `planTierFromPayload` | 2026-06-12 |
 | [lazy-period-usage-counter](pages/concepts/lazy-period-usage-counter.md) | Quota de msgs sem job de reset: virada de período = linha nova lazy; fallback p/ webhook perdido | 2026-06-10 |
 | [neon-pooled-vs-direct-url](pages/concepts/neon-pooled-vs-direct-url.md) | Pooled (`-pooler`) no runtime serverless, direta nas migrations; PrismaPg dispensa `pgbouncer=true` | 2026-06-10 |
-| [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer | 2026-06-10 |
+| [vercel-hobby-cron-workaround](pages/concepts/vercel-hobby-cron-workaround.md) | Hobby = cron 1×/dia; crontab da VPS Hetzner dispara `/api/cron/run` 30/30min com Bearer. **É o piso residual de wake do Neon** | 2026-06-26 |
 | [claude-chrome-sensitive-domains](pages/concepts/claude-chrome-sensitive-domains.md) | `Permission denied` em site sensível = prompt da extensão (aprovável), não bloqueio duro; protocolo de retry + workflow de secrets | 2026-06-10 |
 | [optional-dependency-via-dynamic-import](pages/concepts/optional-dependency-via-dynamic-import.md) | Dependência opcional (Sentry) gated por env + `import(spec)` com specifier em variável + `webpackIgnore` → build verde sem o pacote; irmão de dev-fallback | 2026-06-13 |
 | [migrations-not-auto-applied](pages/concepts/migrations-not-auto-applied.md) | **Incidente**: Vercel `build` não roda migration → drift → login/signup quebram invisíveis (select-all findUnique; catch engolia). Fix `vercel-build: migrate deploy && next build` | 2026-06-14 |
 | [stateless-password-reset-token](pages/concepts/stateless-password-reset-token.md) | Reset single-use sem coluna/migration: HMAC(`NEXTAUTH_SECRET`+hash da senha) + TTL; trocar a senha invalida o token (padrão Django) | 2026-06-14 |
 | [nextauth-credentials-authorize-stub](pages/concepts/nextauth-credentials-authorize-stub.md) | `CredentialsProvider` esconde a authorize em `.options.authorize` (topo é stub `()=>null`); `throw` chega em `signIn(...).error` no v4 | 2026-06-24 |
 | [horizontal-scroll-from-offscreen-elements](pages/concepts/horizontal-scroll-from-offscreen-elements.md) | Badge reCAPTCHA `fixed right:-186px` + honeypot `left:-9999px` → scroll lateral mobile; esconder badge (+atribuição ToS) e honeypot via `clip` | 2026-06-24 |
+| [scale-to-zero-defeated-by-db-health-pings](pages/concepts/scale-to-zero-defeated-by-db-health-pings.md) | Uptime monitor pingando `/api/health` (com DB) a cada 5 min impede o scale-to-zero do Neon → queima as 100 CU-hrs do Free. Fix: split liveness (sem DB) × readiness (com DB) | 2026-06-26 |
+| [claude-chrome-per-profile-extension](pages/concepts/claude-chrome-per-profile-extension.md) | Extensão Claude-in-Chrome é por-perfil; deviceIds/nomes embaralham entre sessões → confirmar pela conta logada (WeCalc, nunca work), não pelo nome | 2026-06-26 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -56,7 +59,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 8 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 9 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 
