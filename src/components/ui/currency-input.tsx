@@ -2,6 +2,16 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { centsToDisplay, rawToCents, valueToCents } from "@/lib/currency-mask"
+
+/**
+ * Input monetário com **máscara acumuladora de centavos** (preenche da direita
+ * para a esquerda, padrão BR): digitar `5` → `0,05`, `57` → `0,57`, `573` →
+ * `5,73`, … até o limite de **99.999,99** (7 dígitos). Backspace remove 1 dígito.
+ *
+ * Contrato preservado: `value`/`onChange` em **reais** (number). Lógica pura da
+ * máscara em `src/lib/currency-mask.ts`. Usado no "valor médio do atendimento".
+ */
 
 type CurrencyInputProps = Omit<
   React.ComponentProps<"input">,
@@ -12,34 +22,14 @@ type CurrencyInputProps = Omit<
   invalid?: boolean
 }
 
-function formatBRL(value: number | undefined): string {
-  if (value === undefined || Number.isNaN(value)) return ""
-  return value.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
 const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
   function CurrencyInput({ className, value, onChange, invalid, ...props }, ref) {
-    const [text, setText] = React.useState(formatBRL(value))
-
-    React.useEffect(() => {
-      // Sync from outside (e.g., reset / async load) only if numeric value differs.
-      const parsed = parseInput(text)
-      if (parsed !== value) setText(formatBRL(value))
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value])
+    const display = centsToDisplay(valueToCents(value))
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value.replace(/[^\d,.]/g, "")
-      setText(raw)
-      const parsed = parseInput(raw)
-      onChange(parsed)
-    }
-
-    const handleBlur = () => {
-      setText(formatBRL(parseInput(text)))
+      // O texto exibido é sempre os centavos formatados; basta re-extrair os
+      // dígitos do valor pós-edição (cobre digitar E backspace) e reinterpretar.
+      onChange(rawToCents(e.target.value) / 100)
     }
 
     return (
@@ -61,10 +51,9 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
           {...props}
           ref={ref}
           type="text"
-          inputMode="decimal"
-          value={text}
+          inputMode="numeric"
+          value={display}
           onChange={handleChange}
-          onBlur={handleBlur}
           aria-invalid={invalid || undefined}
           className="flex-1 bg-transparent outline-none text-base md:text-sm placeholder:text-muted-foreground pr-3 disabled:cursor-not-allowed disabled:opacity-50"
         />
@@ -72,24 +61,5 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
     )
   },
 )
-
-function parseInput(raw: string): number {
-  if (!raw) return 0
-  // Accept "1.234,56" / "1,234.56" / "1234.56" / "1234,56" / "1234"
-  const onlyNums = raw.replace(/[^\d,.]/g, "")
-  // If both . and , exist, assume the LAST one is the decimal separator.
-  const lastDot = onlyNums.lastIndexOf(".")
-  const lastComma = onlyNums.lastIndexOf(",")
-  let normalized: string
-  if (lastDot === -1 && lastComma === -1) {
-    normalized = onlyNums
-  } else if (lastComma > lastDot) {
-    normalized = onlyNums.replace(/\./g, "").replace(",", ".")
-  } else {
-    normalized = onlyNums.replace(/,/g, "")
-  }
-  const n = parseFloat(normalized)
-  return Number.isFinite(n) ? n : 0
-}
 
 export { CurrencyInput }

@@ -25,7 +25,8 @@
   - `confirmationHoursBefore` / `reminderHoursBefore`: `[1, 168]` (1h a 7 dias).
   - Mensagens: `[10, 1000]` chars.
   - `clinicName`: `[3, 200]` chars.
-  - `avgAppointmentValue`: `>= 0`.
+  - `avgAppointmentValue`: `[0, 99999.99]` (Zod `.max(99999.99)`).
+- **Máscara monetária do `avgAppointmentValue`** (2026-06-26): o campo usa `<CurrencyInput>` com **máscara acumuladora de centavos** (preenche da direita: `5`→`0,05`, `573128`→`5.731,28`), teto **99.999,99** (7 dígitos). Lógica pura em `src/lib/currency-mask.ts` (`centsToDisplay`/`rawToCents`/`valueToCents`); contrato do componente segue em **reais** (number). Regressão: `tests/unit/currency-input.test.ts` + `test:sprints` 11.38.
 - **Campos no `User`** (não em `Settings`): `clinicName` e `avgAppointmentValue` são atualizados via mesma rota PUT mas persistidos na tabela `User`. Resposta unificada.
 
 ## Endpoints

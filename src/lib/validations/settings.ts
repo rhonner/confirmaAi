@@ -7,7 +7,11 @@ export const updateSettingsSchema = z
     reminderHoursBefore: z.number().int().min(1).max(168).optional(),
     confirmationMessage: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres").max(1000, "Mensagem deve ter no máximo 1000 caracteres").optional(),
     reminderMessage: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres").max(1000, "Mensagem deve ter no máximo 1000 caracteres").optional(),
-    avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo").optional(),
+    avgAppointmentValue: z
+      .number()
+      .min(0, "Valor não pode ser negativo")
+      .max(99999.99, "Valor máximo é R$ 99.999,99")
+      .optional(),
   })
   .refine(
     (d) =>

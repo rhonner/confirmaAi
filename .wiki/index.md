@@ -45,6 +45,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [scale-to-zero-defeated-by-db-health-pings](pages/concepts/scale-to-zero-defeated-by-db-health-pings.md) | Uptime monitor pingando `/api/health` (com DB) a cada 5 min impede o scale-to-zero do Neon → queima as 100 CU-hrs do Free. Fix: split liveness (sem DB) × readiness (com DB) | 2026-06-26 |
 | [claude-chrome-per-profile-extension](pages/concepts/claude-chrome-per-profile-extension.md) | Extensão Claude-in-Chrome é por-perfil; deviceIds/nomes embaralham entre sessões → confirmar pela conta logada (WeCalc, nunca work), não pelo nome | 2026-06-26 |
 | [owner-document-cpf-or-cnpj](pages/concepts/owner-document-cpf-or-cnpj.md) | Documento do dono CPF→CPF/CNPJ: campo único auto-detect, sem renomear coluna (no migration), hash compatível por dispatch de namespace (`cpf:`/`cnpj:`); paciente segue só CPF | 2026-06-26 |
+| [entitlement-override-decoupled-from-billing](pages/concepts/entitlement-override-decoupled-from-billing.md) | Beta/cortesia: plano EFETIVO em read-time (`effectivePlanTier`) eleva entitlements sem mutar `plan`/`status` → reversível, cobrança intacta. Aplicar em TODOS os gates; reset/dunning ficam no plano REAL | 2026-06-26 |
+| [currency-mask-cents-accumulator](pages/concepts/currency-mask-cents-accumulator.md) | Máscara monetária BR que preenche da direita (centavos): re-extrair dígitos do display a cada onChange cobre digitar+backspace+paste; cap = `slice(N)`; centavos inteiros, lógica pura separada do componente | 2026-06-26 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -60,7 +62,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 10 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 12 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

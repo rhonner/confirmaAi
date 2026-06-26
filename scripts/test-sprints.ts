@@ -2006,6 +2006,30 @@ async function main() {
   });
   await prisma.user.delete({ where: { id: beta37.id } });
 
+  // 11.38 — Máscara monetária acumuladora (valor médio): preenche da direita em
+  // centavos + cap 7 dígitos (99.999,99); Zod do settings rejeita acima do teto.
+  const { centsToDisplay: c2d38, rawToCents: r2c38 } = await import("../src/lib/currency-mask");
+  const { updateSettingsSchema: setSchema38 } = await import("../src/lib/validations/settings");
+  let disp38 = "";
+  const type38 = (d: string) => {
+    disp38 = c2d38(r2c38(disp38 + d));
+    return disp38;
+  };
+  check(
+    "11.38 Máscara monetária acumuladora (5→0,05 … 5.731,28), cap 7 dígitos + Zod max 99.999,99",
+    10,
+    type38("5") === "0,05" &&
+      type38("7") === "0,57" &&
+      type38("3") === "5,73" &&
+      type38("1") === "57,31" &&
+      type38("2") === "573,12" &&
+      type38("8") === "5.731,28" &&
+      r2c38("99999999") === 9999999 &&
+      c2d38(9999999) === "99.999,99" &&
+      setSchema38.safeParse({ avgAppointmentValue: 100000 }).success === false &&
+      setSchema38.safeParse({ avgAppointmentValue: 99999.99 }).success === true,
+  );
+
   // ====================================================================
   // CLEANUP
   // ====================================================================
