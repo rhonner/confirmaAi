@@ -1,4 +1,12 @@
-export { PLANS, getPlanConfig, type PlanConfig, type PlanFeatures } from "./plans";
+export {
+  PLANS,
+  getPlanConfig,
+  effectivePlanTier,
+  hasAdminOverride,
+  BETA_OVERRIDE_UNTIL,
+  type PlanConfig,
+  type PlanFeatures,
+} from "./plans";
 export {
   check as checkEntitlement,
   type Action,

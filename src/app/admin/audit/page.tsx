@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAdminAudit } from "@/hooks/use-api";
+import { useAdminAudit, useAdminAccounts, useSetBetaOverride } from "@/hooks/use-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,83 @@ function Metric({ label, value, hint }: { label: string; value: string; hint?: s
 
 function fmt(iso: string) {
   return formatInTimeZone(new Date(iso), APP_TIMEZONE, "dd/MM/yy HH:mm", { locale: ptBR });
+}
+
+// Empresas cadastradas + toggle de acesso beta (premium cortesia). O override
+// liga entitlements de PREMIUM sem tocar em cobrança; desligar reverte na hora.
+function AccountsSection() {
+  const { data, isLoading } = useAdminAccounts();
+  const setOverride = useSetBetaOverride();
+  const betaCount = data?.accounts.filter((a) => a.adminOverride).length ?? 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Empresas — acesso beta (premium cortesia)
+          {data && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {data.accounts.length} contas · {betaCount} em beta
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-6">
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : !data || data.accounts.length === 0 ? (
+          <p className="px-6 pb-6 text-sm text-muted-foreground">Nenhuma conta.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Empresa</TableHead>
+                <TableHead>E-mail</TableHead>
+                <TableHead className="w-[150px]">Plano</TableHead>
+                <TableHead className="w-[150px] text-right">Beta</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.accounts.map((a) => {
+                const pending = setOverride.isPending && setOverride.variables?.userId === a.userId;
+                return (
+                  <TableRow key={a.userId}>
+                    <TableCell className="font-medium">
+                      {a.clinicName}
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {a.ownerName}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{a.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={a.plan === "FREE" ? "secondary" : "default"}>{a.plan}</Badge>
+                      {a.adminOverride && (
+                        <Badge variant="outline" className="ml-1 border-emerald-500 text-emerald-600">
+                          beta
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant={a.adminOverride ? "default" : "outline"}
+                        disabled={pending}
+                        onClick={() => setOverride.mutate({ userId: a.userId, enable: !a.adminOverride })}
+                      >
+                        {pending ? "…" : a.adminOverride ? "Desligar beta" : "Ativar beta"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AdminAuditPage() {
@@ -87,6 +164,8 @@ export default function AdminAuditPage() {
                 hint="CPF reusado / dedup"
               />
             </div>
+
+            <AccountsSection />
 
             <Card>
               <CardHeader>

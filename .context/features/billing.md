@@ -103,6 +103,18 @@ Camada de **comunicação** de cobrança no cron — `runBillingNotifications()`
 - Emails em `src/lib/emails/transactional.ts` (`buildDunningEmail`/`buildUsageLimitEmail` puros + senders). Stats novas em `SchedulerStats`: `dunningEmailsSent`, `usageWarningsSent`. Falha por-tenant → `captureError({ area: "cron" })` (observável, não só console).
 - ⚠️ **DAY_7 é best-effort**: se o cron ficar fora durante toda a janela do dia 7 e a suspensão (`billing-maintenance`, >7d) ocorrer antes do próximo run, o aviso de suspensão iminente pode não sair (a ordem notifications-antes-de-maintenance só protege dentro de um mesmo tick). Aceitável p/ camada de comunicação.
 
+### Override admin / beta tester (cortesia) — 2026-06-26
+
+Acesso **PREMIUM grátis** pra contas escolhidas (beta testers), **liga/desliga** sem efeito nenhum na cobrança.
+
+- **Mecanismo**: campos `Subscription.adminOverrideUntil` + `adminOverrideReason` (já existiam no schema). Quando `adminOverrideUntil > now`, o **plano efetivo** vira PREMIUM via `effectivePlanTier(sub)` (em `plans.ts`) — **fonte única** usada em `entitlements.check`, `quota.reserveSlotInTx`, `usage.getCurrentUsage/incrementMessagesSent` e `GET /api/billing/subscription`. `checkStatus` (entitlements) também bypassa SUSPENDED/PAST_DUE quando o override está ativo.
+- **NÃO toca em cobrança**: o override **nunca** escreve `plan`/`status`/`providerSubscriptionId`. O webhook (`eventToSubscriptionPatch`) e os crons (`billing-maintenance`, `billing-notifications`) seguem olhando os campos **reais** — um beta tester nunca é tratado como pagante no Asaas/dunning/suspensão. Desligar (`adminOverrideUntil = null`) reverte na hora.
+- **`canResetFreeAccount`** usa o plano **real** (não o efetivo) — beta FREE continua avaliado como FREE pro reset.
+- **Dunning não atinge beta**: `runBillingNotifications` exclui da varredura de atraso as contas com override ativo (não manda "pagamento em atraso/suspensão" pra quem tem acesso cortesia).
+- **Ligar/desligar**: (a) painel admin `/admin/audit` → seção "Empresas — acesso beta" com toggle por conta (`POST /api/admin/override`); (b) script de lote `scripts/set-beta-override.ts on|off <email...>`. Constante `BETA_OVERRIDE_UNTIL` (2099-12-31) em `plans.ts`. Audita `admin.override_set`/`admin.override_cleared` (actorType ADMIN).
+- ⚠️ **Cache do tenant**: ligar/desligar pelo admin não invalida o cache `["subscription"]` do navegador do tenant afetado — ele vê o novo acesso no próximo refetch/refresh (backend sempre correto).
+- Regressão: unit `tests/unit/effective-plan.test.ts`; `test:sprints` 11.37 (FREE→PREMIUM msgs 5000 sem mexer no plan; desligar reverte p/ 50). Validado no Chrome MCP (toggle liga/desliga no painel admin).
+
 ### Mock trigger (dev-only)
 
 `POST /api/billing/mock-trigger { event }` (NODE_ENV != production):

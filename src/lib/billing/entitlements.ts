@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { PLANS } from "./plans";
+import { PLANS, effectivePlanTier } from "./plans";
 import { allIdentifiers } from "./identifiers";
 import type { PlanTier, Subscription } from "@/generated/prisma/client";
 import type { PatientIdentifierInput } from "./quota";
@@ -45,7 +45,9 @@ export async function check(
   ctx?: { identifier?: PatientIdentifierInput },
 ): Promise<Decision> {
   const sub = await prisma.subscription.findUnique({ where: { userId } });
-  const planTier: PlanTier = sub?.plan ?? "FREE";
+  // Plano efetivo: override admin (beta/cortesia) eleva pra PREMIUM sem mexer
+  // em cobrança. Ver effectivePlanTier.
+  const planTier: PlanTier = effectivePlanTier(sub);
   const plan = PLANS[planTier];
 
   // Status overrides (independente da action).

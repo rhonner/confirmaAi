@@ -10,7 +10,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { PLANS } from "./plans";
+import { PLANS, effectivePlanTier } from "./plans";
 import type { PlanTier, Prisma, Subscription } from "@/generated/prisma/client";
 
 export type UsagePeriod = { periodStart: Date; periodEnd: Date };
@@ -68,7 +68,8 @@ async function getOrCreateCounter(
 export async function getCurrentUsage(userId: string, now: Date = new Date()): Promise<MessageUsage> {
   const sub = await prisma.subscription.findUnique({ where: { userId } });
   const period = currentPeriodFor(sub, now);
-  const counter = await getOrCreateCounter(prisma, userId, sub?.plan ?? "FREE", period);
+  // Override admin (beta) → cota de mensagens do PREMIUM. Reverte ao desligar.
+  const counter = await getOrCreateCounter(prisma, userId, effectivePlanTier(sub, now), period);
   return {
     messagesSent: counter.messagesSent,
     messagesIncluded: counter.messagesIncluded,
@@ -84,7 +85,7 @@ export async function getCurrentUsage(userId: string, now: Date = new Date()): P
 export async function incrementMessagesSent(userId: string, now: Date = new Date()): Promise<void> {
   const sub = await prisma.subscription.findUnique({ where: { userId } });
   const period = currentPeriodFor(sub, now);
-  await getOrCreateCounter(prisma, userId, sub?.plan ?? "FREE", period);
+  await getOrCreateCounter(prisma, userId, effectivePlanTier(sub, now), period);
   await prisma.usageCounter.update({
     where: { userId_periodStart: { userId, periodStart: period.periodStart } },
     data: { messagesSent: { increment: 1 } },

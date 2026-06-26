@@ -31,6 +31,15 @@ Cross-tenant **de propósito** (só admins chegam). Retorna `{ data: { metrics, 
 
 Linhas mapeadas com `actionLabel` (PT-BR) — ver [`audit.md`](audit.md).
 
+## Empresas + acesso beta/cortesia (2026-06-26)
+
+Painel `/admin/audit` ganhou a seção **"Empresas — acesso beta (premium cortesia)"**: lista cross-tenant de contas (clinicName, dono, e-mail, plano/status) com **toggle de beta** por conta.
+
+- `GET /api/admin/accounts` (gated `isAdminEmail`) — lista `AdminAccount[]` (inclui `adminOverride: boolean`). Também serve como a "lista de empresas" do sistema dentro do app (alternativa a SQL direto no Neon).
+- `POST /api/admin/override { userId, enable, reason? }` (gated) — liga/desliga `Subscription.adminOverrideUntil` (= `BETA_OVERRIDE_UNTIL` ou `null`). Audita `admin.override_set`/`admin.override_cleared` com `actorType: ADMIN`.
+- Hooks: `useAdminAccounts`, `useSetBetaOverride` (invalida `["admin-accounts"]`). Script de lote: `scripts/set-beta-override.ts`.
+- **Semântica e isolamento de cobrança**: ver "Override admin / beta tester" em [`billing.md`](billing.md) (o override só eleva entitlements via `effectivePlanTier`; não toca em `plan`/`status`/Asaas).
+
 ## Pontos sensíveis
 
 - **Sem allowlist → ninguém é admin** (`ADMIN_EMAILS` ausente = lista vazia). Falha fechada.

@@ -1951,6 +1951,61 @@ async function main() {
       hashDoc36("11222333000181") !== hashDoc36("11144477735"),
   );
 
+  // 11.37 — Override admin (beta/cortesia): conta FREE ganha entitlements de
+  // PREMIUM (msgs 5000, ilimitado) SEM mexer em plan/status (cobrança intacta);
+  // desligar reverte na hora (msgs 50). Pura + DB.
+  const { effectivePlanTier: effPlan37, PLANS: PLANS37 } = await import("../src/lib/billing/plans");
+  const { check: entCheck37 } = await import("../src/lib/billing/entitlements");
+  const { getCurrentUsage: getUsage37 } = await import("../src/lib/billing/usage");
+
+  const beta37 = await prisma.user.create({
+    data: {
+      name: "Beta Tester",
+      email: `beta-${Date.now()}@test.local`,
+      password: "x",
+      clinicName: "Beta Co",
+      emailVerifiedAt: new Date(),
+    },
+  });
+  await prisma.subscription.create({
+    data: {
+      userId: beta37.id,
+      plan: "FREE",
+      status: "ACTIVE",
+      adminOverrideUntil: new Date("2099-12-31T00:00:00.000Z"),
+    },
+  });
+  const subOn37 = await prisma.subscription.findUnique({ where: { userId: beta37.id } });
+  const usageOn37 = await getUsage37(beta37.id);
+  const entOn37 = await entCheck37(beta37.id, "message.send");
+  // desliga o override
+  await prisma.subscription.update({
+    where: { userId: beta37.id },
+    data: { adminOverrideUntil: null },
+  });
+  const subOff37 = await prisma.subscription.findUnique({ where: { userId: beta37.id } });
+  const usageOff37 = await getUsage37(beta37.id);
+  check(
+    "11.37 Override beta: FREE→PREMIUM (msgs 5000) sem mexer no plan/status; desligar reverte (50)",
+    10,
+    effPlan37(subOn37) === "PREMIUM" &&
+      usageOn37.messagesIncluded === PLANS37.PREMIUM.messagesIncluded &&
+      entOn37.allowed === true &&
+      subOn37?.plan === "FREE" &&
+      subOn37?.status === "ACTIVE" &&
+      effPlan37(subOff37) === "FREE" &&
+      usageOff37.messagesIncluded === PLANS37.FREE.messagesIncluded,
+    `msgsOn=${usageOn37.messagesIncluded} msgsOff=${usageOff37.messagesIncluded}`,
+  );
+  // cleanup do 11.37
+  await prisma.usageCounter.deleteMany({ where: { userId: beta37.id } });
+  await prisma.subscription.delete({ where: { userId: beta37.id } }).catch(() => {});
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: beta37.id } });
+  });
+  await prisma.user.delete({ where: { id: beta37.id } });
+
   // ====================================================================
   // CLEANUP
   // ====================================================================

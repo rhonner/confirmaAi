@@ -92,6 +92,39 @@ export function getPlanConfig(tier: PlanTier): PlanConfig {
   return PLANS[tier];
 }
 
+/**
+ * Plano **efetivo** considerando o override admin (modo cortesia / beta tester).
+ *
+ * Se `adminOverrideUntil` está no futuro, o tenant ganha entitlements de
+ * **PREMIUM** SEM tocar em `plan`/`status`/`providerSubscriptionId` — ou seja,
+ * sem qualquer efeito na cobrança (cron e webhook do Asaas continuam olhando os
+ * campos reais). Desligar o override (`adminOverrideUntil = null`) reverte na
+ * hora ao plano real. Fonte única usada em entitlements, quota, usage e no
+ * endpoint `/api/billing/subscription`.
+ */
+export function effectivePlanTier(
+  sub: { plan: PlanTier; adminOverrideUntil: Date | null } | null | undefined,
+  now: Date = new Date(),
+): PlanTier {
+  if (sub?.adminOverrideUntil && sub.adminOverrideUntil > now) return "PREMIUM";
+  return sub?.plan ?? "FREE";
+}
+
+/** True se o acesso atual vem de override admin (cortesia/beta), não de plano pago. */
+export function hasAdminOverride(
+  sub: { adminOverrideUntil: Date | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  return !!(sub?.adminOverrideUntil && sub.adminOverrideUntil > now);
+}
+
+/**
+ * Data "distante" gravada em `adminOverrideUntil` ao LIGAR o beta — o override
+ * fica ativo até o admin desligar (`adminOverrideUntil = null`). Constante única
+ * usada pelo endpoint admin e pelo script (não deixar divergir).
+ */
+export const BETA_OVERRIDE_UNTIL = new Date("2099-12-31T00:00:00.000Z");
+
 /** Tiers visíveis na UI de venda, em ordem de exibição. */
 export const VISIBLE_PLAN_TIERS = (Object.keys(PLANS) as PlanTier[]).filter(
   (t) => !getPlanConfig(t).hidden,

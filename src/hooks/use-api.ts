@@ -567,3 +567,41 @@ export function useAdminAudit() {
     queryFn: () => fetchApi<AdminAuditData>("/api/admin/audit"),
   });
 }
+
+export type AdminAccount = {
+  userId: string;
+  clinicName: string;
+  ownerName: string;
+  email: string;
+  plan: "FREE" | "PRO" | "PREMIUM";
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "SUSPENDED";
+  adminOverride: boolean;
+  createdAt: string;
+};
+
+export function useAdminAccounts() {
+  return useQuery({
+    queryKey: ["admin-accounts"],
+    queryFn: () => fetchApi<{ accounts: AdminAccount[] }>("/api/admin/accounts"),
+  });
+}
+
+/** Liga/desliga o override beta (premium cortesia) de uma conta. */
+export function useSetBetaOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; enable: boolean }) =>
+      fetchApi<{ userId: string; adminOverride: boolean }>("/api/admin/override", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-accounts"] });
+      toast.success(res.adminOverride ? "Beta ativado (premium cortesia)" : "Beta desativado");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}

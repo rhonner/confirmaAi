@@ -115,7 +115,12 @@ export async function runBillingNotifications(now: Date = new Date()): Promise<B
   // (1) DUNNING — assinaturas em atraso.
   try {
     const pastDue = await prisma.subscription.findMany({
-      where: { status: "PAST_DUE" },
+      // Exclui contas com override admin (beta/cortesia) ativo: elas têm acesso
+      // premium e não devem receber e-mail de "pagamento em atraso / suspensão".
+      where: {
+        status: "PAST_DUE",
+        OR: [{ adminOverrideUntil: null }, { adminOverrideUntil: { lte: now } }],
+      },
       select: { userId: true, plan: true, updatedAt: true },
     });
     for (const sub of pastDue) {

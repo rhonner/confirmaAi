@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { allIdentifiers, hashCpf, primaryIdentifier } from "./identifiers";
-import { PLANS } from "./plans";
+import { PLANS, effectivePlanTier } from "./plans";
 import type {
   IdentifierType,
   PatientQuotaSlot,
@@ -45,7 +45,8 @@ export async function reserveSlotInTx(
   newPatientId: string,
 ): Promise<ReserveResult> {
   const sub = await tx.subscription.findUnique({ where: { userId } });
-  const planTier: PlanTier = sub?.plan ?? "FREE";
+  // Override admin (beta/cortesia) eleva pra PREMIUM (ilimitado) sem tocar em cobrança.
+  const planTier: PlanTier = effectivePlanTier(sub);
   const plan = PLANS[planTier];
 
   const candidates = allIdentifiers(identifier);
