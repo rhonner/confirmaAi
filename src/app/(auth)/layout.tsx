@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { LegalDialog } from "@/components/legal/legal-dialog";
+import { LogoMark } from "@/components/brand/logo-mark";
 
 export default function AuthLayout({
   children,
@@ -39,9 +40,7 @@ export default function AuthLayout({
       <div className="w-full max-w-md relative z-10 animate-scale-in">
         <div className="mb-8 text-center animate-fade-in-up">
           <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-primary/10 mb-4 ring-1 ring-primary/20">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">C</span>
-            </div>
+            <LogoMark className="h-9 w-9 text-primary" />
           </div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
             Clínica Organizada

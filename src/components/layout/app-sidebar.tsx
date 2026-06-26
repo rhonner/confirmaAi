@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LogoMark } from "@/components/brand/logo-mark";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -37,7 +38,7 @@ export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSideb
         )}
       >
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-bold text-sm">C</span>
+          <LogoMark className="h-5 w-5 text-primary-foreground" />
         </div>
         {!collapsed && (
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-teal-400">
