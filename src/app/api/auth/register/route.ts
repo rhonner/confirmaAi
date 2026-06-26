@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma"
 import * as bcrypt from "bcryptjs"
 import { registerSchema } from "@/lib/validations/auth"
 import { audit, auditWrap, getAuditContext } from "@/lib/audit"
-import { canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
-import { hashCpf } from "@/lib/billing"
+import { canonicalizeDocument } from "@/lib/anti-fraud/document"
+import { hashDocument } from "@/lib/billing"
 import { isDisposableEmail } from "@/lib/anti-fraud/disposable-emails"
 import {
   checkSignupRateLimit,
@@ -134,10 +134,13 @@ export const POST = auditWrap(async (request: NextRequest) => {
       )
     }
 
-    const cpfCanonical = canonicalizeCpf(cpf)
-    const cpfHashValue = hashCpf(cpfCanonical)
+    // Documento do dono = CPF ou CNPJ (canônico, só dígitos). `hashDocument`
+    // despacha por tamanho e mantém o namespace `cpf:` p/ CPF (hashes já gravados
+    // seguem batendo). Persistido em `User.cpf/cpfHash`.
+    const cpfCanonical = canonicalizeDocument(cpf)
+    const cpfHashValue = hashDocument(cpfCanonical)
 
-    // Hard-block ao 4º cadastro com mesmo CPF (acima do threshold de fraude).
+    // Hard-block ao 4º cadastro com mesmo documento (acima do threshold de fraude).
     // Abaixo de 4: cadastro permitido — uma pessoa pode legitimamente ter
     // 2 clínicas. O detector cross-tenant em `detectOwnerCpfReuse` emite
     // audit `fraud.cpf_reused_owner` e auto-suspende a conta mais nova
@@ -158,7 +161,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
         failureReason: "cpf_threshold_exceeded",
       })
       return NextResponse.json<ApiResponse>(
-        { error: "Limite de contas com esse CPF atingido. Entre em contato com o suporte." },
+        { error: "Limite de contas com esse CPF/CNPJ atingido. Entre em contato com o suporte." },
         { status: 409 },
       )
     }

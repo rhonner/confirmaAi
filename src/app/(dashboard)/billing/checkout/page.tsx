@@ -12,7 +12,7 @@ import { ArrowLeft, Copy, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { PLAN_LABELS, formatBRL } from "@/components/billing/plan-meta";
 import { PLANS } from "@/lib/billing/plans";
-import { formatCpf } from "@/lib/anti-fraud/cpf-validator";
+import { formatDocument } from "@/lib/anti-fraud/document";
 import { useSubscription } from "@/hooks/use-api";
 
 type CheckoutResponse = {
@@ -187,26 +187,23 @@ export default function CheckoutPage() {
         <CardContent className="space-y-4">
           {!checkout && cpfRequired && (
             <div className="space-y-2" data-testid="checkout-cpf-block">
-              <Label htmlFor="checkout-cpf">Informe seu CPF para continuar</Label>
+              <Label htmlFor="checkout-cpf">Informe seu CPF ou CNPJ para continuar</Label>
               <Input
                 id="checkout-cpf"
                 inputMode="numeric"
-                placeholder="000.000.000-00"
+                placeholder="CPF ou CNPJ"
                 value={cpf}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
-                  setCpf(digits.length === 11 ? formatCpf(digits) : digits);
-                }}
+                onChange={(e) => setCpf(formatDocument(e.target.value))}
                 disabled={loading}
                 data-testid="checkout-cpf-input"
               />
               <p className="text-xs text-muted-foreground">
-                Necessário para emitir a cobrança. Não é compartilhado.
+                CPF ou CNPJ. Necessário para emitir a cobrança. Não é compartilhado.
               </p>
               <Button
                 className="w-full"
                 onClick={() => startCheckout(method, cpf)}
-                disabled={loading || cpfDigits.length !== 11}
+                disabled={loading || (cpfDigits.length !== 11 && cpfDigits.length !== 14)}
                 data-testid="checkout-cpf-submit"
               >
                 {loading ? "Gerando..." : "Continuar"}

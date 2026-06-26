@@ -74,7 +74,7 @@ serverErrorResponse(msg?)  // 500
 Fluxo do `POST /api/auth/register` em ordem:
 
 1. **Honeypot**: campo `website` invisível CSS-only no form. Se preenchido (bot), retorna 201 fake-success silencioso (não dá feedback ao atacante). Audit `signup.honeypot_triggered`.
-2. **Zod validation** com **CPF obrigatório** (validateCpf — DV módulo 11 + reject sequenciais).
+2. **Zod validation** com **documento obrigatório — CPF *ou* CNPJ** (`validateDocument` em `src/lib/anti-fraud/document.ts` — auto-detecta pelo tamanho: ≤11 → CPF, 12-14 → CNPJ; DV módulo 11 + reject sequenciais nos dois). Ver "Documento do dono (CPF/CNPJ)" abaixo.
 3. **Disposable email blocklist**: 70+ domínios em `src/lib/anti-fraud/disposable-emails.ts` (mailinator, yopmail, guerrillamail, tempmail, 10minutemail, etc). Reject 400 + audit `signup.disposable_email_blocked`.
 4. **Rate limit dedicado** (`src/lib/anti-fraud/signup-rate-limit.ts` — substitui o pattern AuditLog-based do Sprint 1):
    - **3 attempts/24h por IP** (sucessos OU falhas)
@@ -105,7 +105,17 @@ Fluxo do `POST /api/auth/register` em ordem:
 - **Defense-in-depth mantida**: `entitlements.check(userId, "patient.create" | "patient.import" | "appointment.create")` ainda retorna `EMAIL_NOT_VERIFIED` se `emailVerifiedAt === null` (agora raramente atingido, pois o login já barra). Frontend captura via `PaywallError` + `<PaywallModal reason="EMAIL_NOT_VERIFIED" />`.
 - **Grandfathering**: usuários pré-Sprint-4 (`rhonner.matheus@gmail.com` etc) recebem `emailVerifiedAt = createdAt` na migration → logam normalmente.
 
-### CPF do dono — política
+### Documento do dono (CPF/CNPJ) — 2026-06-26
+
+O documento do responsável pela conta (usado na cobrança Asaas, campo `cpfCnpj`, e no anti-fraude) aceita **CPF ou CNPJ** — clínica costuma ser PJ. Auto-detecção pelo tamanho dos dígitos.
+
+- **Validação/máscara**: `src/lib/anti-fraud/document.ts` — `validateDocument` (delega a `cpf-validator`/`cnpj-validator`), `formatDocument` (máscara `000.000.000-00` ou `00.000.000/0000-00`, formata quando completo, trunca em 14 dígitos). Usado no signup (`registro/page.tsx`) e no checkout grandfathered (`billing/checkout/page.tsx`).
+- **Storage**: continua em `User.cpf`/`User.cpfHash` (a coluna passa a guardar CPF **ou** CNPJ canônico, só dígitos — nome mantido por compat; não renomeado pra evitar migration).
+- **Hash anti-fraude**: `hashDocument` (em `identifiers.ts`) despacha por tamanho — CPF mantém o namespace `cpf:` (**hashes já gravados continuam batendo**), CNPJ usa `cnpj:`. O threshold/dedup (`detectOwnerCpfReuse`, conta por `cpfHash`) é hash-agnóstico → mesma política pros dois.
+- ⚠️ **NÃO confundir com o CPF do PACIENTE** (identificador de quota em `quota.ts`/`identifiers.ts` `primaryIdentifier`/`patient.ts`), que **continua só CPF** (`validateCpf`/`hashCpf` intactos).
+- Regressão: unit `tests/unit/document-validator.test.ts` (14) + `test:sprints` 11.36. Validado no Chrome MCP (2026-06-26): signup mascara CPF e CNPJ, rejeita inválido ("CPF ou CNPJ inválido"); API aceita CNPJ → 201 + `User.cpf` com 14 dígitos.
+
+### CPF/CNPJ do dono — política de reuso
 
 Mesmo `cpfHash` em **N contas** é tratado em camadas:
 

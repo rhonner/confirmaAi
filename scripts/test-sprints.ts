@@ -1909,6 +1909,48 @@ async function main() {
   });
   await prisma.user.delete({ where: { id: normUser.id } });
 
+  // 11.36 — Documento do dono aceita CPF **ou** CNPJ (signup + checkout). Pura,
+  // sem DB: valida o dispatch, o schema do registro, a máscara e o hash por tipo
+  // (CPF mantém o namespace `cpf:` → compat com hashes já gravados).
+  const { validateDocument: validateDoc36, formatDocument: formatDoc36 } = await import(
+    "../src/lib/anti-fraud/document"
+  );
+  const { hashCpf: hashCpf36, hashDocument: hashDoc36 } = await import(
+    "../src/lib/billing/identifiers"
+  );
+  const { registerSchema: regSchema36 } = await import("../src/lib/validations/auth");
+  const VALID_CNPJ_36 = "11.222.333/0001-81";
+  const VALID_CPF_36 = "111.444.777-35";
+  const doc36Cnpj = validateDoc36(VALID_CNPJ_36);
+  const doc36Cpf = validateDoc36(VALID_CPF_36);
+  const reg36Cnpj = regSchema36.safeParse({
+    name: "Empresa LTDA",
+    email: "cnpj36@test.local",
+    password: "senha123",
+    clinicName: "Clínica PJ",
+    cpf: VALID_CNPJ_36,
+  }).success;
+  const reg36Garbage = !regSchema36.safeParse({
+    name: "X Ltda",
+    email: "bad36@test.local",
+    password: "senha123",
+    clinicName: "Clinica",
+    cpf: "123456789012", // 12 dígitos: nem CPF nem CNPJ
+  }).success;
+  check(
+    "11.36 Signup aceita CPF e CNPJ (validateDocument + registerSchema + máscara + hash por tipo)",
+    10,
+    doc36Cnpj.valid &&
+      doc36Cnpj.kind === "CNPJ" &&
+      doc36Cpf.valid &&
+      doc36Cpf.kind === "CPF" &&
+      reg36Cnpj &&
+      reg36Garbage &&
+      formatDoc36("11222333000181") === VALID_CNPJ_36 &&
+      hashDoc36("11144477735") === hashCpf36("11144477735") &&
+      hashDoc36("11222333000181") !== hashDoc36("11144477735"),
+  );
+
   // ====================================================================
   // CLEANUP
   // ====================================================================

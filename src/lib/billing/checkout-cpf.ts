@@ -1,4 +1,4 @@
-import { validateCpf } from "@/lib/anti-fraud/cpf-validator";
+import { validateDocument } from "@/lib/anti-fraud/document";
 
 /**
  * Resolve qual CPF usar no checkout, cobrindo o caso de contas grandfathered
@@ -36,14 +36,14 @@ export function resolveCheckoutCpf(input: {
     return { status: "required" };
   }
 
-  const v = validateCpf(input.providedCpf);
+  const v = validateDocument(input.providedCpf);
   if (!v.valid) {
     const message =
       v.reason === "checksum"
-        ? "CPF inválido (dígito verificador)"
+        ? "CPF/CNPJ inválido (dígito verificador)"
         : v.reason === "sequential"
-          ? "CPF inválido (sequência repetida)"
-          : "CPF inválido (formato)";
+          ? "CPF/CNPJ inválido (sequência repetida)"
+          : "CPF ou CNPJ inválido (formato)";
     return { status: "invalid", message };
   }
 

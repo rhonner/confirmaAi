@@ -35,6 +35,22 @@ export function hashCpf(cpf: string): string {
   return sha256("cpf:" + canonicalizeCpf(cpf) + ":" + getPepper());
 }
 
+/** Hash do CNPJ — namespace próprio `cnpj:` (14 dígitos não colidem com CPF/phone). */
+export function hashCnpj(cnpj: string): string {
+  return sha256("cnpj:" + cnpj.replace(/\D/g, "") + ":" + getPepper());
+}
+
+/**
+ * Hash do **documento do dono** (CPF ou CNPJ), usado no anti-fraude do signup/
+ * checkout (`User.cpfHash`). Despacha por tamanho: ≤11 dígitos → `hashCpf`
+ * (mesmo namespace `cpf:` → hashes de CPF já gravados continuam batendo), >11 →
+ * `hashCnpj`. NÃO usar pra paciente (lá é só CPF, via `hashCpf`/`primaryIdentifier`).
+ */
+export function hashDocument(doc: string): string {
+  const digits = doc.replace(/\D/g, "");
+  return digits.length > 11 ? hashCnpj(digits) : hashCpf(digits);
+}
+
 export function hashPhone(phone: string): string {
   return sha256("phone:" + canonicalizePhone(phone) + ":" + getPepper());
 }

@@ -13,7 +13,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LegalDialog } from "@/components/legal/legal-dialog";
 import { toast } from "sonner";
-import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator";
+import { validateDocument, formatDocument, canonicalizeDocument } from "@/lib/anti-fraud/document";
 import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 const registerSchema = z.object({
@@ -23,8 +23,8 @@ const registerSchema = z.object({
   password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
   cpf: z
     .string()
-    .min(11, "CPF é obrigatório")
-    .refine((v) => validateCpf(v).valid, { message: "CPF inválido" }),
+    .min(11, "CPF ou CNPJ é obrigatório")
+    .refine((v) => validateDocument(v).valid, { message: "CPF ou CNPJ inválido" }),
   acceptedTerms: z.literal(true, { message: "É necessário aceitar os termos" }),
   // Honeypot — invisível, deve ficar vazio.
   website: z.string().optional(),
@@ -65,7 +65,7 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...data,
-          cpf: canonicalizeCpf(data.cpf),
+          cpf: canonicalizeDocument(data.cpf),
           // Explicit: garantir que vai como boolean true (Controller pode
           // não incluir no `data` spread em alguns casos)
           acceptedTerms: data.acceptedTerms === true,
@@ -121,7 +121,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="cpf">Seu CPF</Label>
+          <Label htmlFor="cpf">Seu CPF ou CNPJ</Label>
           <Controller
             name="cpf"
             control={control}
@@ -130,12 +130,9 @@ export default function RegisterPage() {
                 id="cpf"
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="000.000.000-00"
+                placeholder="CPF ou CNPJ"
                 value={field.value ?? ""}
-                onChange={(e) => {
-                  const digits = canonicalizeCpf(e.target.value).slice(0, 11);
-                  field.onChange(digits.length === 11 ? formatCpf(digits) : digits);
-                }}
+                onChange={(e) => field.onChange(formatDocument(e.target.value))}
                 disabled={isLoading}
                 aria-invalid={!!errors.cpf}
               />
@@ -145,7 +142,7 @@ export default function RegisterPage() {
             <p className="text-sm text-destructive">{errors.cpf.message}</p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Necessário para anti-fraude. Não é compartilhado.
+              CPF (pessoa física) ou CNPJ (empresa). Necessário para a cobrança e anti-fraude.
             </p>
           )}
         </div>

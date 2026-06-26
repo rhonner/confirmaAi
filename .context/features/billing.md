@@ -51,7 +51,7 @@ Contas pré-Sprint-4 têm `User.cpf = null`. O Asaas cria o customer sem CPF mas
 
 1. Helper puro `resolveCheckoutCpf({ userCpf, providedCpf })` (em `src/lib/billing/checkout-cpf.ts`) → `ok | required | invalid`.
 2. `POST /api/billing/checkout` aceita `cpf?` no body. Se `user.cpf` null e nada informado → **`400 { error: "CPF_REQUIRED" }` ANTES de tocar o provider** (não cria customer órfão). A UI troca o seletor de método pelo campo CPF e reenvia com `cpf`.
-3. CPF informado → `validateCpf` (DV + sequencial); inválido → `400` com mensagem PT.
+3. Documento informado → `validateDocument` (**CPF ou CNPJ** — auto-detecta pelo tamanho; DV + sequencial); inválido → `400` com mensagem PT. A UI aceita 11 (CPF) ou 14 dígitos (CNPJ) e mascara conforme. Ver "Documento do dono (CPF/CNPJ)" em [`auth.md`](auth.md) (2026-06-26).
 4. Válido → persiste `User.cpf/cpfHash`. **Como este é o 2º ponto que grava `User.cpfHash` (além do register), aplica os MESMOS controles anti-fraude**: hard-block `>=4` (`CPF_LIMIT` 409) + `detectOwnerCpfReuse` (audit `fraud.cpf_reused_owner` + auto-suspend `>3`). Audit `billing.checkout.cpf_added`. Ver [`auth.md`](auth.md).
 5. `provider.updateCustomer({ providerCustomerId, cpf })` (Asaas `POST /customers/{id}`, Mock no-op) sincroniza o CPF no customer. **Idempotente**: roda em TODO checkout com customer existente (não one-shot) — recupera customer órfão sem CPF mesmo após falha de rede anterior, em vez de a assinatura ficar presa no 400 pra sempre.
 

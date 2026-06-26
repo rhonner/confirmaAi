@@ -8,7 +8,7 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { audit, auditWrap } from "@/lib/audit";
-import { getBillingProvider, getPlanConfig, hashCpf, resolveCheckoutCpf } from "@/lib/billing";
+import { getBillingProvider, getPlanConfig, hashDocument, resolveCheckoutCpf } from "@/lib/billing";
 import { detectOwnerCpfReuse } from "@/lib/anti-fraud/owner-cpf-dedup";
 import { captureError } from "@/lib/observability";
 import type { ApiResponse } from "@/lib/types/api";
@@ -72,7 +72,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
     const cpfResult = resolveCheckoutCpf({ userCpf: user.cpf, providedCpf: parsed.data.cpf });
     if (cpfResult.status === "required") {
       return NextResponse.json<ApiResponse>(
-        { error: "CPF_REQUIRED", message: "Para assinar, precisamos do seu CPF." },
+        { error: "CPF_REQUIRED", message: "Para assinar, precisamos do seu CPF ou CNPJ." },
         { status: 400 },
       );
     }
@@ -86,9 +86,9 @@ export const POST = auditWrap(async (request: NextRequest) => {
     // aplica os MESMOS controles anti-fraude do register (senão o checkout vira
     // uma porta pra burlar a dedup cross-tenant de CPF do dono).
     if (cpfResult.persist) {
-      const cpfHashValue = hashCpf(cpf);
+      const cpfHashValue = hashDocument(cpf);
 
-      // Hard-block ao 5º compartilhamento do mesmo CPF (espelha register).
+      // Hard-block ao 5º compartilhamento do mesmo documento (espelha register).
       const existingSameCpf = await prisma.user.count({ where: { cpfHash: cpfHashValue } });
       if (existingSameCpf >= 4) {
         await audit({
@@ -97,7 +97,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
           metadata: { count: existingSameCpf, blocked: true, source: "checkout" },
         });
         return NextResponse.json<ApiResponse>(
-          { error: "CPF_LIMIT", message: "Limite de contas com esse CPF atingido. Entre em contato com o suporte." },
+          { error: "CPF_LIMIT", message: "Limite de contas com esse CPF/CNPJ atingido. Entre em contato com o suporte." },
           { status: 409 },
         );
       }

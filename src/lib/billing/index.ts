@@ -17,6 +17,8 @@ export {
 export {
   canonicalizePhone,
   hashCpf,
+  hashCnpj,
+  hashDocument,
   hashPhone,
   primaryIdentifier,
   allIdentifiers,
