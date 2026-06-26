@@ -1289,6 +1289,26 @@ async function main() {
       billingWebhookSrc.includes("captureError"),
   );
 
+  // 9.7 Liveness probe SEM DB (corte de custo Neon: o ping de 5 min do uptime
+  // monitor não pode acordar o compute). O handler só importa NextResponse —
+  // nada de prisma / runHealthChecks / agregador de health (senão tocaria o banco).
+  const liveRouteSrc = exists("src/app/api/health/live/route.ts")
+    ? readFileSync(join(root, "src/app/api/health/live/route.ts"), "utf8")
+    : "";
+  const liveImports = liveRouteSrc
+    .split("\n")
+    .filter((l) => /^\s*import\b/.test(l))
+    .join("\n");
+  check(
+    "9.7 /api/health/live: liveness 200 SEM tocar no banco (Neon scale-to-zero)",
+    9,
+    exists("src/app/api/health/live/route.ts") &&
+      /check:\s*"live"/.test(liveRouteSrc) &&
+      !liveRouteSrc.includes("runHealthChecks(") &&
+      !/prisma/i.test(liveImports) &&
+      !/services\/health/i.test(liveImports),
+  );
+
   // ====================================================================
   // SPRINT 10 — Receita passiva: atividade do usuário + painel admin
   // ====================================================================

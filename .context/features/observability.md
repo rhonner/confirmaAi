@@ -33,6 +33,14 @@ Formato:
 }
 ```
 
+### `GET /api/health/live` — liveness (sem DB)
+
+Probe **barata** que só prova que a função/app **responde** — **não toca no banco** (`src/app/api/health/live/route.ts`, importa só `NextResponse`). Resposta: `{ "status": "ok", "check": "live" }`, sempre `200`. Se o app/deploy quebra, a função nem responde → o monitor detecta mesmo assim.
+
+**Por que existe (custo Neon):** o Neon faz *scale-to-zero* do compute após ~5 min sem query. O uptime monitor batia em `/api/health` (que consulta DB) **a cada 5 min** → o compute **nunca dormia** → ~118 CU-hrs/mês, estourando o cap Free de 100 (incidente 2026-06-26, ver memória `neon-prod-db`). A liveness sem DB deixa o compute suspender entre as execuções do cron.
+
+**Regra de ouro:** o monitor de **alta frequência** (5 min) aponta pra `/api/health/live`; a readiness profunda (`/api/health`, abaixo) fica num monitor de **baixa frequência (≥ 30 min)**.
+
 ### Checks (limiares em `health.ts`)
 
 | Check | Sinal | Falha quando | Origem |
@@ -64,14 +72,17 @@ Ponto único `captureError(error, { area, tenantUserId, extra })`. O destino é 
 
 ## Monitor de uptime externo
 
-> Não é código — é configuração de conta externa, como as chaves Asaas/Resend. **✅ Configurado 2026-06-13.**
+> Não é código — é configuração de conta externa, como as chaves Asaas/Resend. **✅ Configurado 2026-06-13.** ⚠️ **Requer reconfiguração (2026-06-26)** por causa do custo Neon — ver nota abaixo.
 
-3 checks no **UptimeRobot** (conta `WeCalc`, alerta por email `wcwecalc@gmail.com`), HTTP, intervalo 5 min, todos `Up`:
-1. `https://clinicaorganizada.com/api/health` — **o agregador** (200/503). É o alerta principal: UptimeRobot trata não-2xx como down, então o `503` degradado dispara sozinho.
-2. `https://clinicaorganizada.com` — o app Vercel responde.
-3. `https://evolution.clinicaorganizada.com` — a VPS Evolution responde.
+Monitores no **UptimeRobot** (conta `WeCalc`, alerta por email `wcwecalc@gmail.com`), HTTP:
+1. `https://clinicaorganizada.com/api/health/live` — **liveness, a cada 5 min**. Up/down do app **sem tocar no banco**. Alerta principal de "o site caiu" (UptimeRobot trata não-2xx/sem-resposta como down).
+2. `https://clinicaorganizada.com/api/health` — **readiness profunda, a cada ≥30 min** (200/503). Pega cron morto / billing travado / Evolution down. Intervalo LONGO **de propósito**: cada hit consulta o Postgres; a 5 min, manteria o Neon acordado 24/7.
+3. `https://clinicaorganizada.com` — o app Vercel responde (5 min).
+4. `https://evolution.clinicaorganizada.com` — a VPS Evolution responde (5 min).
 
-O monitor (email/push do próprio serviço) é o sistema de alerta, sem infra própria. **Página de status pública deliberadamente NÃO criada** (não expor status dos serviços publicamente). Anti-flapping (alertar após 2 falhas consecutivas) fica como ajuste opcional nas settings do monitor #1.
+> **⚠️ Custo Neon (2026-06-26):** o monitor #1 batia em `/api/health` (com DB) a cada 5 min → o compute do Neon nunca fazia scale-to-zero → estourou o cap Free (100 CU-hrs). Fix: liveness sem DB pro ping de 5 min + readiness profunda em baixa frequência. **Ação manual pendente no UptimeRobot:** repontar o monitor #1 de `/api/health` → `/api/health/live`, e baixar a frequência do monitor de `/api/health` pra ≥30 min. Ver memória `neon-prod-db`.
+
+O monitor (email/push do próprio serviço) é o sistema de alerta, sem infra própria. **Página de status pública deliberadamente NÃO criada** (não expor status dos serviços publicamente). Anti-flapping (alertar após 2 falhas consecutivas) fica como ajuste opcional nas settings dos monitores.
 
 ## Runbook de incidentes
 
@@ -80,7 +91,7 @@ Quando o monitor alertar (ou `/api/health` retornar 503), olhar o `checks` do co
 - **`cron.ok: false`** (cron morto): o crontab da VPS Hetzner (`*/30 * * * * clinica-cron.sh` → `GET /api/cron/run` com Bearer) parou de disparar. Onde olhar: SSH na VPS → `systemctl status cron`, `grep CRON /var/log/syslog`, testar `curl` manual pro endpoint com o `CRON_SECRET`. Ver [`scheduler.md`](scheduler.md) e `concepts/vercel-hobby-cron-workaround` na wiki.
 - **`billing.ok: false`** (`stuckEvents > 0`): webhook de pagamento processado mas o apply falhou → cliente pode ter pago sem subir de plano. Onde olhar: tabela `BillingEvent WHERE processedAt IS NULL` (payload + userId). Reconciliar manualmente o `Subscription`. Erro detalhado no Sentry/log com `area: "webhook"` + `tenantUserId`. Ver [`billing.md`](billing.md).
 - **`evolution.ok: false`** (`health: "DOWN"`): a VPS Evolution caiu ou está inacessível. Efeito: nenhum tenant envia confirmação (todos viram "WhatsApp desconectado" — Sprint 8 já alerta cada um por email). Onde olhar: SSH na VPS → `docker ps`, `docker logs evolution`, reiniciar o container; checar HTTPS/Caddy. Ver [`whatsapp.md`](whatsapp.md) § Resiliência.
-- **`database.ok: false`**: Postgres (Neon) inacessível. Checar painel Neon (quota de conexões, suspensão de branch). Lembrar: runtime serverless usa a URL **pooled** (`-pooler`) — ver `concepts/neon-pooled-vs-direct-url` na wiki.
+- **`database.ok: false`**: Postgres (Neon) inacessível. Checar painel Neon (quota de conexões, suspensão de branch, **quota de compute/CU-hours estourada** no Free — suspende o compute). Lembrar: runtime serverless usa a URL **pooled** (`-pooler`) — ver `concepts/neon-pooled-vs-direct-url` na wiki.
 
 ## Pontos sensíveis
 
