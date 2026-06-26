@@ -80,7 +80,7 @@ Monitores no **UptimeRobot** (conta `WeCalc`, alerta por email `wcwecalc@gmail.c
 3. `https://clinicaorganizada.com` — o app Vercel responde (5 min).
 4. `https://evolution.clinicaorganizada.com` — a VPS Evolution responde (5 min).
 
-> **⚠️ Custo Neon (2026-06-26):** o monitor #1 batia em `/api/health` (com DB) a cada 5 min → o compute do Neon nunca fazia scale-to-zero → estourou o cap Free (100 CU-hrs). Fix: liveness sem DB pro ping de 5 min + readiness profunda em baixa frequência. **Ação manual pendente no UptimeRobot:** repontar o monitor #1 de `/api/health` → `/api/health/live`, e baixar a frequência do monitor de `/api/health` pra ≥30 min. Ver memória `neon-prod-db`.
+> **⚠️ Custo Neon (2026-06-26):** o monitor #1 batia em `/api/health` (com DB) a cada 5 min → o compute do Neon nunca fazia scale-to-zero → estourou o cap Free (100 CU-hrs). Fix: liveness sem DB pro ping de 5 min + readiness profunda em baixa frequência. **✅ Reconfigurado no UptimeRobot em 2026-06-26:** monitor `…/api/health/live` @ 5 min + monitor novo `…/api/health` @ 30 min. Ver memória `neon-prod-db`.
 
 O monitor (email/push do próprio serviço) é o sistema de alerta, sem infra própria. **Página de status pública deliberadamente NÃO criada** (não expor status dos serviços publicamente). Anti-flapping (alertar após 2 falhas consecutivas) fica como ajuste opcional nas settings dos monitores.
 
