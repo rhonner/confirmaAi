@@ -343,7 +343,11 @@ export default function ConfiguracoesPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="confirmationMessage">
+                <Label
+                  id="confirmationMessage-label"
+                  htmlFor="confirmationMessage"
+                  onClick={() => confirmationEditorRef.current?.focus()}
+                >
                   Template de confirmação
                 </Label>
                 <span className={`text-xs ${(confirmationMessage?.length || 0) > MESSAGE_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}>
@@ -356,6 +360,7 @@ export default function ConfiguracoesPage() {
                 render={({ field }) => (
                   <TemplateEditor
                     id="confirmationMessage"
+                    ariaLabelledby="confirmationMessage-label"
                     ref={confirmationEditorRef}
                     value={field.value ?? ""}
                     onChange={field.onChange}
@@ -381,7 +386,13 @@ export default function ConfiguracoesPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="reminderMessage">Template de lembrete</Label>
+                <Label
+                  id="reminderMessage-label"
+                  htmlFor="reminderMessage"
+                  onClick={() => reminderEditorRef.current?.focus()}
+                >
+                  Template de lembrete
+                </Label>
                 <span className={`text-xs ${(reminderMessage?.length || 0) > MESSAGE_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}>
                   {reminderMessage?.length || 0}/{MESSAGE_MAX_LENGTH}
                 </span>
@@ -392,6 +403,7 @@ export default function ConfiguracoesPage() {
                 render={({ field }) => (
                   <TemplateEditor
                     id="reminderMessage"
+                    ariaLabelledby="reminderMessage-label"
                     ref={reminderEditorRef}
                     value={field.value ?? ""}
                     onChange={field.onChange}

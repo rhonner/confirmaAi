@@ -11,13 +11,16 @@ import { Button } from "@/components/ui/button";
  * explicitamente entre "light" e "dark".
  */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
+  // resolvedTheme (não theme): se a preferência salva for "system", `theme` é a
+  // string "system" e comparar com "dark" daria um clique no-op. resolvedTheme
+  // é sempre o tema realmente aplicado ("light" | "dark").
+  const { resolvedTheme, setTheme } = useTheme();
 
   return (
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       className={className ?? "h-9 w-9"}
       aria-label="Alternar tema"
     >

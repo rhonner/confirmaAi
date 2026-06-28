@@ -121,7 +121,7 @@ export default function LoginPage() {
           ref={unverifiedPanelRef}
           role="alert"
           tabIndex={-1}
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm outline-none scroll-mt-20"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm scroll-mt-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           <div className="flex gap-3">
             <MailWarning className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />

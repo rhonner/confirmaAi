@@ -23,7 +23,12 @@ import { cn } from "@/lib/utils";
 export const TEMPLATE_VARS = ["nome", "data", "hora", "clinica"] as const;
 export type TemplateVar = (typeof TEMPLATE_VARS)[number];
 
-const VARIABLE_REGEX = /\{(nome|data|hora|clinica)\}/g;
+// Fonte ÚNICA da lista de variáveis dentro deste arquivo: a regex e a input rule
+// derivam de TEMPLATE_VARS, então add/renomear uma var não dessincroniza a paleta,
+// o parse e a auto-tokenização. (O backend `message-template.ts` e o
+// `formatTemplatePreview` mantêm a própria lista — unificar cruza o limite da API.)
+const VAR_ALTERNATION = TEMPLATE_VARS.join("|");
+const VARIABLE_REGEX = new RegExp(`\\{(${VAR_ALTERNATION})\\}`, "g");
 
 export function usesAnyVariable(template: string): boolean {
   return TEMPLATE_VARS.some((v) => template.includes(`{${v}}`));
@@ -120,7 +125,7 @@ const Variable = Node.create({
   addInputRules() {
     return [
       nodeInputRule({
-        find: /\{(?:nome|data|hora|clinica)\}$/,
+        find: new RegExp(`\\{(?:${VAR_ALTERNATION})\\}$`),
         type: this.type,
         getAttributes: (match) => ({ name: match[0].slice(1, -1) }),
       }),
@@ -187,15 +192,21 @@ type TemplateEditorProps = {
   onFocus?: () => void;
   id?: string;
   invalid?: boolean;
+  /** id do <Label> associado — vira aria-labelledby do textbox (a11y). */
+  ariaLabelledby?: string;
 };
 
 export const TemplateEditor = React.forwardRef<TemplateEditorHandle, TemplateEditorProps>(
-  function TemplateEditor({ value, onChange, placeholder, onFocus, id, invalid }, ref) {
+  function TemplateEditor({ value, onChange, placeholder, onFocus, id, invalid, ariaLabelledby }, ref) {
     // Refs para evitar closures velhas dentro dos callbacks do editor.
+    // Atualizadas em effect (não no corpo do render) para não serem side-effect
+    // de render — seguro sob Strict Mode / renders descartados.
     const onChangeRef = React.useRef(onChange);
     const onFocusRef = React.useRef(onFocus);
-    onChangeRef.current = onChange;
-    onFocusRef.current = onFocus;
+    React.useEffect(() => {
+      onChangeRef.current = onChange;
+      onFocusRef.current = onFocus;
+    });
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -215,6 +226,11 @@ export const TemplateEditor = React.forwardRef<TemplateEditorHandle, TemplateEdi
           link: false,
           underline: false,
           trailingNode: false,
+          // hardBreak (Shift+Enter) desabilitado: serialize mapearia para "\n",
+          // mas parse() só cria parágrafos → round-trip assimétrico (linha com
+          // hardBreak reapareceria como parágrafos no reload). Só parágrafos
+          // (Enter) → uma única semântica de "\n", simétrica.
+          hardBreak: false,
         }),
         Placeholder.configure({ placeholder: placeholder ?? "" }),
         Variable,
@@ -225,6 +241,7 @@ export const TemplateEditor = React.forwardRef<TemplateEditorHandle, TemplateEdi
           id: id ?? "",
           role: "textbox",
           "aria-multiline": "true",
+          ...(ariaLabelledby ? { "aria-labelledby": ariaLabelledby } : {}),
           class:
             "min-h-[7.5rem] max-h-60 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 text-base outline-none md:text-sm",
         },
@@ -237,9 +254,12 @@ export const TemplateEditor = React.forwardRef<TemplateEditorHandle, TemplateEdi
       },
     });
 
-    // Sincroniza quando o valor muda por fora (load das settings / reset).
+    // Sincroniza apenas valor vindo DE FORA (load das settings, reset pós-save).
+    // Enquanto o usuário digita (editor focado) não tocamos no doc: se o `value`
+    // do RHF chegar atrasado, um setContent aqui apagaria o que acabou de ser
+    // digitado e jogaria o cursor pro início.
     React.useEffect(() => {
-      if (!editor) return;
+      if (!editor || editor.isFocused) return;
       const current = serialize(editor.state.doc);
       if (value !== current) {
         editor.commands.setContent(parse(value), { emitUpdate: false });

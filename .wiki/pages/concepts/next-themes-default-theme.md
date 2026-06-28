@@ -20,5 +20,6 @@ A sócia notou o signup aparecendo escuro e pediu **tema claro como padrão** ("
 - As telas de auth **já respeitavam** o tema (sem classe `dark` forçada nem `forcedTheme`); só nasciam escuras por causa do `defaultTheme="system"`. Bastou o provider.
 - O toggle de tema estava acoplado ao `app-header` (só no dashboard). Foi extraído para `src/components/layout/theme-toggle.tsx` e colocado também no `(auth)/layout.tsx` (canto superior direito), pois as telas de auth não têm header.
 - `<html suppressHydrationWarning>` já presente → sem warning de hydration ao injetar a classe.
+- **Toggle deve comparar `resolvedTheme`, não `theme`** (achado do code-review): com `enableSystem`, `theme` pode ser a string `"system"`; `setTheme(theme === "dark" ? "light" : "dark")` daria um clique no-op pra quem tem `"system"` salvo (ainda possível: valor antigo no localStorage). `resolvedTheme` é sempre o tema realmente aplicado (`"light"`/`"dark"`).
 
 > Fonte: raw/sessions/2026-06-27-paonetone-ui-feedback.md

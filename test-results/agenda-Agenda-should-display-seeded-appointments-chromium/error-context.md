@@ -1,0 +1,101 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - img "Clínica Organizada" [ref=e7]
+          - heading "Clínica Organizada" [level=1] [ref=e13]
+        - navigation [ref=e14]:
+          - link "Dashboard" [ref=e15] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e16]
+            - generic [ref=e21]: Dashboard
+          - link "Agenda" [ref=e22] [cursor=pointer]:
+            - /url: /agenda
+            - img [ref=e24]
+            - generic [ref=e26]: Agenda
+            - img [ref=e27]
+          - link "Pacientes" [ref=e29] [cursor=pointer]:
+            - /url: /pacientes
+            - img [ref=e30]
+            - generic [ref=e35]: Pacientes
+          - link "Plano" [ref=e36] [cursor=pointer]:
+            - /url: /billing
+            - img [ref=e37]
+            - generic [ref=e39]: Plano
+          - link "Configurações" [ref=e40] [cursor=pointer]:
+            - /url: /configuracoes
+            - img [ref=e41]
+            - generic [ref=e44]: Configurações
+        - paragraph [ref=e46]: Clínica Organizada · v0.1
+    - generic [ref=e47]:
+      - banner [ref=e48]:
+        - button "Recolher menu" [ref=e49] [cursor=pointer]:
+          - img
+        - heading "Clínica Saúde Total" [level=2] [ref=e51]
+        - generic [ref=e52]:
+          - link "Plano Pro" [ref=e54] [cursor=pointer]:
+            - /url: /billing
+            - img [ref=e55]
+            - text: Pro
+          - button "Alternar tema" [ref=e58] [cursor=pointer]:
+            - img
+          - button "Sair da conta" [ref=e59] [cursor=pointer]:
+            - img
+            - generic [ref=e60]: Sair
+      - main [ref=e61]:
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - generic [ref=e65]:
+              - heading "Agenda" [level=1] [ref=e66]
+              - paragraph [ref=e67]: Gerencie seus agendamentos
+            - generic [ref=e69]:
+              - link "Exportar CSV" [ref=e70] [cursor=pointer]:
+                - /url: /api/appointments/export
+                - img
+                - generic [ref=e71]: Exportar CSV
+              - button "Novo Agendamento" [ref=e72] [cursor=pointer]:
+                - img
+                - text: Novo Agendamento
+          - generic [ref=e73]:
+            - combobox "Filtrar por status" [ref=e74]:
+              - option "Todos os status" [selected]
+              - option "Pendente"
+              - option "Confirmado"
+              - option "Cancelado"
+              - option "Faltou"
+            - combobox "Filtrar por paciente" [ref=e75]:
+              - option "Todos os pacientes" [selected]
+              - option "Ana Costa"
+              - option "Carla Lima"
+              - option "José Oliveira"
+              - option "Maria Santos"
+              - option "Pedro Souza"
+          - generic [ref=e76]:
+            - button "Anterior" [ref=e77] [cursor=pointer]:
+              - img
+              - text: Anterior
+            - generic [ref=e78]:
+              - img [ref=e79]
+              - generic [ref=e81]: 21 jun - 27 jun 2026
+            - generic [ref=e82]:
+              - button "Hoje" [ref=e83] [cursor=pointer]
+              - button "Próxima" [ref=e84] [cursor=pointer]:
+                - text: Próxima
+                - img
+          - generic [ref=e85]:
+            - img [ref=e86]
+            - generic [ref=e88]:
+              - paragraph [ref=e89]: Nenhum agendamento nesta semana
+              - paragraph [ref=e90]: Agende sua primeira consulta para começar
+            - button "Novo Agendamento" [ref=e91] [cursor=pointer]:
+              - img
+              - text: Novo Agendamento
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e97] [cursor=pointer]:
+    - img [ref=e98]
+  - alert [ref=e101]
+```

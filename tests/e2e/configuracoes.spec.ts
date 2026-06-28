@@ -34,29 +34,36 @@ test.describe("Configuracoes", () => {
     await expect(reminderInput).toBeVisible();
   });
 
-  test("should display message template textareas", async ({ page }) => {
+  test("should display message template editors", async ({ page }) => {
     await expect(page.locator('label:has-text("Template de confirmação")')).toBeVisible();
     await expect(page.locator('label:has-text("Template de lembrete")')).toBeVisible();
 
-    // Verify textareas exist
-    const confirmationTextarea = page.locator('textarea[id="confirmationMessage"]');
-    const reminderTextarea = page.locator('textarea[id="reminderMessage"]');
+    // Os templates usam o editor de chips (TipTap, <div contenteditable>), não
+    // mais <textarea>. O id é aplicado via editorProps.attributes.id.
+    const confirmationEditor = page.locator('[id="confirmationMessage"][contenteditable="true"]');
+    const reminderEditor = page.locator('[id="reminderMessage"][contenteditable="true"]');
 
-    await expect(confirmationTextarea).toBeVisible();
-    await expect(reminderTextarea).toBeVisible();
+    await expect(confirmationEditor).toBeVisible();
+    await expect(reminderEditor).toBeVisible();
   });
 
   test("should display available variables", async ({ page }) => {
     await expect(page.locator("text=Variáveis disponíveis")).toBeVisible();
-    await expect(page.locator("text={nome}")).toBeVisible();
-    await expect(page.locator("text={data}")).toBeVisible();
-    await expect(page.locator("text={hora}")).toBeVisible();
-    await expect(page.locator("text={clinica}")).toBeVisible();
+    // Mira os BOTÕES da paleta (não `text={nome}`): o editor de chips agora
+    // também renderiza "{nome}" dentro de cada token, o que dispararia strict
+    // mode (múltiplos matches). O × do chip tem aria-label "Remover variável…",
+    // então só o botão da paleta casa por nome acessível "{nome}".
+    for (const v of ["{nome}", "{data}", "{hora}", "{clinica}"]) {
+      await expect(page.getByRole("button", { name: v })).toBeVisible();
+    }
   });
 
   test("should display WhatsApp status section", async ({ page }) => {
     await expect(page.locator("text=Conexão WhatsApp")).toBeVisible();
-    await expect(page.locator("text=Conexão não configurada")).toBeVisible();
+    // Drive-by: a assertion antiga procurava "Conexão não configurada", texto que
+    // não existe no componente (estado desconectado renderiza "WhatsApp não
+    // conectado") — teste já estava vermelho antes deste trabalho.
+    await expect(page.locator("text=WhatsApp não conectado")).toBeVisible();
   });
 
   test("should change value and enable save button", async ({ page }) => {

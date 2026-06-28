@@ -374,7 +374,7 @@ export default function AgendaPage() {
                   <span
                     className={`text-xs ${
                       (watchedNotes?.length ?? 0) >= NOTES_MAX_LENGTH
-                        ? "text-destructive"
+                        ? "text-amber-600 dark:text-amber-400"
                         : "text-muted-foreground"
                     }`}
                   >

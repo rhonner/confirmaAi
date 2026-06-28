@@ -35,4 +35,12 @@ Para "digitar `{nome}` vira chip", `nodeInputRule({ find: /\{(nome|...)\}$/ })` 
 - Placeholder (`@tiptap/extension-placeholder`) precisa de CSS global: `.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); … }`.
 - Manter a **string `{var}` como fonte da verdade**: serializar no `onUpdate` e reconstruir os nós no load → contrato de banco/API/Zod intacto. Sincronizar `value`→editor só quando difere do serializado (evita pulo de cursor).
 
+## 4. Hardening (achados do code-review)
+
+- **Guarda de foco no sync**: o `useEffect` que faz `setContent(parse(value))` deve checar `if (editor.isFocused) return` ANTES de comparar/sincronizar. Sem isso, se o `value` do RHF chegar atrasado durante digitação rápida, o effect reescreve o doc com o valor velho e apaga o que foi digitado + joga o cursor pro início. Só sincroniza valor externo (load das settings, reset pós-save) — que acontece com o editor desfocado.
+- **Desabilitar `hardBreak`** (`StarterKit.configure({ hardBreak: false })`): `serialize` mapeia hardBreak→`\n`, mas `parse` só cria parágrafos → round-trip assimétrico (Shift+Enter reaparece como parágrafos no reload). Com só parágrafos, `\n` tem uma única semântica e o round-trip é simétrico.
+- **Refs de callback (`onChangeRef`) atualizados em `useEffect`**, não no corpo do render (evita side-effect de render sob Strict Mode).
+- **Fonte única das variáveis**: derivar `VARIABLE_REGEX` e o `find` da input rule de `TEMPLATE_VARS` (`new RegExp(...)`), senão add/renomear uma var dessincroniza paleta × regex × tokenização.
+- **a11y**: o `<label htmlFor>` não foca um `<div contenteditable>` (não é labelable). Ligar `onClick` do Label ao handle `.focus()` do editor + passar `aria-labelledby` (id do label) para `editorProps.attributes`.
+
 > Fonte: raw/sessions/2026-06-27-paonetone-ui-feedback.md
