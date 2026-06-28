@@ -54,8 +54,13 @@ const appointmentSchema = z.object({
   date: z.string().min(1, "Informe a data"),
   time: z.string().min(1, "Informe o horário"),
   durationMinutes: z.number().int().min(5).max(480),
-  notes: z.string().optional(),
+  notes: z
+    .string()
+    .max(2000, "Observações devem ter no máximo 2000 caracteres")
+    .optional(),
 });
+
+const NOTES_MAX_LENGTH = 2000;
 
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90, 120];
 
@@ -142,6 +147,7 @@ export default function AgendaPage() {
 
   const watchedDate = watch("date");
   const watchedTime = watch("time");
+  const watchedNotes = watch("notes");
   const isPastSchedule = useMemo(() => {
     if (!watchedDate || !watchedTime) return false;
     const dt = new Date(`${watchedDate}T${watchedTime}:00`);
@@ -273,7 +279,7 @@ export default function AgendaPage() {
       />
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {selectedAppointment ? "Editar" : "Novo"} Agendamento
@@ -363,12 +369,29 @@ export default function AgendaPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="notes">Observações</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="notes">Observações</Label>
+                  <span
+                    className={`text-xs ${
+                      (watchedNotes?.length ?? 0) >= NOTES_MAX_LENGTH
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {watchedNotes?.length ?? 0}/{NOTES_MAX_LENGTH}
+                  </span>
+                </div>
                 <Textarea
                   id="notes"
                   placeholder="Observações adicionais..."
+                  maxLength={NOTES_MAX_LENGTH}
+                  className="max-h-40 resize-none overflow-y-auto"
                   {...register("notes")}
+                  aria-invalid={!!errors.notes}
                 />
+                {errors.notes && (
+                  <p className="text-sm text-destructive">{errors.notes.message}</p>
+                )}
               </div>
 
               <DialogFooter className="gap-2 sm:gap-2">

@@ -5,7 +5,13 @@ import { useSettings, useUpdateSettings } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  TemplateEditor,
+  type TemplateEditorHandle,
+  TEMPLATE_VARS,
+  usesAnyVariable,
+} from "@/components/settings/template-editor";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +59,43 @@ function formatTemplatePreview(template: string, clinicName?: string): string {
     .replace(/\{clinica\}/g, clinicName || "Sua Clínica");
 }
 
+/**
+ * Pré-visualização do template. Verde quando há ao menos uma variável; amarela
+ * com aviso quando nenhuma tag foi usada — a mensagem iria igual para todos os
+ * pacientes (ideia da Isa, 2026-06-27). Não bloqueia o salvar, só alerta.
+ */
+function TemplatePreview({ value, clinicName }: { value: string; clinicName?: string }) {
+  const hasVars = usesAnyVariable(value);
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3",
+        hasVars
+          ? "border-green-500/20 bg-green-500/5"
+          : "border-amber-500/40 bg-amber-500/10",
+      )}
+    >
+      <p
+        className={cn(
+          "mb-1 text-xs font-medium",
+          hasVars ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400",
+        )}
+      >
+        Pré-visualização:
+      </p>
+      {!hasVars && (
+        <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+          Nenhuma variável usada — a mensagem será enviada idêntica para todos os
+          pacientes. Insira {"{nome}"}, {"{data}"} ou {"{hora}"} para personalizar.
+        </p>
+      )}
+      <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+        {formatTemplatePreview(value, clinicName)}
+      </p>
+    </div>
+  );
+}
+
 function SettingsSkeleton() {
   return (
     <div className="space-y-6">
@@ -89,8 +132,8 @@ export default function ConfiguracoesPage() {
     avgAppointmentValue: 0,
   };
 
-  const confirmationRef = useRef<HTMLTextAreaElement | null>(null);
-  const reminderRef = useRef<HTMLTextAreaElement | null>(null);
+  const confirmationEditorRef = useRef<TemplateEditorHandle | null>(null);
+  const reminderEditorRef = useRef<TemplateEditorHandle | null>(null);
   const activeMessageRef = useRef<"confirmationMessage" | "reminderMessage">(
     "confirmationMessage",
   );
@@ -99,7 +142,6 @@ export default function ConfiguracoesPage() {
     register,
     handleSubmit,
     watch,
-    setValue,
     control,
     formState: { errors, isDirty },
   } = useForm<SettingsForm>({
@@ -122,26 +164,13 @@ export default function ConfiguracoesPage() {
     await updateMutation.mutateAsync(data);
   };
 
-  const insertVariable = (
-    field: "confirmationMessage" | "reminderMessage",
-    variable: string,
-  ) => {
-    const ref = field === "confirmationMessage" ? confirmationRef : reminderRef;
-    const textarea = ref.current;
-    const current = (field === "confirmationMessage" ? confirmationMessage : reminderMessage) ?? "";
-    if (!textarea) {
-      setValue(field, current + variable, { shouldDirty: true });
-      return;
-    }
-    const start = textarea.selectionStart ?? current.length;
-    const end = textarea.selectionEnd ?? current.length;
-    const next = current.slice(0, start) + variable + current.slice(end);
-    setValue(field, next, { shouldDirty: true });
-    requestAnimationFrame(() => {
-      textarea.focus();
-      const cursor = start + variable.length;
-      textarea.setSelectionRange(cursor, cursor);
-    });
+  const insertVariable = (name: string) => {
+    const target = activeMessageRef.current ?? "confirmationMessage";
+    const handle =
+      target === "confirmationMessage"
+        ? confirmationEditorRef.current
+        : reminderEditorRef.current;
+    handle?.insertVariable(name);
   };
 
   if (isLoading) {
@@ -290,23 +319,22 @@ export default function ConfiguracoesPage() {
                 Variáveis disponíveis
               </p>
               <p className="text-xs text-muted-foreground mb-3">
-                Clique para inserir no template ativo (último focado)
+                Utilize as tags abaixo para montar sua mensagem automática. Clique
+                para inserir no template ativo (último focado) — elas são
+                substituídas pelos dados de cada paciente no envio.
               </p>
               <div className="flex flex-wrap gap-2">
-                {(["{nome}", "{data}", "{hora}", "{clinica}"] as const).map((v) => (
+                {TEMPLATE_VARS.map((name) => (
                   <button
                     type="button"
-                    key={v}
-                    onClick={() => {
-                      const target = activeMessageRef.current ?? "confirmationMessage";
-                      insertVariable(target, v);
-                    }}
+                    key={name}
+                    onClick={() => insertVariable(name)}
                   >
                     <Badge
                       variant="secondary"
                       className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
                     >
-                      {v}
+                      {`{${name}}`}
                     </Badge>
                   </button>
                 ))}
@@ -322,18 +350,22 @@ export default function ConfiguracoesPage() {
                   {confirmationMessage?.length || 0}/{MESSAGE_MAX_LENGTH}
                 </span>
               </div>
-              <Textarea
-                id="confirmationMessage"
-                rows={5}
-                placeholder="Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença? Responda SIM ou NÃO."
-                {...register("confirmationMessage")}
-                ref={(el) => {
-                  register("confirmationMessage").ref(el);
-                  confirmationRef.current = el;
-                }}
-                onFocus={() => {
-                  activeMessageRef.current = "confirmationMessage";
-                }}
+              <Controller
+                name="confirmationMessage"
+                control={control}
+                render={({ field }) => (
+                  <TemplateEditor
+                    id="confirmationMessage"
+                    ref={confirmationEditorRef}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onFocus={() => {
+                      activeMessageRef.current = "confirmationMessage";
+                    }}
+                    placeholder="Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença? Responda SIM ou NÃO."
+                    invalid={!!errors.confirmationMessage}
+                  />
+                )}
               />
               {errors.confirmationMessage && (
                 <p className="text-sm text-destructive">
@@ -341,12 +373,7 @@ export default function ConfiguracoesPage() {
                 </p>
               )}
               {confirmationMessage && confirmationMessage.length >= 10 && (
-                <div className="rounded-lg border bg-green-500/5 border-green-500/20 p-3">
-                  <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Pré-visualização:</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {formatTemplatePreview(confirmationMessage, settings?.clinicName)}
-                  </p>
-                </div>
+                <TemplatePreview value={confirmationMessage} clinicName={settings?.clinicName} />
               )}
             </div>
 
@@ -359,18 +386,22 @@ export default function ConfiguracoesPage() {
                   {reminderMessage?.length || 0}/{MESSAGE_MAX_LENGTH}
                 </span>
               </div>
-              <Textarea
-                id="reminderMessage"
-                rows={5}
-                placeholder="Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença? Responda SIM ou NÃO."
-                {...register("reminderMessage")}
-                ref={(el) => {
-                  register("reminderMessage").ref(el);
-                  reminderRef.current = el;
-                }}
-                onFocus={() => {
-                  activeMessageRef.current = "reminderMessage";
-                }}
+              <Controller
+                name="reminderMessage"
+                control={control}
+                render={({ field }) => (
+                  <TemplateEditor
+                    id="reminderMessage"
+                    ref={reminderEditorRef}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onFocus={() => {
+                      activeMessageRef.current = "reminderMessage";
+                    }}
+                    placeholder="Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença? Responda SIM ou NÃO."
+                    invalid={!!errors.reminderMessage}
+                  />
+                )}
               />
               {errors.reminderMessage && (
                 <p className="text-sm text-destructive">
@@ -378,12 +409,7 @@ export default function ConfiguracoesPage() {
                 </p>
               )}
               {reminderMessage && reminderMessage.length >= 10 && (
-                <div className="rounded-lg border bg-green-500/5 border-green-500/20 p-3">
-                  <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Pré-visualização:</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {formatTemplatePreview(reminderMessage, settings?.clinicName)}
-                  </p>
-                </div>
+                <TemplatePreview value={reminderMessage} clinicName={settings?.clinicName} />
               )}
             </div>
           </CardContent>
@@ -391,8 +417,18 @@ export default function ConfiguracoesPage() {
 
         <WhatsappConnection />
 
-        {/* Submit Button */}
-        <div className="flex justify-end">
+        {/* Barra de ações fixa no rodapé do form. A sócia preencheu os campos e
+            saiu sem salvar por não notar o botão lá embaixo (2026-06-27): agora
+            ele fica sempre à vista enquanto edita, com indicador de pendência. */}
+        <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-lg border border-border bg-background/80 px-4 py-3 shadow-lg backdrop-blur-xl">
+          {isDirty ? (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500" />
+              Alterações não salvas
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">Tudo salvo</span>
+          )}
           <Button
             type="submit"
             disabled={!isDirty || updateMutation.isPending}

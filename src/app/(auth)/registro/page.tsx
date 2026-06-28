@@ -216,7 +216,7 @@ export default function RegisterPage() {
               <LegalDialog doc="terms">
                 <button
                   type="button"
-                  className="text-primary underline underline-offset-2 hover:no-underline"
+                  className="text-primary underline underline-offset-2 hover:no-underline cursor-pointer"
                 >
                   Termos de Uso
                 </button>
@@ -225,7 +225,7 @@ export default function RegisterPage() {
               <LegalDialog doc="privacy">
                 <button
                   type="button"
-                  className="text-primary underline underline-offset-2 hover:no-underline"
+                  className="text-primary underline underline-offset-2 hover:no-underline cursor-pointer"
                 >
                   Política de Privacidade
                 </button>

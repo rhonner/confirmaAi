@@ -47,6 +47,11 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [owner-document-cpf-or-cnpj](pages/concepts/owner-document-cpf-or-cnpj.md) | Documento do dono CPF→CPF/CNPJ: campo único auto-detect, sem renomear coluna (no migration), hash compatível por dispatch de namespace (`cpf:`/`cnpj:`); paciente segue só CPF | 2026-06-26 |
 | [entitlement-override-decoupled-from-billing](pages/concepts/entitlement-override-decoupled-from-billing.md) | Beta/cortesia: plano EFETIVO em read-time (`effectivePlanTier`) eleva entitlements sem mutar `plan`/`status` → reversível, cobrança intacta. Aplicar em TODOS os gates; reset/dunning ficam no plano REAL | 2026-06-26 |
 | [currency-mask-cents-accumulator](pages/concepts/currency-mask-cents-accumulator.md) | Máscara monetária BR que preenche da direita (centavos): re-extrair dígitos do display a cada onChange cobre digitar+backspace+paste; cap = `slice(N)`; centavos inteiros, lógica pura separada do componente | 2026-06-26 |
+| [tailwind-v4-button-cursor](pages/concepts/tailwind-v4-button-cursor.md) | Preflight do Tailwind v4 zera `cursor:pointer` dos `<button>`; fix na base do `Button` (cva) + `<button>` crus manuais | 2026-06-27 |
+| [tiptap-flushsync-domnodeview](pages/concepts/tiptap-flushsync-domnodeview.md) | Editor de chips: node view DOM puro evita erro `flushSync` do ReactNodeViewRenderer; `nodeInputRule` sem grupo de captura (senão vira `{{nome}}`) | 2026-06-27 |
+| [autofill-highlight-css](pages/concepts/autofill-highlight-css.md) | Neutralizar o fundo amarelo/azul do `:-webkit-autofill` com `box-shadow inset` + `text-fill-color`; depende do estado salvo do browser | 2026-06-27 |
+| [next-themes-default-theme](pages/concepts/next-themes-default-theme.md) | `defaultTheme="system"` segue o SO no 1º acesso; `="light"` p/ claro como padrão; toggle extraído p/ usar nas telas de auth | 2026-06-27 |
+| [next-dev-stale-css-after-build](pages/concepts/next-dev-stale-css-after-build.md) | `next build` deixa `.next` que faz o `next dev` servir CSS stale; restart/touch não bastam → limpar `.next` (via node `fs.rmSync`) | 2026-06-27 |
 
 ## Synthesis (`pages/synthesis/`)
 

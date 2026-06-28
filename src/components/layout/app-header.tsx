@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { signOut } from "next-auth/react";
-import { Menu, LogOut, Moon, Sun, PanelLeftClose, PanelLeft } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Menu, LogOut, PanelLeftClose, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +30,6 @@ export function AppHeader({
   onToggleCollapsed,
   collapsed,
 }: AppHeaderProps) {
-  const { theme, setTheme } = useTheme();
   const [confirmLogout, setConfirmLogout] = useState(false);
 
   return (
@@ -66,16 +65,7 @@ export function AppHeader({
 
       <div className="flex items-center gap-2">
         <UsageBadge />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="h-9 w-9"
-          aria-label="Alternar tema"
-        >
-          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all duration-200 dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all duration-200 dark:rotate-0 dark:scale-100" />
-        </Button>
+        <ThemeToggle />
         <Button
           variant="ghost"
           size="sm"

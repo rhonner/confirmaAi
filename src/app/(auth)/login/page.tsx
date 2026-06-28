@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MailWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export default function LoginPage() {
   // E-mail cuja conta existe mas ainda não foi confirmada (login bloqueado).
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
+  const unverifiedPanelRef = useRef<HTMLDivElement | null>(null);
 
   const {
     register,
@@ -35,6 +36,17 @@ export default function LoginPage() {
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
+
+  // Quando o painel "confirme seu e-mail" aparece, ele é inserido ACIMA do form;
+  // em telas menores pode nascer fora da dobra (o usuário acabou de clicar em
+  // "Entrar", lá embaixo) e a sócia relatou "não apareceu mensagem amigável".
+  // Trazemos o aviso para a vista e damos foco para garantir que seja notado.
+  useEffect(() => {
+    if (unverifiedEmail && unverifiedPanelRef.current) {
+      unverifiedPanelRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      unverifiedPanelRef.current.focus();
+    }
+  }, [unverifiedEmail]);
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
@@ -47,12 +59,20 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        // authorize() lança EmailNotVerifiedError ("EMAIL_NOT_VERIFIED") quando
-        // a senha está certa mas o e-mail não foi confirmado.
-        if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+        // O NextAuth v4 reusa o mesmo canal de erro para o erro de domínio
+        // (EMAIL_NOT_VERIFIED, lançado pelo authorize quando a senha está certa
+        // mas o e-mail não foi confirmado), para credenciais inválidas
+        // (CredentialsSignin) e para erros de infra (Configuration). Tratamos os
+        // três casos para nunca deixar uma mensagem crua/confusa atravessar.
+        const code = result.error.toUpperCase();
+        if (code.includes("EMAIL_NOT_VERIFIED")) {
           setUnverifiedEmail(data.email);
-        } else {
+        } else if (code.includes("CREDENTIALSSIGNIN")) {
           toast.error("Email ou senha incorretos");
+        } else {
+          // Configuration, CSRF, ou qualquer erro inesperado de infra: não
+          // afirmar "senha errada" (seria enganoso).
+          toast.error("Não foi possível entrar agora. Tente novamente em instantes.");
         }
       } else if (result?.ok) {
         toast.success("Login realizado com sucesso");
@@ -69,13 +89,17 @@ export default function LoginPage() {
     if (!unverifiedEmail) return;
     setIsResending(true);
     try {
-      await fetch("/api/auth/resend-verification", {
+      const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: unverifiedEmail }),
       });
-      // Anti-enumeration: a resposta é sempre genérica, então o toast também é.
-      toast.success("E-mail de confirmação reenviado. Verifique a caixa de entrada e o spam.");
+      // fetch só rejeita em erro de rede; um 4xx/5xx precisa ser checado à mão
+      // para não exibir "reenviado" quando o backend recusou.
+      if (!res.ok) throw new Error("resend failed");
+      // Anti-enumeration: o backend sempre responde de forma genérica (não revela
+      // se a conta existe/está pendente), então o copy também é condicional.
+      toast.success("Se a conta existir e ainda não estiver confirmada, enviamos um novo link. Verifique a caixa de entrada e o spam.");
     } catch {
       toast.error("Não foi possível reenviar agora. Tente novamente em instantes.");
     } finally {
@@ -94,8 +118,10 @@ export default function LoginPage() {
 
       {unverifiedEmail && (
         <div
+          ref={unverifiedPanelRef}
           role="alert"
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          tabIndex={-1}
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm outline-none scroll-mt-20"
         >
           <div className="flex gap-3">
             <MailWarning className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />

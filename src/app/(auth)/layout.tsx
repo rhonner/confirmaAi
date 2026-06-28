@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { LegalDialog } from "@/components/legal/legal-dialog";
 import { LogoMark } from "@/components/brand/logo-mark";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 export default function AuthLayout({
   children,
@@ -31,6 +32,12 @@ export default function AuthLayout({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Alternar tema (claro/escuro) — telas de auth não têm header, então o
+          toggle fica no canto superior direito. */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Decorative Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[1000px] h-[1000px] rounded-full bg-primary/[0.06] dark:bg-primary/[0.08] blur-[150px]" />
@@ -51,13 +58,13 @@ export default function AuthLayout({
         </Card>
         <p className="mt-6 text-center text-xs text-muted-foreground">
           <LegalDialog doc="terms">
-            <button type="button" className="hover:text-foreground">
+            <button type="button" className="hover:text-foreground cursor-pointer">
               Termos de Uso
             </button>
           </LegalDialog>
           {" · "}
           <LegalDialog doc="privacy">
-            <button type="button" className="hover:text-foreground">
+            <button type="button" className="hover:text-foreground cursor-pointer">
               Política de Privacidade
             </button>
           </LegalDialog>

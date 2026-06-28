@@ -243,6 +243,30 @@
   .grecaptcha-badge {
     visibility: hidden;
   }
+  /* Autofill nativo do browser (Chrome/Safari) pinta o input com um fundo
+     amarelo/azul persistente que destoa do tema — a sócia reportou o "Nome da
+     Clínica" ficando destacado após o autofill (2026-06-27). Neutralizamos a
+     pintura nativa em TODOS os inputs: texto na cor do tema e um box-shadow
+     inset gigante na cor do fundo (a única forma de sobrescrever o fundo de
+     autofill no WebKit/Blink). A transition longa evita o flash do fundo. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--foreground);
+    -webkit-box-shadow: 0 0 0px 1000px var(--background) inset;
+    caret-color: var(--foreground);
+    transition: background-color 5000s ease-in-out 0s;
+  }
+  /* Placeholder do editor de template (TipTap) — renderizado via ::before no
+     primeiro parágrafo vazio. Ver components/settings/template-editor.tsx. */
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: var(--muted-foreground);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
 }
 
 /* Glassmorphism Utilities - work in BOTH light and dark modes */

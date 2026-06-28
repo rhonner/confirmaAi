@@ -26,7 +26,7 @@
 - **Conflito retorna `400 "Conflito com agendamento de <nome do paciente>"`**.
 - **Update mexe em conflito apenas se `dateTime` ou `durationMinutes` mudarem** (otimização, ignora outras edições).
 - **`patientId`** ao criar/editar é validado: deve pertencer ao mesmo usuário.
-- **`notes`**: máx 2000 chars, opcional.
+- **`notes`**: máx 2000 chars, opcional. **UI (2026-06-27, feedback da sócia)**: o `<Textarea>` de Observações em `agenda/page.tsx` agora tem `maxLength={2000}` (impede digitar/colar além do limite já de cara, antes só validava no submit), `className="max-h-40 resize-none overflow-y-auto"` (texto grande **rola dentro** do campo em vez de estourar o Dialog — bug do `field-sizing-content` sem `max-h`), contador `X/2000` (vermelho ao atingir o limite) e exibição de `errors.notes`. O schema local do form também ganhou `.max(2000)`. O `DialogContent` da agenda ganhou `max-h-[85vh] overflow-y-auto` (defesa em profundidade). Validado no Chrome MCP: colar ~2500 chars → campo rola internamente, contador 2519/2000 em vermelho, Dialog intacto.
 - **`onDelete: Cascade`**: ao deletar um Appointment, seus `MessageLog`s são removidos.
 
 ## Endpoints
