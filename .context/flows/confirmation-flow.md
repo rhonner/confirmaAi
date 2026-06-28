@@ -66,8 +66,9 @@ tions envia     envia (se       agendamento   markNoShows →
 - Evolution dispara webhook `messages.upsert` para `/api/webhook/evolution/<instanceName>`.
 - Resolve `User` pelo `instanceName`.
 - Parse da resposta (`webhook-parser.ts` — "1/sim" ou "2/não").
-- Match do `Appointment` por (`userId`, `patient.phone`, `status=PENDING`, `confirmationSentAt!=null`, `dateTime>=now`).
+- Match do `Appointment` por (`userId`, `patient.phone`, `status=PENDING`, `confirmationSentAt!=null`, `dateTime>=now`), **ordenado FIFO** (`confirmationSentAt asc`): com vários pendentes, cada resposta afeta a confirmação mais antiga (a ordem que o paciente lê). Ver `findPendingAppointmentForResponse` em `webhook-confirmation.ts`.
 - Atualiza `status` e `confirmedAt`. Anexa resposta ao `MessageLog`.
+- **Envia ack de volta** nomeando o agendamento ("✅ …confirmada" / "❌ …cancelada"), sem consumir cota (`buildConfirmationAck`).
 → ver `features/webhook-evolution.md`.
 
 ### 5. Dashboard reflete imediatamente

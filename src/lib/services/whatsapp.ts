@@ -7,6 +7,7 @@ export async function sendWhatsAppMessage(
   instanceName: string | null | undefined,
   phone: string,
   message: string,
+  timeoutMs?: number,
 ): Promise<boolean> {
   if (!instanceName) {
     console.error(
@@ -14,5 +15,5 @@ export async function sendWhatsAppMessage(
     );
     return false;
   }
-  return sendText(instanceName, phone, message);
+  return sendText(instanceName, phone, message, timeoutMs);
 }

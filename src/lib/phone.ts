@@ -11,10 +11,21 @@ export function digitsOnly(value: string): string {
 /**
  * Strips +55 / 55 prefix and returns only the local digits (DDD + number).
  * Returns at most 11 digits.
+ *
+ * The "55" is treated as the country code (and stripped) when the value is
+ * canonical — it carries an explicit "+" — OR when the digit string is long
+ * enough that the leading 55 can only be the country code (> 11). A length
+ * heuristic alone breaks the round-trip used by PhoneInput: `toCanonicalPhone`
+ * prepends "+55", and while typing the canonical value is short (≤ 11 digits),
+ * so a length-only check would NOT strip it, re-reading "55" as a DDD and
+ * accumulating another "+55" on every keystroke (typing "1" → "(55) 1", etc.).
+ * The "+" disambiguates a true country code from a DDD-55 number (e.g. Santa
+ * Maria/RS) that the user typed without a "+".
  */
 export function getLocalDigits(value: string): string {
+  const hasPlus = value.trimStart().startsWith("+")
   let d = digitsOnly(value)
-  if (d.startsWith("55") && d.length > 11) d = d.slice(2)
+  if (d.startsWith("55") && (hasPlus || d.length > 11)) d = d.slice(2)
   return d.slice(0, 11)
 }
 

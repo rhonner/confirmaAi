@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseResponse } from "@/lib/services/webhook-parser";
-import { brPhoneCandidates } from "@/lib/phone";
+import {
+  findPendingAppointmentForResponse,
+  buildConfirmationAck,
+} from "@/lib/services/webhook-confirmation";
+import { sendWhatsAppMessage } from "@/lib/services/whatsapp";
 import { audit, maskPhone, truncateMessage, withFixedActor } from "@/lib/audit";
 import {
   markWhatsappDisconnected,
@@ -56,6 +60,11 @@ function jidToPhone(jid: string | undefined): string | null {
   if (!raw) return null;
   return raw.startsWith("+") ? raw : `+${raw}`;
 }
+
+// O ack ao paciente é best-effort: bound o envio para que uma Evolution lenta
+// não segure a resposta do webhook (resposta lenta → Evolution reentrega o
+// evento → reprocessamento da mesma resposta).
+const ACK_SEND_TIMEOUT_MS = 8000;
 
 export const POST = withFixedActor(
   { actorType: "WEBHOOK", actorId: "evolution" },
@@ -162,53 +171,53 @@ export const POST = withFixedActor(
     const responseType = parseResponse(messageText);
     if (!responseType) return NextResponse.json({ received: true });
 
-    // Scoped to this tenant (user.id) — prevents cross-tenant collisions
-    // when the same patient phone is registered under multiple users.
-    // brPhoneCandidates: WhatsApp JIDs may omit the Brazilian ninth digit,
-    // so the reply phone must match both stored variants.
-    const appointment = await prisma.appointment.findFirst({
-      where: {
-        userId: user.id,
-        patient: { phone: { in: brPhoneCandidates(phone) } },
-        status: "PENDING",
-        confirmationSentAt: { not: null },
-        dateTime: { gte: new Date() },
-      },
-      orderBy: { confirmationSentAt: "desc" },
-    });
+    // Casamento FIFO scoped por tenant (multi-tenancy + nono dígito tratados
+    // no helper). Com vários agendamentos pendentes, cada resposta afeta a
+    // confirmação mais antiga ainda em aberto — a ordem que o paciente lê.
+    const appointment = await findPendingAppointmentForResponse(user.id, phone);
 
     if (!appointment) return NextResponse.json({ received: true });
 
-    if (responseType === "CONFIRMED") {
-      await prisma.appointment.update({
+    // Status + anexo da resposta ao log: writes independentes, em paralelo.
+    await Promise.all([
+      prisma.appointment.update({
         where: { id: appointment.id },
-        data: { status: "CONFIRMED", confirmedAt: new Date() },
-      });
-      await audit({
-        action: "appointment.confirmed_by_patient",
-        entityType: "Appointment",
-        entityId: appointment.id,
-        tenantUserId: user.id,
-        metadata: { phone: maskPhone(phone), messageText: truncateMessage(messageText) },
-      });
-    } else if (responseType === "CANCELED") {
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data: { status: "CANCELED" },
-      });
-      await audit({
-        action: "appointment.canceled_by_patient",
-        entityType: "Appointment",
-        entityId: appointment.id,
-        tenantUserId: user.id,
-        metadata: { phone: maskPhone(phone), messageText: truncateMessage(messageText) },
-      });
-    }
+        data:
+          responseType === "CONFIRMED"
+            ? { status: "CONFIRMED", confirmedAt: new Date() }
+            : { status: "CANCELED" },
+      }),
+      prisma.messageLog.updateMany({
+        where: { appointmentId: appointment.id },
+        data: { response: messageText, respondedAt: new Date() },
+      }),
+    ]);
 
-    await prisma.messageLog.updateMany({
-      where: { appointmentId: appointment.id },
-      data: { response: messageText, respondedAt: new Date() },
+    // Audit ANTES de qualquer chamada de rede de saída — a trilha não pode ser
+    // perdida se a Evolution travar no envio do ack.
+    await audit({
+      action:
+        responseType === "CONFIRMED"
+          ? "appointment.confirmed_by_patient"
+          : "appointment.canceled_by_patient",
+      entityType: "Appointment",
+      entityId: appointment.id,
+      tenantUserId: user.id,
+      metadata: {
+        phone: maskPhone(phone),
+        messageText: truncateMessage(messageText),
+      },
     });
+
+    // Ack de volta ao paciente, nomeando o agendamento (transparência — ver
+    // helper). `instance` é o evolutionInstanceName do tenant. Best-effort e
+    // com timeout: não conta na cota e não pode segurar a resposta do webhook.
+    await sendWhatsAppMessage(
+      instance,
+      phone,
+      buildConfirmationAck(responseType, appointment.dateTime),
+      ACK_SEND_TIMEOUT_MS,
+    );
 
     return NextResponse.json({ received: true });
   } catch (error) {

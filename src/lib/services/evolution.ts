@@ -171,6 +171,7 @@ export async function sendText(
   instanceName: string,
   phone: string,
   message: string,
+  timeoutMs?: number,
 ): Promise<boolean> {
   try {
     const res = await evoFetch(
@@ -181,6 +182,11 @@ export async function sendText(
           number: digitsOnly(phone),
           text: message,
         }),
+        // Quando informado (inclusive 0 = aborta já), limita o tempo da chamada
+        // (timeout → AbortError → capturado abaixo, retorna false). Usado em
+        // caminhos sensíveis a latência, como o ack do webhook, que não pode
+        // segurar a resposta.
+        ...(timeoutMs != null ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
       },
     );
 

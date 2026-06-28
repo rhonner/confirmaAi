@@ -30,6 +30,7 @@ import { resetEligibility } from "../src/lib/account/reset-eligibility";
 import { dunningStageDue, usageThresholdDue } from "../src/lib/services/billing-notifications";
 import { computePixExpiresAt, PIX_QR_TTL_SECONDS } from "../src/lib/billing/pix-ttl";
 import { isPatientPurgeDue, runAccountPurge } from "../src/lib/account/account-purge";
+import { findPendingAppointmentForResponse } from "../src/lib/services/webhook-confirmation";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -2029,6 +2030,93 @@ async function main() {
       setSchema38.safeParse({ avgAppointmentValue: 100000 }).success === false &&
       setSchema38.safeParse({ avgAppointmentValue: 99999.99 }).success === true,
   );
+
+  // ====================================================================
+  // RODADA 2 (feedback Paonetone) — webhook: casamento FIFO + ack
+  // ====================================================================
+  console.log("\n━━━ RODADA 2 (webhook FIFO) ━━━\n");
+
+  const fifoStamp = Date.now();
+  const fifoUser = await prisma.user.create({
+    data: {
+      name: "FIFO Test",
+      email: `fifo-test-${fifoStamp}@test.local`,
+      password: "x",
+      clinicName: "FIFO Clinic",
+      emailVerifiedAt: new Date(),
+      evolutionInstanceName: `fifo-wpp-${fifoStamp}`,
+      whatsappStatus: "CONNECTED",
+    },
+  });
+  const fifoPhone = "+5541999990000";
+  const fifoPatient = await prisma.patient.create({
+    data: { userId: fifoUser.id, name: "Paciente FIFO", phone: fifoPhone },
+  });
+  const min = 60 * 1000;
+  // 3 confirmações enviadas em ordem crescente de confirmationSentAt, com datas
+  // futuras crescentes. FIFO casa da confirmação MAIS ANTIGA para a mais nova
+  // (A→B→C) — o oposto do LIFO anterior (que casaria C→B→A).
+  const apptA = await prisma.appointment.create({
+    data: {
+      userId: fifoUser.id, patientId: fifoPatient.id, status: "PENDING",
+      confirmationSentAt: new Date(fifoStamp - 30 * min), dateTime: new Date(fifoStamp + 120 * min),
+    },
+  });
+  const apptB = await prisma.appointment.create({
+    data: {
+      userId: fifoUser.id, patientId: fifoPatient.id, status: "PENDING",
+      confirmationSentAt: new Date(fifoStamp - 20 * min), dateTime: new Date(fifoStamp + 180 * min),
+    },
+  });
+  const apptC = await prisma.appointment.create({
+    data: {
+      userId: fifoUser.id, patientId: fifoPatient.id, status: "PENDING",
+      confirmationSentAt: new Date(fifoStamp - 10 * min), dateTime: new Date(fifoStamp + 240 * min),
+    },
+  });
+
+  // Simula respostas "1" sucessivas: cada match confirma e sai do pool PENDING.
+  const seq: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const m = await findPendingAppointmentForResponse(fifoUser.id, fifoPhone);
+    if (!m) {
+      seq.push("null");
+      break;
+    }
+    seq.push(m.id);
+    await prisma.appointment.update({
+      where: { id: m.id },
+      data: { status: "CONFIRMED", confirmedAt: new Date() },
+    });
+  }
+  const label = (s: string) =>
+    s === apptA.id ? "A" : s === apptB.id ? "B" : s === apptC.id ? "C" : "null";
+  check(
+    "12.1 webhook casa FIFO (confirmação mais antiga primeiro: A→B→C, depois esgota)",
+    10,
+    seq[0] === apptA.id && seq[1] === apptB.id && seq[2] === apptC.id && seq[3] === "null",
+    `seq=${seq.map(label).join("→")}`,
+  );
+
+  // 12.2 — filtro dateTime>=now: agendamento já no passado não casa.
+  const fifoPatient2 = await prisma.patient.create({
+    data: { userId: fifoUser.id, name: "Paciente Passado", phone: "+5541999990001" },
+  });
+  await prisma.appointment.create({
+    data: {
+      userId: fifoUser.id, patientId: fifoPatient2.id, status: "PENDING",
+      confirmationSentAt: new Date(fifoStamp - 60 * min), dateTime: new Date(fifoStamp - 5 * min),
+    },
+  });
+  const pastMatch = await findPendingAppointmentForResponse(fifoUser.id, "+5541999990001");
+  check("12.2 não casa agendamento já no passado (dateTime < now)", 10, pastMatch === null);
+
+  // cleanup rodada 2 (User cascade → patients/appointments/messageLogs)
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: fifoUser.id } });
+  });
+  await prisma.user.delete({ where: { id: fifoUser.id } });
 
   // ====================================================================
   // CLEANUP

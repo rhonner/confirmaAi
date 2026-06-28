@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   useAppointments,
   useCreateAppointment,
@@ -42,7 +42,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
 import { Plus, ChevronLeft, ChevronRight, Calendar, Clock, CalendarPlus, MoreVertical, Download } from "lucide-react";
-import { format, startOfWeek, endOfWeek, addWeeks, parseISO, eachDayOfInterval } from "date-fns";
+import { format, startOfWeek, endOfWeek, addWeeks, addDays, parseISO, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,6 +63,10 @@ const appointmentSchema = z.object({
 const NOTES_MAX_LENGTH = 2000;
 
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90, 120];
+
+// Cabeçalho de dia ("sábado, 27 de junho") — usado no label de navegação (modo
+// Dia) e no título de cada card; mantém os dois formatos em sincronia.
+const DAY_HEADER_FORMAT = "EEEE, dd 'de' MMMM";
 
 type AppointmentForm = z.infer<typeof appointmentSchema>;
 
@@ -106,7 +110,8 @@ const statusOptions = [
 ];
 
 export default function AgendaPage() {
-  const [currentWeek, setCurrentWeek] = useState(new Date());
+  const [viewMode, setViewMode] = useState<"week" | "day">("week");
+  const [anchorDate, setAnchorDate] = useState(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<{
     id: string;
@@ -121,12 +126,32 @@ export default function AgendaPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
 
-  const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 0 });
+  // Lembra a última visão escolhida (Dia/Semana) entre sessões. Em efeito (não
+  // no init do useState) para não divergir do HTML do servidor (hydration).
+  useEffect(() => {
+    const saved = localStorage.getItem("agenda-view-mode");
+    if (saved === "day" || saved === "week") setViewMode(saved);
+  }, []);
 
+  const changeViewMode = (mode: "week" | "day") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("agenda-view-mode", mode);
+    } catch {
+      // localStorage indisponível (ex: aba privada) — segue sem persistir.
+    }
+  };
+
+  const weekStart = startOfWeek(anchorDate, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(anchorDate, { weekStartsOn: 0 });
+  const dayStr = format(anchorDate, "yyyy-MM-dd");
+
+  // No modo Dia, busca só o dia âncora (startDate === endDate); no modo Semana,
+  // o intervalo de domingo a sábado. A API trata a string yyyy-MM-dd como dia
+  // local completo (ver features/appointments.md).
   const { data: appointments, isLoading } = useAppointments({
-    startDate: format(weekStart, "yyyy-MM-dd"),
-    endDate: format(weekEnd, "yyyy-MM-dd"),
+    startDate: viewMode === "week" ? format(weekStart, "yyyy-MM-dd") : dayStr,
+    endDate: viewMode === "week" ? format(weekEnd, "yyyy-MM-dd") : dayStr,
   });
 
   const { data: patients } = usePatients();
@@ -154,9 +179,16 @@ export default function AgendaPage() {
     return !Number.isNaN(dt.getTime()) && dt.getTime() < Date.now();
   }, [watchedDate, watchedTime]);
 
-  const weekDays = useMemo(() => {
-    return eachDayOfInterval({ start: weekStart, end: weekEnd });
-  }, [weekStart, weekEnd]);
+  const daysToRender = useMemo(() => {
+    if (viewMode === "day") return [anchorDate];
+    // weekStart/weekEnd derivam de anchorDate (recriados a cada render como
+    // novos Date), então memoizamos por [viewMode, anchorDate] e recomputamos
+    // o intervalo aqui dentro — assim o memo de fato cacheia.
+    return eachDayOfInterval({
+      start: startOfWeek(anchorDate, { weekStartsOn: 0 }),
+      end: endOfWeek(anchorDate, { weekStartsOn: 0 }),
+    });
+  }, [viewMode, anchorDate]);
 
   const filteredAppointments = useMemo(() => {
     if (!appointments) return [];
@@ -178,16 +210,16 @@ export default function AgendaPage() {
 
   const hasActiveFilter = statusFilter !== "ALL" || patientFilter !== "ALL";
 
-  const handlePreviousWeek = () => {
-    setCurrentWeek((prev) => addWeeks(prev, -1));
+  const handlePrevious = () => {
+    setAnchorDate((prev) => (viewMode === "week" ? addWeeks(prev, -1) : addDays(prev, -1)));
   };
 
-  const handleNextWeek = () => {
-    setCurrentWeek((prev) => addWeeks(prev, 1));
+  const handleNext = () => {
+    setAnchorDate((prev) => (viewMode === "week" ? addWeeks(prev, 1) : addDays(prev, 1)));
   };
 
   const handleToday = () => {
-    setCurrentWeek(new Date());
+    setAnchorDate(new Date());
   };
 
   const handleOpenDialog = (appointment?: typeof selectedAppointment) => {
@@ -205,7 +237,9 @@ export default function AgendaPage() {
       setSelectedAppointment(null);
       reset({
         patientId: "",
-        date: format(new Date(), "yyyy-MM-dd"),
+        // No modo Dia, já abre na data que o usuário está vendo (pique Google
+        // Agenda); no modo Semana, hoje.
+        date: format(viewMode === "day" ? anchorDate : new Date(), "yyyy-MM-dd"),
         time: "",
         durationMinutes: 30,
         notes: "",
@@ -469,27 +503,56 @@ export default function AgendaPage() {
         )}
       </div>
 
-      {/* Week Navigation */}
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={handlePreviousWeek}>
-          <ChevronLeft className="h-4 w-4" />
-          Anterior
-        </Button>
-
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">
-            {format(weekStart, "dd MMM", { locale: ptBR })} -{" "}
-            {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}
-          </span>
+      {/* View toggle (Dia/Semana) + navegação */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Alternador de visão — pique Google Agenda */}
+        <div
+          role="tablist"
+          aria-label="Tipo de visualização da agenda"
+          className="inline-flex items-center self-start rounded-lg border border-input/30 bg-input/5 p-0.5"
+        >
+          {([
+            ["day", "Dia"],
+            ["week", "Semana"],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              role="tab"
+              aria-selected={viewMode === mode}
+              onClick={() => changeViewMode(mode)}
+              className={`h-8 rounded-md px-4 text-sm font-medium transition-colors cursor-pointer ${
+                viewMode === mode
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="flex gap-2">
+        {/* Navegação de período */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handlePrevious}>
+            <ChevronLeft className="h-4 w-4" />
+            Anterior
+          </Button>
+
+          <div className="flex items-center gap-2 px-1">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium first-letter:uppercase">
+              {viewMode === "week"
+                ? `${format(weekStart, "dd MMM", { locale: ptBR })} - ${format(weekEnd, "dd MMM yyyy", { locale: ptBR })}`
+                : format(anchorDate, DAY_HEADER_FORMAT, { locale: ptBR })}
+            </span>
+          </div>
+
           <Button variant="outline" size="sm" onClick={handleToday}>
             Hoje
           </Button>
-          <Button variant="outline" size="sm" onClick={handleNextWeek}>
-            Próxima
+          <Button variant="outline" size="sm" onClick={handleNext}>
+            {viewMode === "week" ? "Próxima" : "Próximo"}
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -498,7 +561,7 @@ export default function AgendaPage() {
       {/* Week View */}
       {isLoading ? (
         <div className="grid gap-4">
-          {Array.from({ length: 7 }).map((_, i) => (
+          {Array.from({ length: viewMode === "week" ? 7 : 1 }).map((_, i) => (
             <Card key={i}>
               <CardHeader className="pb-3">
                 <Skeleton className="h-5 w-48" />
@@ -526,7 +589,9 @@ export default function AgendaPage() {
             <p className="font-medium text-lg">
               {hasActiveFilter
                 ? "Nenhum agendamento corresponde aos filtros"
-                : "Nenhum agendamento nesta semana"}
+                : viewMode === "week"
+                ? "Nenhum agendamento nesta semana"
+                : "Nenhum agendamento neste dia"}
             </p>
             <p className="text-sm text-muted-foreground">
               {hasActiveFilter
@@ -543,7 +608,7 @@ export default function AgendaPage() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {weekDays.map((day) => {
+          {daysToRender.map((day) => {
             const dayKey = format(day, "yyyy-MM-dd");
             const dayAppointments = appointmentsByDay[dayKey] || [];
             const isToday = format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
@@ -552,7 +617,7 @@ export default function AgendaPage() {
               <Card key={dayKey} className={`transition-shadow duration-200 hover:shadow-md ${isToday ? "border-primary" : ""}`}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    {format(day, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+                    {format(day, DAY_HEADER_FORMAT, { locale: ptBR })}
                     {isToday && (
                       <Badge variant="secondary" className="ml-2">
                         Hoje

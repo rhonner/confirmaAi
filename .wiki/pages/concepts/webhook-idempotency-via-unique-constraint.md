@@ -77,10 +77,15 @@ Solução: gravar evento, marcar `processedAt = null` se apply falhou, retornar 
 | Persistência audit | sim (BillingEvent fica) | TTL | não |
 | Custo | grátis | $$ | grátis (mas contenção) |
 
+## Contra-exemplo no mesmo codebase
+
+O webhook de **resposta do paciente** (Evolution `MESSAGES_UPSERT`) **não** aplica este padrão: não há `@unique` no id da mensagem inbound. Para paciente com 1 pendente, um retry é no-op seguro; com **≥2** pendentes, o retry confirma o próximo agendamento (duplo-confirma). Fechar exigiria persistir `data.key.id` (migration). Ver [[whatsapp-reply-fifo-match-and-ack]] § gap de idempotência.
+
 ## Wikilinks
 
 - [[../entities/asaas-integration]]
 - [[append-only-via-pg-trigger]] — irmão (mesma família "guarantees no nível DB")
 - [[defense-in-depth-cron]] — reconciliação de processed=null
+- [[whatsapp-reply-fifo-match-and-ack]] — contra-exemplo (webhook ainda NÃO idempotente)
 
 > Fonte: `src/app/api/billing/webhook/route.ts`. Validado em `npm run test:sprints` (5.1).

@@ -52,6 +52,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [autofill-highlight-css](pages/concepts/autofill-highlight-css.md) | Neutralizar o fundo amarelo/azul do `:-webkit-autofill` com `box-shadow inset` + `text-fill-color`; depende do estado salvo do browser | 2026-06-27 |
 | [next-themes-default-theme](pages/concepts/next-themes-default-theme.md) | `defaultTheme="system"` segue o SO no 1º acesso; `="light"` p/ claro como padrão; toggle extraído p/ usar nas telas de auth | 2026-06-27 |
 | [next-dev-stale-css-after-build](pages/concepts/next-dev-stale-css-after-build.md) | `next build` deixa `.next` que faz o `next dev` servir CSS stale; restart/touch não bastam → limpar `.next` (via node `fs.rmSync`) | 2026-06-27 |
+| [whatsapp-reply-fifo-match-and-ack](pages/concepts/whatsapp-reply-fifo-match-and-ack.md) | Resposta do paciente casa o PENDING mais antigo (FIFO, desempate `dateTime/id`) = ordem de leitura; ack de volta nomeando o agendamento (timeout, fora da cota); **gap de idempotência** (retry + ≥2 pendentes → duplo-confirma) | 2026-06-27 |
+| [phone-mask-roundtrip-country-code](pages/concepts/phone-mask-roundtrip-country-code.md) | Máscara de telefone canônico↔display: strip do `55` só por tamanho reabsorve o `+55` como DDD ao digitar (acumula "5"); o `+` desambigua país vs DDD-55. Testar o componente, não a fiação | 2026-06-27 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -67,7 +69,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 12 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 14 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 
