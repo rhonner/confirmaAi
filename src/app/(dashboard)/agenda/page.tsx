@@ -41,7 +41,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
-import { Plus, ChevronLeft, ChevronRight, Calendar, Clock, CalendarPlus, MoreVertical, Download } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Calendar, Clock, CalendarPlus, MoreVertical } from "lucide-react";
+import { ExportCsvButton } from "@/components/billing/export-csv-button";
 import { format, startOfWeek, endOfWeek, addWeeks, addDays, parseISO, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useForm, Controller } from "react-hook-form";
@@ -297,13 +298,7 @@ export default function AgendaPage() {
         description="Gerencie seus agendamentos"
         action={
           <div className="flex gap-2">
-            <Button asChild variant="outline">
-              <a href="/api/appointments/export" download>
-                <Download className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Exportar CSV</span>
-                <span className="sm:hidden">CSV</span>
-              </a>
-            </Button>
+            <ExportCsvButton url="/api/appointments/export" />
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Agendamento

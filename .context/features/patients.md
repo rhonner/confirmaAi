@@ -39,7 +39,9 @@
 | GET    | `/api/patients/[id]`       | —                                                | `ApiResponse<PatientResponse>`      |
 | PUT    | `/api/patients/[id]`       | `UpdatePatientInput`                             | `ApiResponse<PatientResponse>`      |
 | DELETE | `/api/patients/[id]`       | —                                                | `ApiResponse<null>`                 |
-| GET    | `/api/patients/export`     | —                                                | CSV (`Content-Type: text/csv`)      |
+| GET    | `/api/patients/export`     | —                                                | CSV (`Content-Type: text/csv`) — entitlement `export.csv` (402 no Free) |
+
+> **Export no front (2026-06-29)**: usa `<ExportCsvButton url="/api/patients/export" />` (`src/components/billing/export-csv-button.tsx`, mesmo componente da agenda). No Free, clicar abre o `PaywallModal` em vez de uma falha de download. Ver detalhe em [`appointments.md`](appointments.md) (Pontos sensíveis → Export CSV).
 
 ### Enriquecimento de listagem
 

@@ -27,7 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { ExportCsvButton } from "@/components/billing/export-csv-button";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatPhoneDisplay } from "@/lib/phone";
@@ -79,13 +80,7 @@ export default function PacientesPage() {
         description="Gerencie seus pacientes/clientes"
         action={
           <div className="flex gap-2">
-            <Button asChild variant="outline">
-              <a href="/api/patients/export" download>
-                <Download className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Exportar CSV</span>
-                <span className="sm:hidden">CSV</span>
-              </a>
-            </Button>
+            <ExportCsvButton url="/api/patients/export" />
             <Button onClick={() => handleOpenDialog()} data-testid="patients-create-trigger">
               <Plus className="mr-2 h-4 w-4" />
               Novo Paciente

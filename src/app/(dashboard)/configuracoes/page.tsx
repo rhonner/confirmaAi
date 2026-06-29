@@ -28,6 +28,7 @@ import { z } from "zod";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PageHeader } from "@/components/layout/page-header";
+import { UnsavedChangesGuard } from "@/components/layout/unsaved-changes-guard";
 
 const MESSAGE_MAX_LENGTH = 1000;
 
@@ -179,6 +180,7 @@ export default function ConfiguracoesPage() {
 
   return (
     <div className="space-y-6">
+      <UnsavedChangesGuard when={isDirty} />
       <PageHeader
         title="Configurações"
         description="Gerencie as configurações do sistema"

@@ -54,6 +54,17 @@ Os textareas de `confirmationMessage`/`reminderMessage` foram trocados por um **
 - **Aviso de tags (ideia da Isa)**: helper `usesAnyVariable()` no editor. A pré-visualização (`TemplatePreview` na página) é **verde** quando há ao menos uma variável e **amarela + aviso** ("Nenhuma variável usada — a mensagem será enviada idêntica...") quando não há. Não bloqueia o salvar (Zod só exige min 10 chars). Texto de ajuda no bloco "Variáveis disponíveis" atualizado.
 - **Barra de salvar sticky**: o botão "Salvar Configurações" agora vive numa barra `sticky bottom-4` no rodapé do form, com indicador "● Alterações não salvas" (usa `isDirty`) / "Tudo salvo". A sócia havia preenchido os campos e saído sem salvar por não notar o botão no fim da página longa.
 
+## Aviso de alterações não salvas (2026-06-29 — feedback da sócia)
+
+A sócia relatou que, mesmo com a barra "Alterações não salvas" visível, dava pra **navegar pra fora de Configurações sem salvar e perder tudo**, sem aviso. A barra sticky (já existente da rodada de 27/06) cobre a sugestão "botão sempre à vista"; faltava o **aviso na saída**.
+
+- Componente reusável `src/components/layout/unsaved-changes-guard.tsx` — `<UnsavedChangesGuard when={isDirty} />` montado no topo do `configuracoes/page.tsx` (usa o `isDirty` do RHF).
+- **Dois caminhos de saída**: (a) `beforeunload` p/ navegação dura (fechar aba, recarregar, link externo); (b) listener de `click` em **fase de captura** no `document` que intercepta `<a>` de navegação interna (sidebar, link "Atividade da conta") antes do `onClick` do `<Link>`, segura a navegação e abre um `AlertDialog` "Sair sem salvar?". Confirmar → `router.push(href)`.
+- **Ignora o que não é navegação de página**: hrefs `/api/*`, atributo `download` (ex: export LGPD), `target` externo, clique com modificador (ctrl/cmd/shift/alt) ou não-esquerdo, e a própria rota atual. Por isso o guard convive com o `ExportCsvButton` e o "Exportar meus dados".
+- **Drawer mobile**: ao interceptar, o `stopPropagation` mataria o `onClick={onNavigate}` do `<Link>` (que fecha o drawer), deixando-o aberto por cima do diálogo. Por isso o guard fecha o drawer via `useSidebarStore.setOpen(false)` ao interceptar (achado da code-review).
+- ⚠️ **Limitação conhecida (code-review xhigh 2026-06-29)**: **Voltar/Avançar do browser** (popstate SPA) não é coberto — não dispara `beforeunload` nem clique de `<a>`, então sair por Voltar com o form sujo descarta sem aviso. Logout cai no prompt nativo do `beforeunload` (o `signOut` faz navegação de documento). O guard completo de back-button exigiria manipular history (sentinela, frágil) — fica como follow-up se virar dor real.
+- Genérico: dá pra reusar em qualquer página com form dirty.
+
 ## Validação manual no browser (2026-06-27)
 
 Confirmado via Chrome MCP (seed `rhonner.matheus@gmail.com`):
