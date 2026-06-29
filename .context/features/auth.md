@@ -162,6 +162,19 @@ Confirmado via Chrome MCP + DB local (usuário descartável, depois removido):
 
 Regressão automatizada: `npm run test:sprints` checks **11.30–11.34** (authorize bloqueia/permite, ciclo do token de reenvio, modal de termos, fix do scroll).
 
+### Validação E2E em PRODUÇÃO (2026-06-29)
+
+Fluxo completo do Bug 4 + normalização validado em `clinicaorganizada.com` via Chrome MCP (conta descartável `confirmaai-bug4-test-9f3qz@tuamaeaquelaursa.com`, CPF de teste `398.472.615-55`):
+
+1. ✅ Signup válido (reCAPTCHA v3 **passou** no perfil real) → redireciona `/verificar-email`, **sem auto-login**; toast "Conta criada. Verifique seu email para ativá-la.".
+2. ✅ Login com senha **correta** de conta não-verificada → painel "Confirme seu e-mail para entrar" (estilo âmbar, com o e-mail + botão Reenviar), **rolado pro topo e focado** (polish 2026-06-27); **não** vai pro dashboard.
+3. ✅ "Reenviar e-mail de confirmação" → `POST /api/auth/resend-verification` **200** + toast anti-enumeration ("Se a conta existir e ainda não estiver confirmada…"); reenvio regenera o token (invalida o anterior).
+4. ✅ E-mail entregue **via Resend** em prod (signup + reenvio chegaram); link "Confirmar meu email" personalizado ("Olá Sofia Marchiori,") → `GET /api/auth/verify-email` → `/verificar-email?status=ok` "Email confirmado! Sua conta está ativa.".
+5. ✅ Login subsequente (verificado) → `/dashboard` (FREE, "0/5 pacientes", card de onboarding).
+6. ✅ **Normalização**: logout + login com o e-mail em **MAIÚSCULAS** → acha a conta lowercase → `/dashboard` (valida `c9b879b`).
+
+> ⚠️ Nota de teste (Chrome MCP): `form_input` (set programático) **não dispara** o submit dos forms RHF — usar **digitação real** (`type`) nos campos de login. Autofill do Chrome pode concatenar valor no campo: **limpar (`cmd+a`+`Delete`) antes de digitar**.
+
 ## Como estender
 
 - **Adicionar campo no User** (ex: `phone`): atualizar `schema.prisma` → migrate → `registerSchema` em validations → `register/route.ts` → `auth.ts` (callbacks JWT/session se for exposto na sessão) → `next-auth.d.ts`.
