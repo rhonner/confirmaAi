@@ -4,6 +4,8 @@ type: concept
 created: 2026-07-04
 updated: 2026-07-04
 tags: [css, layout, ux, scrollbar, gotcha]
+sources:
+  - raw/sessions/2026-07-04-agenda-mini-calendar-session-fixes.md
 related:
   - .context/features/appointments.md
   - pages/concepts/horizontal-scroll-from-offscreen-elements.md

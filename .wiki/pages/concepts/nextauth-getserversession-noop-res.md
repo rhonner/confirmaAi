@@ -4,6 +4,8 @@ type: concept
 created: 2026-07-04
 updated: 2026-07-04
 tags: [nextauth, auth, performance, gotcha, jwt]
+sources:
+  - raw/sessions/2026-07-04-agenda-mini-calendar-session-fixes.md
 related:
   - .context/features/auth.md
   - pages/concepts/nextauth-credentials-authorize-stub.md
