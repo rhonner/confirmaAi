@@ -9,6 +9,8 @@ declare module "next-auth" {
       name: string
       clinicName: string
     }
+    /** "AccountRevoked" quando a conta some/soft-delete → client faz signOut. */
+    error?: string
   }
 
   interface User {
@@ -25,5 +27,7 @@ declare module "next-auth/jwt" {
     email: string
     name: string
     clinicName: string
+    /** Marca a sessão como revogada (conta removida/soft-deleted). */
+    revoked?: boolean
   }
 }

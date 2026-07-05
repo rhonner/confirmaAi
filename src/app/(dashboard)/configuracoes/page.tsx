@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useSession } from "next-auth/react";
 import { useSettings, useUpdateSettings } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +124,7 @@ function SettingsSkeleton() {
 export default function ConfiguracoesPage() {
   const { data: settings, isLoading } = useSettings();
   const updateMutation = useUpdateSettings();
+  const { update: updateSession } = useSession();
 
   const defaultValues: SettingsForm = {
     clinicName: "",
@@ -163,6 +165,10 @@ export default function ConfiguracoesPage() {
 
   const onSubmit = async (data: SettingsForm) => {
     await updateMutation.mutateAsync(data);
+    // Atualiza o JWT/sessão na hora (trigger "update" força o callback jwt a
+    // reler o banco) p/ o nome da clínica no header refletir já — sem esperar
+    // o refetch periódico da sessão.
+    await updateSession();
   };
 
   const insertVariable = (name: string) => {

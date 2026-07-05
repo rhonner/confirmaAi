@@ -7,6 +7,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { SessionGuard } from "@/components/layout/session-guard";
 import { WhatsappDisconnectedBanner } from "@/components/whatsapp/whatsapp-disconnected-banner";
 
 export default function DashboardLayout({
@@ -41,6 +42,9 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
+      {/* Desloga automaticamente se a conta foi removida/desativada no servidor. */}
+      <SessionGuard />
+
       {/* Decorative Background Blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-[-20%] right-[-10%] w-[700px] h-[700px] rounded-full bg-primary/[0.03] dark:bg-primary/[0.05] blur-[120px]" />
@@ -78,8 +82,10 @@ export default function DashboardLayout({
           collapsed={collapsed}
         />
 
-        {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
+        {/* Page Content — scrollbar-gutter:stable reserva o espaço da barra de
+            rolagem sempre, evitando o "pulo" horizontal ao alternar entre uma
+            página que rola (dia com agendamentos) e uma que não rola (dia vazio). */}
+        <main className="flex-1 p-4 lg:p-8 overflow-y-auto [scrollbar-gutter:stable]">
           <div className="max-w-7xl mx-auto animate-fade-in-up">
             <WhatsappDisconnectedBanner />
             {children}

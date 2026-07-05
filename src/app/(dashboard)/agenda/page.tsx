@@ -39,8 +39,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
+import { MonthCalendar, getMonthGridRange } from "@/components/agenda/month-calendar";
 import { Plus, ChevronLeft, ChevronRight, Calendar, Clock, CalendarPlus, MoreVertical } from "lucide-react";
 import { ExportCsvButton } from "@/components/billing/export-csv-button";
 import { format, startOfWeek, endOfWeek, addWeeks, addDays, parseISO, eachDayOfInterval } from "date-fns";
@@ -126,6 +128,9 @@ export default function AgendaPage() {
   const [patientFilter, setPatientFilter] = useState<string>("ALL");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
+  // Mini-calendário (date picker): controle de abertura e do mês exibido.
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   // Lembra a última visão escolhida (Dia/Semana) entre sessões. Em efeito (não
   // no init do useState) para não divergir do HTML do servidor (hydration).
@@ -154,6 +159,34 @@ export default function AgendaPage() {
     startDate: viewMode === "week" ? format(weekStart, "yyyy-MM-dd") : dayStr,
     endDate: viewMode === "week" ? format(weekEnd, "yyyy-MM-dd") : dayStr,
   });
+
+  // Busca os agendamentos da grade visível do mini-calendário (6 semanas fixas,
+  // incluindo os dias "vazando" do mês anterior/seguinte) — só quando ele está
+  // aberto (enabled) — para sinalizar com um ponto os dias que têm agendamento.
+  const calendarGrid = getMonthGridRange(calendarMonth);
+  const { data: monthAppointments } = useAppointments(
+    {
+      startDate: format(calendarGrid.start, "yyyy-MM-dd"),
+      endDate: format(calendarGrid.end, "yyyy-MM-dd"),
+    },
+    { enabled: calendarOpen },
+  );
+
+  // Aplica os MESMOS filtros ativos (status/paciente) da agenda aos pontos —
+  // senão o mini-calendário marcaria dias que aparecem vazios na lista filtrada.
+  const daysWithAppointments = useMemo(
+    () =>
+      new Set(
+        (monthAppointments ?? [])
+          .filter((a) => {
+            if (statusFilter !== "ALL" && a.status !== statusFilter) return false;
+            if (patientFilter !== "ALL" && a.patientId !== patientFilter) return false;
+            return true;
+          })
+          .map((a) => format(parseISO(a.dateTime), "yyyy-MM-dd")),
+      ),
+    [monthAppointments, statusFilter, patientFilter],
+  );
 
   const { data: patients } = usePatients();
   const createMutation = useCreateAppointment();
@@ -221,6 +254,18 @@ export default function AgendaPage() {
 
   const handleToday = () => {
     setAnchorDate(new Date());
+  };
+
+  // Ao abrir o mini-calendário, exibe o mês do dia âncora atual.
+  const handleCalendarOpenChange = (open: boolean) => {
+    if (open) setCalendarMonth(anchorDate);
+    setCalendarOpen(open);
+  };
+
+  // Selecionar um dia no mini-calendário reposiciona a agenda (dia/semana).
+  const handleSelectDate = (day: Date) => {
+    setAnchorDate(day);
+    setCalendarOpen(false);
   };
 
   const handleOpenDialog = (appointment?: typeof selectedAppointment) => {
@@ -534,14 +579,31 @@ export default function AgendaPage() {
             Anterior
           </Button>
 
-          <div className="flex items-center gap-2 px-1">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium first-letter:uppercase">
-              {viewMode === "week"
-                ? `${format(weekStart, "dd MMM", { locale: ptBR })} - ${format(weekEnd, "dd MMM yyyy", { locale: ptBR })}`
-                : format(anchorDate, DAY_HEADER_FORMAT, { locale: ptBR })}
-            </span>
-          </div>
+          <Popover open={calendarOpen} onOpenChange={handleCalendarOpenChange}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title="Escolher data no calendário"
+                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              >
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium first-letter:uppercase">
+                  {viewMode === "week"
+                    ? `${format(weekStart, "dd MMM", { locale: ptBR })} - ${format(weekEnd, "dd MMM yyyy", { locale: ptBR })}`
+                    : format(anchorDate, DAY_HEADER_FORMAT, { locale: ptBR })}
+                </span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="center">
+              <MonthCalendar
+                selected={anchorDate}
+                month={calendarMonth}
+                onMonthChange={setCalendarMonth}
+                datesWithAppointments={daysWithAppointments}
+                onSelect={handleSelectDate}
+              />
+            </PopoverContent>
+          </Popover>
 
           <Button variant="outline" size="sm" onClick={handleToday}>
             Hoje

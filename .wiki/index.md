@@ -54,6 +54,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [next-dev-stale-css-after-build](pages/concepts/next-dev-stale-css-after-build.md) | `next build` deixa `.next` que faz o `next dev` servir CSS stale; restart/touch não bastam → limpar `.next` (via node `fs.rmSync`) | 2026-06-27 |
 | [whatsapp-reply-fifo-match-and-ack](pages/concepts/whatsapp-reply-fifo-match-and-ack.md) | Resposta do paciente casa o PENDING mais antigo (FIFO, desempate `dateTime/id`) = ordem de leitura; ack de volta nomeando o agendamento (timeout, fora da cota); **gap de idempotência** (retry + ≥2 pendentes → duplo-confirma) | 2026-06-27 |
 | [phone-mask-roundtrip-country-code](pages/concepts/phone-mask-roundtrip-country-code.md) | Máscara de telefone canônico↔display: strip do `55` só por tamanho reabsorve o `+55` como DDD ao digitar (acumula "5"); o `+` desambigua país vs DDD-55. Testar o componente, não a fiação | 2026-06-27 |
+| [scrollbar-gutter-stable](pages/concepts/scrollbar-gutter-stable.md) | `scrollbar-gutter:stable` no scroller (`<main>`) mata o "pulo" horizontal entre página que rola × que não rola; em macOS overlay (barra 0px) não reproduz mas o fix é seguro | 2026-07-04 |
+| [nextauth-getserversession-noop-res](pages/concepts/nextauth-getserversession-noop-res.md) | `getServerSession` (RSC, 1 arg) roda o callback `jwt` mas usa `res` no-op → cookie reescrito é descartado; throttle via `token.checkedAt` não persiste no servidor → usar cache em memória (`Map<userId,ts>`) | 2026-07-04 |
 
 ## Synthesis (`pages/synthesis/`)
 

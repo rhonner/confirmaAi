@@ -226,12 +226,15 @@ export function useDeletePatient() {
 }
 
 // Appointments
-export function useAppointments(params?: {
-  startDate?: string;
-  endDate?: string;
-  status?: string;
-  patientId?: string;
-}) {
+export function useAppointments(
+  params?: {
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+    patientId?: string;
+  },
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["appointments", params],
     queryFn: () => {
@@ -245,6 +248,7 @@ export function useAppointments(params?: {
       const url = `/api/appointments${qs ? `?${qs}` : ""}`;
       return fetchApi<Appointment[]>(url);
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

@@ -19,6 +19,8 @@
 | Páginas             | `src/app/(auth)/login/page.tsx`, `/registro`, `/esqueci-senha`, `/redefinir-senha` |
 | Layout              | `src/app/(auth)/layout.tsx`                          |
 | Tipos NextAuth      | `src/types/next-auth.d.ts`                           |
+| Guard de sessão     | `src/components/layout/session-guard.tsx` (client; desloga em `session.error`) |
+| SessionProvider     | `src/components/providers.tsx` (`refetchInterval` + `refetchOnWindowFocus`) |
 | Modelo Prisma       | `User` em `prisma/schema.prisma`                     |
 
 ## Regras de negócio
@@ -111,6 +113,22 @@ Fluxo do `POST /api/auth/register` em ordem:
 - **Tema claro é o padrão (`src/components/providers.tsx`)**: `defaultTheme` mudou de `"system"` → `"light"` (visitante novo via signup vinha escuro herdando o SO). As telas de auth já respeitavam o tema (sem `dark` forçado); ganharam um **`<ThemeToggle>`** no canto superior direito (`(auth)/layout.tsx`). O toggle foi **extraído** para `src/components/layout/theme-toggle.tsx` e reusado no `app-header.tsx`. Ver [[next-themes-default-theme]] na wiki.
 - **`cursor: pointer` (`<button>` no Tailwind v4)**: o Preflight do Tailwind v4 zera `cursor:pointer` dos `<button>`. Fix na raiz em `src/components/ui/button.tsx` (base do `cva` → pega TODO `<Button>`); `<button>` crus (toggle de senha em `password-input.tsx`, links Termos/Privacidade no signup e no rodapé do auth) receberam `cursor-pointer` manual. Ver [[tailwind-v4-button-cursor]] na wiki.
 - **Autofill destacado (`globals.css`)**: regra `input:-webkit-autofill` neutraliza o fundo amarelo/azul nativo do Chrome (a sócia viu o "Nome da Clínica" destacado após o autofill). Ver [[autofill-highlight-css]] na wiki.
+
+### Sessão revalidada + revogação + claims frescos (2026-07-04 — bug relatado)
+
+> ⚠️ Bug do dono: "o token não está expirando/deslogando corretamente — fica logado mas mostrando informação errada/vazia". Causa raiz: o callback `jwt` só semeava os claims **no login** (JWT congelado) e o callback `session` nunca checava o banco; com estratégia JWT, `/api/auth/session` seguia "autenticado" mesmo após a conta ser soft-deleted OU o nome da clínica mudar → shell logada com **nome velho no header** e dados vazios (as APIs davam 401, mas o `QueryClient` tem `refetchOnWindowFocus:false` + `staleTime:60s`, então dados em cache não recarregavam e o 401→signOut do `fetchApi` podia nunca disparar numa aba ociosa).
+
+Fix (desenho final, após 2 rodadas de code-review xhigh):
+
+- **Refresh de claims sob demanda no `jwt` (`src/lib/auth.ts`)**: o callback relê o `User` e atualiza `name`/`clinicName`/`email` **apenas quando `trigger === "update"`** (client chama `useSession().update()`). Erro transitório do banco não altera os claims.
+- ⚠️ **Por que NÃO reler a cada request** (armadilha central, confirmada na review): no caminho do `getServerSession` (App Router/RSC, `getServerSession(authOptions)` com 1 arg → `isRSC`), o NextAuth v4 usa um `res` **no-op** (`setCookie(){}`) → o cookie reescrito é **descartado**. Logo, (a) qualquer throttle guardado no token não persiste no servidor, e (b) reler o banco ali seria **puro custo duplicado** — o `getAuthSession` (`auth-helpers.ts`) **já** faz um `findUnique` fresco (existência + `deletedAt`) em **todo** request. Ver [[nextauth-getserversession-noop-res]]. Tentativas anteriores (throttle por `token.checkedAt`; depois `Map` em memória + `refetchInterval`) foram **revertidas** por dobrarem leituras no caminho quente (crítico no Neon Free) e por o `Map` compartilhado entre o caminho persistente (client) e o descartável (getServerSession) inanir a janela de 60s.
+- **Revogação = `getAuthSession` (autoridade) + `fetchApi` 401→`signOut`**: conta soft-deleted/sumida → `getAuthSession` retorna `null` → APIs 401 → `fetchApi` desloga. Isso já existia e é **imediato** por request; é o mecanismo primário.
+- **`session` callback + `SessionGuard` (defense-in-depth)**: `token.revoked` → `session.error = "AccountRevoked"` (tipo em `next-auth.d.ts`); `src/components/layout/session-guard.tsx` (montado no `(dashboard)/layout.tsx`) faz `signOut` ao ver o erro. Cobre o caso da revalidação client (login ou `update()`) achar a conta já removida. `SessionProvider` fica nos defaults (sem `refetchInterval`, p/ não gerar polling de DB ocioso).
+- **Header reflete o nome na hora**: **Configurações** chama `useSession().update()` após salvar (`configuracoes/page.tsx`) → `trigger:"update"` relê o banco e o header atualiza sem re-login (este é o fix direto do "info velha").
+
+⚠️ **Limitação conhecida (aceita)**: mudança de `clinicName` feita em **outro dispositivo** só reflete no header após re-login/`update()` naquele dispositivo (não há polling de DB). Revogação de aba **totalmente ociosa** (zero requests) só age na próxima interação (que dispara 401→signOut). Ambos cobrem o caso relatado; o auto-refresh periódico foi descartado por custo de DB.
+
+Validado no Chrome MCP (2026-07-04, conta seed `rhonner.matheus@gmail.com`, perfil pessoal): trocar o nome da clínica em Configurações → **header atualiza na hora** + `/api/auth/session` retorna o nome novo. (Na 1ª rodada, com o desenho antigo, também se validou soft-delete reversível → `error:"AccountRevoked"` → `SessionGuard` desloga; a revogação por 401 do `getAuthSession` segue igual.) ⚠️ Em dev com a app numa porta ≠ `NEXTAUTH_URL`, o `signOut` redireciona p/ a origem do `NEXTAUTH_URL` (artefato local).
 
 ### Documento do dono (CPF/CNPJ) — 2026-06-26
 

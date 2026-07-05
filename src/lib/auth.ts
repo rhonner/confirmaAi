@@ -153,16 +153,49 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }: { token: any; user: any }) {
+    async jwt({ token, user, trigger }: { token: any; user: any; trigger?: string }) {
+      // No sign-in, semeia os claims a partir do `user` autorizado.
       if (user) {
         token.id = user.id
         token.email = user.email
         token.name = user.name
         token.clinicName = (user as any).clinicName
+        delete token.revoked
+        return token
+      }
+
+      // Relê o banco APENAS quando o client pede refresh explícito
+      // (`useSession().update()`, ex: após salvar Configurações) — o único caminho
+      // que PERSISTE o cookie reescrito. No `getServerSession` (APIs/RSC) o cookie
+      // é descartado (res no-op no v4), então reler aqui seria puro custo duplicado:
+      // `getAuthSession` já valida a conta fresca (existência + `deletedAt`) a cada
+      // request, e é ele que revoga o acesso (401 → `signOut` no client). Aqui só
+      // atualizamos os claims exibidos (nome da clínica no header) sob demanda.
+      if (trigger === "update" && token?.id) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { id: true, email: true, name: true, clinicName: true, deletedAt: true },
+          })
+          if (!dbUser || dbUser.deletedAt) {
+            token.revoked = true
+          } else {
+            token.email = dbUser.email
+            token.name = dbUser.name
+            token.clinicName = dbUser.clinicName
+            delete token.revoked
+          }
+        } catch {
+          // Blip transitório do banco: mantém os claims atuais (sem revogar).
+        }
       }
       return token
     },
     async session({ session, token }: { session: any; token: any }) {
+      // Conta removida/desativada no banco → sinaliza ao client p/ signOut.
+      if (token?.revoked) {
+        session.error = "AccountRevoked"
+      }
       if (session.user) {
         session.user.id = token.id as string
         session.user.email = token.email as string
