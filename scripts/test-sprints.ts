@@ -33,6 +33,7 @@ import { isPatientPurgeDue, runAccountPurge } from "../src/lib/account/account-p
 import { findPendingAppointmentForResponse } from "../src/lib/services/webhook-confirmation";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("não rodar em produção");
@@ -2117,6 +2118,137 @@ async function main() {
     await tx.auditLog.deleteMany({ where: { tenantUserId: fifoUser.id } });
   });
   await prisma.user.delete({ where: { id: fifoUser.id } });
+
+  // ====================================================================
+  // GOOGLE CALENDAR — FASE A (gate PREMIUM + cifra + modelo + firewall)
+  // ====================================================================
+  console.log("\n━━━ GOOGLE CALENDAR — FASE A ━━━\n");
+
+  // Chave de cifra efêmera p/ o roundtrip (fora do runner vitest a ausência
+  // é erro fatal por design — ver token-crypto.ts).
+  process.env.GCAL_TOKEN_ENC_KEY ??= randomBytes(32).toString("hex");
+  const { encryptToken: gcalEncrypt, decryptToken: gcalDecrypt } = await import(
+    "../src/lib/services/google/token-crypto"
+  );
+
+  const gcalUser = await prisma.user.create({
+    data: {
+      name: "GCal Test",
+      email: `gcal-test-${Date.now()}@test.local`,
+      password: "x",
+      clinicName: "GCal Clinic",
+      emailVerifiedAt: new Date(),
+    },
+  });
+  await prisma.subscription.create({
+    data: { userId: gcalUser.id, plan: "FREE", status: "ACTIVE" },
+  });
+
+  // GCAL.1 — gate server-side: FREE não conecta (PLAN_REQUIRED → PREMIUM).
+  const gcalFreeDeny = await checkEntitlement(gcalUser.id, "gcal.connect");
+  check(
+    "GCAL.1 FREE bloqueado em gcal.connect (PLAN_REQUIRED → upgrade PREMIUM)",
+    10,
+    !gcalFreeDeny.allowed &&
+      gcalFreeDeny.reason === "PLAN_REQUIRED" &&
+      gcalFreeDeny.upgrade === "PREMIUM",
+  );
+
+  // GCAL.2 — override admin (cortesia) libera connect e sync.
+  await prisma.subscription.update({
+    where: { userId: gcalUser.id },
+    data: { adminOverrideUntil: new Date(Date.now() + 60_000) },
+  });
+  const gcalOverrideConnect = await checkEntitlement(gcalUser.id, "gcal.connect");
+  const gcalOverrideSync = await checkEntitlement(gcalUser.id, "gcal.sync");
+  check(
+    "GCAL.2 override admin (PREMIUM efetivo) permite gcal.connect e gcal.sync",
+    10,
+    gcalOverrideConnect.allowed && gcalOverrideSync.allowed,
+  );
+
+  // GCAL.3 — gcal.convert respeita o gate de e-mail verificado (não é bypass
+  // do email-verify que as ações manuais exigem).
+  await prisma.user.update({ where: { id: gcalUser.id }, data: { emailVerifiedAt: null } });
+  const gcalConvertUnverified = await checkEntitlement(gcalUser.id, "gcal.convert");
+  check(
+    "GCAL.3 gcal.convert bloqueado sem e-mail verificado (EMAIL_NOT_VERIFIED)",
+    10,
+    !gcalConvertUnverified.allowed && gcalConvertUnverified.reason === "EMAIL_NOT_VERIFIED",
+  );
+
+  // GCAL.4 — cifra roundtrip com chave real + blob versionado.
+  const gcalPlain = `refresh-token-${Date.now()}`;
+  const gcalBlob = gcalEncrypt(gcalPlain);
+  check(
+    "GCAL.4 token cifrado roundtrip (AES-256-GCM, blob versionado g1.)",
+    10,
+    gcalBlob.startsWith("g1.") && !gcalBlob.includes(gcalPlain) && gcalDecrypt(gcalBlob) === gcalPlain,
+  );
+
+  // GCAL.5 — modelo 1:1: upsert por userId atualiza (não duplica) e o token
+  // persiste cifrado.
+  await prisma.googleCalendarConnection.create({
+    data: { userId: gcalUser.id, refreshTokenEnc: gcalBlob, googleAccountEmail: "a@g.com" },
+  });
+  await prisma.googleCalendarConnection.upsert({
+    where: { userId: gcalUser.id },
+    create: { userId: gcalUser.id, refreshTokenEnc: gcalBlob },
+    update: { googleAccountEmail: "b@g.com", status: "NEEDS_RECONSENT" },
+  });
+  const gcalConns = await prisma.googleCalendarConnection.findMany({
+    where: { userId: gcalUser.id },
+  });
+  check(
+    "GCAL.5 GoogleCalendarConnection 1:1 (upsert atualiza; token só cifrado no banco)",
+    10,
+    gcalConns.length === 1 &&
+      gcalConns[0].googleAccountEmail === "b@g.com" &&
+      gcalConns[0].status === "NEEDS_RECONSENT" &&
+      gcalConns[0].refreshTokenEnc.startsWith("g1."),
+  );
+
+  // GCAL.6 — rotas/UI da Fase A existem + OAuth com PKCE/state/consent.
+  const gcalRouteBase = "src/app/api/integrations/google-calendar";
+  const gcalOauthSrc = readFileSync(join(root, "src/lib/services/google/oauth.ts"), "utf8");
+  const gcalCallbackSrc = readFileSync(join(root, `${gcalRouteBase}/callback/route.ts`), "utf8");
+  check(
+    "GCAL.6 rotas OAuth + card + overlay existem; PKCE S256 + state + prompt=consent",
+    10,
+    ["connect", "callback", "disconnect", "status", "events"].every((r) =>
+      exists(`${gcalRouteBase}/${r}/route.ts`),
+    ) &&
+      exists("src/components/settings/google-calendar-connection.tsx") &&
+      readFileSync(join(root, "src/app/(dashboard)/agenda/page.tsx"), "utf8").includes(
+        "GoogleEventBlock",
+      ) &&
+      gcalOauthSrc.includes("code_challenge_method") &&
+      gcalOauthSrc.includes("prompt") &&
+      gcalOauthSrc.includes("access_type") &&
+      gcalCallbackSrc.includes("verifyStateCookie") &&
+      gcalCallbackSrc.includes("codeVerifier"),
+  );
+
+  // GCAL.7 — FIREWALL: o serviço de eventos do Google não pode nem MENCIONAR
+  // a tabela Appointment (eventos nunca viram agendamento por sync), e o
+  // teardown LGPD (delete + purga) revoga o grant.
+  const gcalCalendarSrc = readFileSync(join(root, "src/lib/services/google/calendar.ts"), "utf8");
+  const accountRouteSrc = readFileSync(join(root, "src/app/api/account/route.ts"), "utf8");
+  const purgeSrc = readFileSync(join(root, "src/lib/account/account-purge.ts"), "utf8");
+  check(
+    "GCAL.7 firewall (calendar.ts não toca Appointment) + teardown LGPD revoga grant",
+    10,
+    !gcalCalendarSrc.includes("prisma.appointment") &&
+      accountRouteSrc.includes("revokeGoogleGrant") &&
+      purgeSrc.includes("revokeGoogleGrant"),
+  );
+
+  // cleanup GCal (cascade apaga a conexão)
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");
+    await tx.auditLog.deleteMany({ where: { tenantUserId: gcalUser.id } });
+  });
+  await prisma.user.delete({ where: { id: gcalUser.id } });
 
   // ====================================================================
   // CLEANUP

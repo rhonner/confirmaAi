@@ -21,6 +21,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { DollarSign, Save, History, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { WhatsappConnection } from "@/components/settings/whatsapp-connection";
+import { GoogleCalendarConnection } from "@/components/settings/google-calendar-connection";
 import { ResetAccountCard } from "@/components/settings/reset-account-card";
 import { AccountDataCard } from "@/components/settings/account-data-card";
 import { useForm, Controller } from "react-hook-form";
@@ -436,6 +437,8 @@ export default function ConfiguracoesPage() {
         </Card>
 
         <WhatsappConnection />
+
+        <GoogleCalendarConnection />
 
         {/* Barra de ações fixa no rodapé do form. A sócia preencheu os campos e
             saiu sem salvar por não notar o botão lá embaixo (2026-06-27): agora

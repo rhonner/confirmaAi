@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useAppointments,
   useCreateAppointment,
   useUpdateAppointment,
   useDeleteAppointment,
   usePatients,
+  useGoogleCalendarEvents,
+  useGoogleCalendarStatus,
+  type GcalEvent,
 } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +48,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
 import { MonthCalendar, getMonthGridRange } from "@/components/agenda/month-calendar";
-import { Plus, ChevronLeft, ChevronRight, Calendar, Clock, CalendarPlus, MoreVertical } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus, MoreVertical } from "lucide-react";
 import { ExportCsvButton } from "@/components/billing/export-csv-button";
 import { format, startOfWeek, endOfWeek, addWeeks, addDays, parseISO, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -112,6 +117,55 @@ const statusOptions = [
   { value: "NO_SHOW", label: "Faltou" },
 ];
 
+/**
+ * Bloco somente-leitura de um evento do Google Calendar (overlay PREMIUM,
+ * Fase A). Distinto visualmente (tracejado azul) e sem NENHUMA ação de
+ * WhatsApp/status — eventos do Google não entram na tabela Appointment
+ * (firewall, ver .context/features/google-calendar.md).
+ */
+function GoogleEventBlock({ event }: { event: GcalEvent }) {
+  const timeLabel = event.allDay
+    ? "Dia inteiro"
+    : `${format(parseISO(event.start), "HH:mm")} – ${format(parseISO(event.end), "HH:mm")}`;
+  const className =
+    "flex items-center justify-between gap-2 p-3 rounded-lg border border-dashed border-blue-400/40 bg-blue-500/5";
+  const content = (
+    <>
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 text-sm">
+          <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <span className="font-medium">{timeLabel}</span>
+        </div>
+        <span className="truncate text-sm">{event.title}</span>
+      </div>
+      <Badge
+        variant="outline"
+        className="shrink-0 border-blue-400/50 text-blue-700 dark:text-blue-400"
+      >
+        Google
+      </Badge>
+    </>
+  );
+  if (event.htmlLink) {
+    return (
+      <a
+        href={event.htmlLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Evento do Google Calendar (somente leitura) — abrir no Google"
+        className={`${className} transition-colors hover:bg-blue-500/10`}
+      >
+        {content}
+      </a>
+    );
+  }
+  return (
+    <div title="Evento do Google Calendar (somente leitura)" className={className}>
+      {content}
+    </div>
+  );
+}
+
 export default function AgendaPage() {
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
@@ -155,10 +209,62 @@ export default function AgendaPage() {
   // No modo Dia, busca só o dia âncora (startDate === endDate); no modo Semana,
   // o intervalo de domingo a sábado. A API trata a string yyyy-MM-dd como dia
   // local completo (ver features/appointments.md).
+  const rangeStart = viewMode === "week" ? format(weekStart, "yyyy-MM-dd") : dayStr;
+  const rangeEnd = viewMode === "week" ? format(weekEnd, "yyyy-MM-dd") : dayStr;
   const { data: appointments, isLoading } = useAppointments({
-    startDate: viewMode === "week" ? format(weekStart, "yyyy-MM-dd") : dayStr,
-    endDate: viewMode === "week" ? format(weekEnd, "yyyy-MM-dd") : dayStr,
+    startDate: rangeStart,
+    endDate: rangeEnd,
   });
+
+  // Overlay Google Calendar (PREMIUM, Fase A): live-fetch somente-leitura na
+  // MESMA janela da agenda. Só consulta quando a conexão existe e o plano
+  // permite — para os demais usuários, custo zero além do status (cacheado).
+  const { data: gcalStatus } = useGoogleCalendarStatus();
+  const gcalEnabled = gcalStatus?.allowed === true && gcalStatus?.status === "CONNECTED";
+  const { data: gcalData } = useGoogleCalendarEvents(
+    { startDate: rangeStart, endDate: rangeEnd },
+    { enabled: gcalEnabled },
+  );
+  // Grant revogado detectado pelo fetch de eventos → invalida o status
+  // cacheado (staleTime 30s) para card e agenda refletirem NEEDS_RECONSENT já.
+  const queryClient = useQueryClient();
+  const gcalNeedsReconsent = gcalData?.needsReconsent === true;
+  useEffect(() => {
+    if (gcalNeedsReconsent) {
+      queryClient.invalidateQueries({ queryKey: ["gcal-status"] });
+    }
+  }, [gcalNeedsReconsent, queryClient]);
+
+  // Filtros de status/paciente não se aplicam a eventos do Google (não têm
+  // nem status nem paciente) — com filtro ativo o overlay sai de cena, para
+  // não mascarar o "nenhum resultado" nem parecer resultado do filtro.
+  const googleEvents = useMemo(
+    () =>
+      gcalEnabled && statusFilter === "ALL" && patientFilter === "ALL"
+        ? (gcalData?.events ?? [])
+        : [],
+    [gcalEnabled, gcalData, statusFilter, patientFilter],
+  );
+
+  // Agrupa por dia, expandindo eventos que atravessam a meia-noite: o Google
+  // devolve tudo que INTERSECTA a janela, e agrupar só pelo dia de início
+  // sumiria com a manhã de um plantão que começou na véspera. Dia-inteiro tem
+  // `end` EXCLUSIVO (convenção do Google); timed recua 1ms para não criar um
+  // dia extra quando termina exatamente à meia-noite.
+  const googleEventsByDay = useMemo(() => {
+    const acc: Record<string, GcalEvent[]> = {};
+    for (const event of googleEvents) {
+      const start = parseISO(event.start);
+      const last = event.allDay
+        ? addDays(parseISO(event.end), -1)
+        : new Date(parseISO(event.end).getTime() - 1);
+      for (const d of eachDayOfInterval({ start, end: last < start ? start : last })) {
+        const key = format(d, "yyyy-MM-dd");
+        (acc[key] ??= []).push(event);
+      }
+    }
+    return acc;
+  }, [googleEvents]);
 
   // Busca os agendamentos da grade visível do mini-calendário (6 semanas fixas,
   // incluindo os dias "vazando" do mês anterior/seguinte) — só quando ele está
@@ -615,6 +721,30 @@ export default function AgendaPage() {
         </div>
       </div>
 
+      {/* Avisos do overlay Google — fora do grid para valerem também no
+          empty state (agenda "vazia" com Google fora do ar é falsa segurança). */}
+      {gcalEnabled && gcalData?.degraded && (
+        <p className="text-xs text-muted-foreground">
+          Google Calendar indisponível no momento — eventos do Google podem não
+          aparecer.
+        </p>
+      )}
+      {gcalNeedsReconsent && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          A conexão com o Google Agenda expirou —{" "}
+          <Link href="/configuracoes" className="underline underline-offset-2">
+            reconecte em Configurações
+          </Link>{" "}
+          para voltar a ver seus eventos.
+        </p>
+      )}
+      {gcalEnabled && gcalData?.truncated && (
+        <p className="text-xs text-muted-foreground">
+          Sua agenda do Google tem muitos eventos neste período — alguns podem
+          não aparecer.
+        </p>
+      )}
+
       {/* Week View */}
       {isLoading ? (
         <div className="grid gap-4">
@@ -639,7 +769,7 @@ export default function AgendaPage() {
             </Card>
           ))}
         </div>
-      ) : filteredAppointments.length === 0 ? (
+      ) : filteredAppointments.length === 0 && googleEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
           <CalendarPlus className="h-16 w-16 text-muted-foreground/50" />
           <div className="text-center">
@@ -668,6 +798,24 @@ export default function AgendaPage() {
           {daysToRender.map((day) => {
             const dayKey = format(day, "yyyy-MM-dd");
             const dayAppointments = appointmentsByDay[dayKey] || [];
+            const dayGoogleEvents = googleEventsByDay[dayKey] || [];
+            // Intercala agendamentos e eventos do Google por horário; blocos
+            // de dia inteiro do Google ficam pinados no topo do dia.
+            const timedItems = [
+              ...dayAppointments.map((appointment) => ({
+                kind: "appointment" as const,
+                time: parseISO(appointment.dateTime).getTime(),
+                appointment,
+              })),
+              ...dayGoogleEvents
+                .filter((e) => !e.allDay)
+                .map((event) => ({
+                  kind: "google" as const,
+                  time: parseISO(event.start).getTime(),
+                  event,
+                })),
+            ].sort((a, b) => a.time - b.time);
+            const allDayGoogleEvents = dayGoogleEvents.filter((e) => e.allDay);
             const isToday = format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
 
             return (
@@ -683,15 +831,26 @@ export default function AgendaPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {dayAppointments.length === 0 ? (
+                  {dayAppointments.length === 0 && dayGoogleEvents.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Nenhum agendamento
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {dayAppointments
-                        .sort((a, b) => a.dateTime.localeCompare(b.dateTime))
-                        .map((appointment) => (
+                      {allDayGoogleEvents.map((event) => (
+                        <GoogleEventBlock key={`${event.id}-${dayKey}`} event={event} />
+                      ))}
+                      {timedItems.map((item) => {
+                        if (item.kind === "google") {
+                          return (
+                            <GoogleEventBlock
+                              key={`${item.event.id}-${dayKey}`}
+                              event={item.event}
+                            />
+                          );
+                        }
+                        const appointment = item.appointment;
+                        return (
                           <div
                             key={appointment.id}
                             className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 hover:shadow-sm cursor-pointer"
@@ -741,7 +900,8 @@ export default function AgendaPage() {
                               </DropdownMenu>
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>

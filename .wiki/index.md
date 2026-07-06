@@ -28,7 +28,7 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [identifier-hash-namespacing](pages/concepts/identifier-hash-namespacing.md) | Por que `cpf:` / `phone:` prefix evita colisão entre 11 dígitos | 2026-05-07 |
 | [rate-limit-via-audit](pages/concepts/rate-limit-via-audit.md) | Rate limit sem Redis usando contagem em `AuditLog` (login). Signup migrou pra `SignupAttempt` em Sprint 4. **IP via XFF é spoofável → 2ª dimensão por conta-alvo** | 2026-06-24 |
 | [webhook-idempotency-via-unique-constraint](pages/concepts/webhook-idempotency-via-unique-constraint.md) | `@unique providerEventId` + catch P2002 = idempotência sem lock; "sempre 200 após registrar" | 2026-05-07 |
-| [dev-fallback-without-secrets](pages/concepts/dev-fallback-without-secrets.md) | reCAPTCHA, Resend, Asaas — fallback dev (`DEV_BYPASS`/log) e falha hard em prod | 2026-05-07 |
+| [dev-fallback-without-secrets](pages/concepts/dev-fallback-without-secrets.md) | reCAPTCHA, Resend, Asaas — fallback dev (`DEV_BYPASS`/log) e falha hard em prod. **Nuance (07-05):** chave de cifra reversível gateia o fallback ao *runner de teste*, não a "não-prod" | 2026-07-05 |
 | [defense-in-depth-cron](pages/concepts/defense-in-depth-cron.md) | Cron diário backstop pra webhooks perdidos (PAST_DUE>7d → SUSPENDED) | 2026-06-10 |
 | [rhf-radix-gotcha](pages/concepts/rhf-radix-gotcha.md) | RHF Controller + Radix Checkbox: valor não chega no submit; `recaptchaToken: null` quebra `.optional()` | 2026-05-07 |
 | [whatsapp-ninth-digit-jid](pages/concepts/whatsapp-ninth-digit-jid.md) | JID pode vir sem o 9º dígito BR → resposta do paciente não casava com `patient.phone`; fix `brPhoneCandidates` | 2026-06-12 |
@@ -56,6 +56,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [phone-mask-roundtrip-country-code](pages/concepts/phone-mask-roundtrip-country-code.md) | Máscara de telefone canônico↔display: strip do `55` só por tamanho reabsorve o `+55` como DDD ao digitar (acumula "5"); o `+` desambigua país vs DDD-55. Testar o componente, não a fiação | 2026-06-27 |
 | [scrollbar-gutter-stable](pages/concepts/scrollbar-gutter-stable.md) | `scrollbar-gutter:stable` no scroller (`<main>`) mata o "pulo" horizontal entre página que rola × que não rola; em macOS overlay (barra 0px) não reproduz mas o fix é seguro | 2026-07-04 |
 | [nextauth-getserversession-noop-res](pages/concepts/nextauth-getserversession-noop-res.md) | `getServerSession` (RSC, 1 arg) roda o callback `jwt` mas usa `res` no-op → cookie reescrito é descartado; throttle via `token.checkedAt` não persiste no servidor → usar cache em memória (`Map<userId,ts>`) | 2026-07-04 |
+| [external-event-firewall](pages/concepts/external-event-firewall.md) | Registros de fonte externa (Google Calendar) em **tabela separada só-leitura**, não coluna `source` em `Appointment` — senão o scheduler manda WhatsApp/marca NO_SHOW falso. Firewall físico > filtro que se esquece | 2026-07-05 |
+| [soft-delete-skips-cascade-cleanup](pages/concepts/soft-delete-skips-cascade-cleanup.md) | Soft-delete nunca remove `User` → `onDelete:Cascade` **jamais dispara** → token OAuth vivo fica órfão (LGPD). Teardown explícito: pós-commit, isolado, keep-on-failure + retry na purga | 2026-07-05 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -64,6 +66,7 @@ Sumários cruzados, comparações, teses evolutivas.
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
 | [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 + Sprint 10 em progresso: admin/atividade, reset de senha, emails transacionais), incidente de migration, Sentry+UptimeRobot ativos | 2026-06-14 |
+| [google-calendar-integration-state](pages/synthesis/google-calendar-integration-state.md) | Feature de core que destrava o PREMIUM. Faseamento A→B→C; firewall `ExternalEvent`; OAuth separado; matching por telefone. **Fase A completa em código** (backend + OAuth PKCE + card + overlay), validada com credencial fake; GA pendente de credencial real + verificação OAuth | 2026-07-05 |
 
 ---
 
@@ -71,7 +74,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 15 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 17 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

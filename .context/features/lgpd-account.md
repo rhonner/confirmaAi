@@ -29,13 +29,14 @@
 1. Cancela a assinatura no provider (best-effort).
 2. **Anonimiza a PII do dono**: `email → deleted-<id>@deleted.local` (libera o `@unique`), `name/clinicName → "Conta removida"`, `cpf/cpfHash/whatsappPhoneNumber/lastQrcodeBase64 → null`. **Preserva** `termsAcceptedAt/version` (prova legal de consentimento).
 3. `User.deletedAt = now` + `Subscription` → `CANCELED`, providerIds limpos.
-4. Audit `account.deleted`. Front faz `signOut`.
+4. **Google Calendar (2026-07-05):** se há `GoogleCalendarConnection`, revoga o grant no Google (best-effort, timeout 5s) e apaga a conexão — o refresh token é credencial viva. Roda **APÓS o commit** do soft-delete (revoke é irreversível) e **isolado** (nunca quebra a exclusão). Se o revoke **falhar**, mantém a conexão para a purga 30d retentar (revoke+delete). `onDelete:Cascade` **não** cobriria isso (o `User` nunca é deletado no soft-delete). Ver [features/google-calendar.md](google-calendar.md) § LGPD.
+5. Audit `account.deleted`. Front faz `signOut`.
 - **3 chokepoints rejeitam `deletedAt`** (revogação efetiva de JWT stateless): `authorize` (antes do bcrypt), `getAuthSession` (`select deletedAt` → null), `page.tsx` (usa `getAuthSession`).
 - **Re-signup** com o email original cria conta NOVA (o original foi anonimizado; cuid garante unicidade do `deleted-<id>@`). Sem reativação self-service.
 - Trade-off aceito: zerar `cpfHash` tira a conta do contador anti-fraude `existingSameCpf >= 4` (risco baixo — recaptcha/email/verify ainda exigidos).
 
 ### Purga 30d
-- `runAccountPurge()` no cron: contas com `deletedAt < now-30d` e `patientsPurgedAt = null` → apaga `PatientQuotaSlot + Patient` (cascade Appointment/MessageLog), seta `patientsPurgedAt + patientSlotCount=0`, audit `account.purged`. Idempotente (`patientsPurgedAt`). `isPatientPurgeDue` é pura/testável.
+- `runAccountPurge()` no cron: contas com `deletedAt < now-30d` e `patientsPurgedAt = null` → **revoke-then-delete** de `GoogleCalendarConnection` sobrevivente (rede de segurança p/ revoke que falhou no delete; fora da tx pois é chamada de rede) + apaga `PatientQuotaSlot + Patient` (cascade Appointment/MessageLog), seta `patientsPurgedAt + patientSlotCount=0`, audit `account.purged`. Idempotente (`patientsPurgedAt`). `isPatientPurgeDue` é pura/testável.
 
 ### Export — `GET /api/account/export`
 - Baixa JSON com TODOS os dados do tenant (escopado por `userId`), **não pago** (direito legal). **Omite**: `password`, hashes (`cpfHash`, `identifierHash`), tokens, `phoneCanonical`, QR base64. AuditLog vai **resumido** (sem before/after/metadata). BillingEvent fora. Audit `account.exported`.
