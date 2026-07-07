@@ -2,12 +2,13 @@
 
 > Conexão OAuth por tenant com o Google Calendar (feature **PREMIUM**), para trazer os eventos da agenda do Google para dentro do ConfirmaAí. Entregue em fases: **A (overlay só-leitura) → B (importação seletiva + confirmação opt-in) → C (sync bidirecional)**.
 
-## Status (2026-07-05, sessão 2)
+## Status (2026-07-06 — credencial real + E2E validado)
 
 - **Fase A — fundação de backend: IMPLEMENTADA e validada** (sessão 1). Modelo `GoogleCalendarConnection`, cifra de token AES-256-GCM, gate de entitlement PREMIUM e **teardown LGPD** (revoke + delete no delete de conta e rede de segurança na purga).
-- **Fase A — rotas OAuth + UI + overlay: IMPLEMENTADAS e validadas** (sessão 2; tsc · vitest 326 · build · test:sprints 135 · walk-through Playwright 23/23 com credencial FAKE — ver § Validação manual no browser; code-review xhigh de 35 agentes com 15 achados endereçados — ver § Code-review). Fluxo completo: `oauth.ts` (PKCE S256 + state em cookie httpOnly), rotas `connect/callback/disconnect/status/events`, card em /configuracoes, overlay read-only na agenda.
-- **PENDENTE (bloqueia GA da feature):** credencial REAL do Google Cloud + `GCAL_TOKEN_ENC_KEY` no dev/Vercel (ver § Dependências externas) → validação E2E do consent real (matriz OAUTH-01..08) → **verificação OAuth do Google** (escopo sensível, dias/semanas) → só então destravar PREMIUM (`plans.ts` `hidden`).
-- **Fases B e C: NÃO iniciadas** (design registrado abaixo).
+- **Fase A — rotas OAuth + UI + overlay: IMPLEMENTADAS e validadas** (sessão 2; tsc · vitest 326 · build · test:sprints 135 · walk-through Playwright 23/23 com credencial FAKE — ver § Validação manual no browser; code-review xhigh de 35 agentes com 15 achados endereçados — ver § Code-review). Fluxo completo: `oauth.ts` (PKCE S256 + state em cookie httpOnly), rotas `connect/callback/disconnect/status/events`, card em /configuracoes, overlay read-only na agenda. **Commitado + pushado em `bc3b1e5` (branch `v1.0.1`).**
+- **✅ CREDENCIAL REAL PROVISIONADA + E2E VALIDADO (2026-07-06, Chrome MCP)** — ver § Provisionamento da credencial e § Validação E2E real. Projeto Google Cloud `confirmaai-501623` (conta wcwecalc@gmail.com), Client ID `839155064339-e4omad0qu488jjpgnfhrj8ksr6mofpj3.apps.googleusercontent.com`, 3 env vars no `.env`. Consent real passou → `{connected:true}`.
+- **PENDENTE (ainda bloqueia GA da feature):** (1) setar as 3 vars no **Vercel** + adicionar redirect URI de prod no cliente OAuth (precisa do domínio de prod); (2) **verificação OAuth do Google** (escopo `calendar.events.readonly` é sensível; dias/semanas) → só então destravar PREMIUM (`plans.ts` `hidden:false`). Até a verificação: modo "Testando" (cap 100 test users, refresh token expira em 7 dias).
+- **Fases B e C: NÃO iniciadas** (design registrado abaixo). **Sync app→Google (criar agendamento no ConfirmaAí e replicar no Google) é Fase C (bidirecional), por design não existe na Fase A** (que é read-only Google→ConfirmaAí).
 
 ## Decisão que governa tudo: firewall `ExternalEvent`
 
@@ -104,12 +105,34 @@ Agrupados; **críticos** exigem validação obrigatória antes de GA. Passos det
 - **Falha/abuso (8):** 403/429 backoff · 500 parcial (não commitar syncToken) · payload malformado · **delete de conta com token vivo [crítico — implementado]** · rotação/ausência da chave de cifra · corrida push×cron (lock DB) · webhook forjado (sempre 200) · status "Testing" do OAuth.
 - **Red-team extra (2):** ciclo de vida do "Desconectar" (revoke+stop, preservar convertidos) · mesma conta Google em 2 tenants (revoke só na última conexão local).
 
-## Dependências externas (dono precisa prover — bloqueiam Fase A OAuth)
+## Dependências externas
 
-1. **Projeto no Google Cloud Console** com OAuth consent screen + credencial "Web application".
-2. Env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (ex: `${NEXT_PUBLIC_APP_URL}/api/integrations/google-calendar/callback`), `GCAL_TOKEN_ENC_KEY` (32 bytes; gerar com `openssl rand -hex 32`).
-3. Escopo mínimo nas Fases A/B: `https://www.googleapis.com/auth/calendar.events.readonly`.
-4. Iniciar a **verificação OAuth** do Google (escopo sensível) cedo — leva dias/semanas.
+1. ✅ **Projeto no Google Cloud Console** — `ConfirmaAi` (`confirmaai-501623`) na conta **wcwecalc@gmail.com** (2026-07-06). Consent screen Externo, modo Testando; credencial "Aplicativo da Web" `ConfirmaAi Web`.
+2. ✅ **Env vars** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GCAL_TOKEN_ENC_KEY` no `.env` de dev (`.env` é gitignored — secrets nunca no repo). `GOOGLE_OAUTH_REDIRECT_URI` explícito (por causa da porta 3001, ver § Provisionamento). **Falta: as mesmas 3 vars no Vercel.**
+3. ✅ **Escopo** `https://www.googleapis.com/auth/calendar.events.readonly` registrado (confidencial) + test users `wcwecalc@`, `rhonner.matheus@`.
+4. ⏳ **Verificação OAuth** do Google (escopo sensível) — **ainda não iniciada**; leva dias/semanas. Sem ela: modo Testando (cap 100 users, refresh expira em 7d). Bloqueia GA.
+
+## Provisionamento da credencial (2026-07-06) — o que aprendemos
+
+Setup feito via Chrome MCP na conta WeCalc. Gotchas não-óbvios do Google Cloud atual:
+
+- **MFA obrigatório**: desde 24/02/2026 o Google Cloud bloqueia acesso ao console sem verificação em duas etapas — o dono precisou ativar a MFA na conta antes de criar qualquer projeto.
+- **Client secret não é mais visível após a criação**: o Console só mostra os 4 últimos chars (`****xxxx`). O valor completo só aparece **uma vez** — no diálogo "Cliente OAuth criado" (botão "Baixar JSON") **ou** ao clicar "+ Add secret" (gera um novo, exibido 1×; máx 2 secrets por cliente). Se fechar o diálogo sem capturar, o secret é irrecuperável → adicionar um novo.
+- **Fluxo do consent tem 2 telas**: (1) login/e-mail, (2) "Selecione o que o app pode acessar" com **checkbox do escopo do calendário DESMARCADO por padrão** — tem que marcar senão o app não recebe `calendar.events.readonly` (e o callback trata como scope-mismatch).
+- **App name na consent screen** = "ConfirmaAí" (aparece como "Prosseguir para ConfirmaAí"). `id_token` do token endpoint traz o e-mail da conta (usado como rótulo no card).
+- **Porta 3000 pode estar ocupada** (no dev do dono, por Docker/supabase de outro projeto) → Next sobe em **3001**. Nesse caso: `NEXTAUTH_URL`/`NEXT_PUBLIC_APP_URL`/`GOOGLE_OAUTH_REDIRECT_URI` no `.env` devem apontar p/ 3001 **e** o cliente OAuth precisa do redirect `http://localhost:3001/...callback` autorizado. Ambos (3000 e 3001) estão autorizados no cliente.
+
+## Validação E2E real (2026-07-06 — Chrome MCP, dev em localhost:3001, credencial REAL)
+
+Login no app como usuário PREMIUM (seed via `toggle-admin-plan.ts PREMIUM`), consent real com a conta Google **wcwecalc@gmail.com** (test user). Confirmado:
+
+- **OAUTH-01** gate: card "Google Agenda" visível só com credencial no servidor + plano PREMIUM.
+- **OAUTH-02 [crítico]**: consent real → callback trocou code+verifier por tokens (log: `callback ... 303 in 3.7s`) → toast "Google Agenda conectada" → card "Conectado — wcwecalc@gmail.com". Refresh token persistido cifrado.
+- **OAUTH-03**: authUrl com `code_challenge_method=S256`, `state`, `prompt=consent`, `access_type=offline`, escopo readonly.
+- **OAUTH-05**: `GET /events` refez o access token a partir do refresh e chamou o Google (log: 200 em ~1.3s, round-trip real) → resposta `{ data: { connected: true, events: [] } }` (**sem `degraded`**; `events` vazio porque o calendário da wcwecalc não tinha eventos na semana — resultado válido).
+- **OAUTH-07**: escopo concedido no callback = `calendar.events.readonly openid email`.
+
+**O que SÓ falta validar com credencial real:** overlay renderizando eventos REAIS (calendário estava vazio na semana testada); revoke externo → NEEDS_RECONSENT (OAUTH-06); troca de conta (OAUTH-08); e o modo Testing (refresh expira em 7d).
 
 ## Fluxo OAuth implementado (Fase A, sessão 2)
 
