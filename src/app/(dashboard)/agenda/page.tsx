@@ -40,20 +40,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
 import { MonthCalendar, getMonthGridRange } from "@/components/agenda/month-calendar";
-import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus, MoreVertical } from "lucide-react";
+import { MonthView } from "@/components/agenda/month-view";
+import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus } from "lucide-react";
 import { ExportCsvButton } from "@/components/billing/export-csv-button";
-import { format, startOfWeek, endOfWeek, addWeeks, addDays, parseISO, eachDayOfInterval } from "date-fns";
+import { format, startOfWeek, endOfWeek, addWeeks, addMonths, addDays, parseISO, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -69,6 +64,10 @@ const appointmentSchema = z.object({
     .string()
     .max(2000, "Observações devem ter no máximo 2000 caracteres")
     .optional(),
+  // Status só é editável ao editar um agendamento existente (novo/promoção
+  // nasce PENDING). String livre p/ não rejeitar valores fora da lista de UI
+  // (ex.: NOT_CONFIRMED) — a lista exibida garante o valor atual (ver dialogStatusOptions).
+  status: z.string().optional(),
 });
 
 const NOTES_MAX_LENGTH = 2000;
@@ -102,6 +101,8 @@ function getStatusLabel(status: string) {
       return "Confirmado";
     case "PENDING":
       return "Pendente";
+    case "NOT_CONFIRMED":
+      return "Não confirmado";
     case "NO_SHOW":
       return "Faltou";
     case "CANCELED":
@@ -192,7 +193,7 @@ function GoogleEventBlock({
 }
 
 export default function AgendaPage() {
-  const [viewMode, setViewMode] = useState<"week" | "day">("week");
+  const [viewMode, setViewMode] = useState<"week" | "day" | "month">("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<{
@@ -224,14 +225,14 @@ export default function AgendaPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  // Lembra a última visão escolhida (Dia/Semana) entre sessões. Em efeito (não
-  // no init do useState) para não divergir do HTML do servidor (hydration).
+  // Lembra a última visão escolhida (Dia/Semana/Mês) entre sessões. Em efeito
+  // (não no init do useState) para não divergir do HTML do servidor (hydration).
   useEffect(() => {
     const saved = localStorage.getItem("agenda-view-mode");
-    if (saved === "day" || saved === "week") setViewMode(saved);
+    if (saved === "day" || saved === "week" || saved === "month") setViewMode(saved);
   }, []);
 
-  const changeViewMode = (mode: "week" | "day") => {
+  const changeViewMode = (mode: "week" | "day" | "month") => {
     setViewMode(mode);
     try {
       localStorage.setItem("agenda-view-mode", mode);
@@ -243,12 +244,25 @@ export default function AgendaPage() {
   const weekStart = startOfWeek(anchorDate, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(anchorDate, { weekStartsOn: 0 });
   const dayStr = format(anchorDate, "yyyy-MM-dd");
+  // Grade de 6 semanas do mês âncora (mesma fonte do mini-calendário) — cobre os
+  // dias que "vazam" dos meses vizinhos para a visão Mês não deixar cantos vazios.
+  const monthGrid = getMonthGridRange(anchorDate);
 
   // No modo Dia, busca só o dia âncora (startDate === endDate); no modo Semana,
-  // o intervalo de domingo a sábado. A API trata a string yyyy-MM-dd como dia
-  // local completo (ver features/appointments.md).
-  const rangeStart = viewMode === "week" ? format(weekStart, "yyyy-MM-dd") : dayStr;
-  const rangeEnd = viewMode === "week" ? format(weekEnd, "yyyy-MM-dd") : dayStr;
+  // o intervalo de domingo a sábado; no modo Mês, a grade inteira de 6 semanas.
+  // A API trata a string yyyy-MM-dd como dia local completo (ver features/appointments.md).
+  const rangeStart =
+    viewMode === "week"
+      ? format(weekStart, "yyyy-MM-dd")
+      : viewMode === "month"
+        ? format(monthGrid.start, "yyyy-MM-dd")
+        : dayStr;
+  const rangeEnd =
+    viewMode === "week"
+      ? format(weekEnd, "yyyy-MM-dd")
+      : viewMode === "month"
+        ? format(monthGrid.end, "yyyy-MM-dd")
+        : dayStr;
   const { data: appointments, isLoading } = useAppointments({
     startDate: rangeStart,
     endDate: rangeEnd,
@@ -390,13 +404,15 @@ export default function AgendaPage() {
 
   const hasActiveFilter = statusFilter !== "ALL" || patientFilter !== "ALL";
 
-  const handlePrevious = () => {
-    setAnchorDate((prev) => (viewMode === "week" ? addWeeks(prev, -1) : addDays(prev, -1)));
-  };
+  const step = (prev: Date, dir: 1 | -1) =>
+    viewMode === "week"
+      ? addWeeks(prev, dir)
+      : viewMode === "month"
+        ? addMonths(prev, dir)
+        : addDays(prev, dir);
 
-  const handleNext = () => {
-    setAnchorDate((prev) => (viewMode === "week" ? addWeeks(prev, 1) : addDays(prev, 1)));
-  };
+  const handlePrevious = () => setAnchorDate((prev) => step(prev, -1));
+  const handleNext = () => setAnchorDate((prev) => step(prev, 1));
 
   const handleToday = () => {
     setAnchorDate(new Date());
@@ -408,10 +424,31 @@ export default function AgendaPage() {
     setCalendarOpen(open);
   };
 
-  // Selecionar um dia no mini-calendário reposiciona a agenda (dia/semana).
+  // Selecionar um dia no mini-calendário reposiciona a agenda (dia/semana/mês).
   const handleSelectDate = (day: Date) => {
     setAnchorDate(day);
     setCalendarOpen(false);
+  };
+
+  // Clique num dia na visão Mês → foca aquele dia na visão Dia (drill-down).
+  const handleDrillToDay = (day: Date) => {
+    setAnchorDate(day);
+    changeViewMode("day");
+  };
+
+  // Botão "+" de uma célula do mês → novo agendamento já com a data preenchida.
+  const handleCreateOnDay = (day: Date) => {
+    setPromoteEvent(null);
+    setNewPatientDefaults({});
+    setSelectedAppointment(null);
+    reset({
+      patientId: "",
+      date: format(day, "yyyy-MM-dd"),
+      time: "",
+      durationMinutes: 30,
+      notes: "",
+    });
+    setDialogOpen(true);
   };
 
   const handleOpenDialog = (appointment?: typeof selectedAppointment) => {
@@ -426,6 +463,7 @@ export default function AgendaPage() {
         time: format(appointmentDate, "HH:mm"),
         durationMinutes: appointment.durationMinutes ?? 30,
         notes: appointment.notes || "",
+        status: appointment.status,
       });
     } else {
       setSelectedAppointment(null);
@@ -509,12 +547,19 @@ export default function AgendaPage() {
         setPromoteEvent(null);
         setNewPatientDefaults({});
       } else if (selectedAppointment) {
+        // Só enviamos `status` quando o usuário DE FATO mexeu no seletor. Enviar
+        // sempre o valor capturado ao abrir a janela sobrescreveria uma mudança
+        // feita pelo servidor no meio-tempo (paciente confirma no WhatsApp / cron
+        // de no-show), revertendo o status ao editar observações/horário.
+        const statusChanged =
+          data.status !== undefined && data.status !== selectedAppointment.status;
         await updateMutation.mutateAsync({
           id: selectedAppointment.id,
           patientId: data.patientId,
           dateTime,
           durationMinutes: data.durationMinutes,
           notes: data.notes,
+          ...(statusChanged ? { status: data.status } : {}),
         });
       } else {
         await createMutation.mutateAsync({
@@ -539,12 +584,16 @@ export default function AgendaPage() {
     }
   };
 
-  const handleStatusChange = async (appointmentId: string, newStatus: string) => {
-    await updateMutation.mutateAsync({
-      id: appointmentId,
-      status: newStatus,
-    });
-  };
+  // Opções do seletor de Status na janela de edição. Sempre inclui o status
+  // atual do agendamento — mesmo fora da lista padrão de UI (ex.: NOT_CONFIRMED)
+  // — para o "Atualizar" nunca trocar o status silenciosamente por um default.
+  const dialogStatusOptions = useMemo(() => {
+    const current = selectedAppointment?.status;
+    if (current && !statusOptions.some((s) => s.value === current)) {
+      return [{ value: current, label: getStatusLabel(current) }, ...statusOptions];
+    }
+    return statusOptions;
+  }, [selectedAppointment]);
 
   return (
     <div className="space-y-6">
@@ -667,6 +716,25 @@ export default function AgendaPage() {
                 </p>
               )}
 
+              {/* Status — só ao editar (novo/promoção nasce PENDING). Substitui o
+                  antigo menu "⋮" por-visão, unificando a ação em todas as visões. */}
+              {selectedAppointment && (
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <select
+                    id="status"
+                    {...register("status")}
+                    className="h-10 w-full rounded-lg border border-input/20 bg-input/10 px-3 text-sm shadow-xs transition-all duration-200 outline-none focus-visible:border-primary/50 focus-visible:bg-input/20 focus-visible:ring-2 focus-visible:ring-primary/20"
+                  >
+                    {dialogStatusOptions.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="notes">Observações</Label>
@@ -770,7 +838,7 @@ export default function AgendaPage() {
         )}
       </div>
 
-      {/* View toggle (Dia/Semana) + navegação */}
+      {/* View toggle (Dia/Semana/Mês) + navegação */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Alternador de visão — pique Google Agenda */}
         <div
@@ -781,6 +849,7 @@ export default function AgendaPage() {
           {([
             ["day", "Dia"],
             ["week", "Semana"],
+            ["month", "Mês"],
           ] as const).map(([mode, label]) => (
             <button
               key={mode}
@@ -817,7 +886,9 @@ export default function AgendaPage() {
                 <span className="font-medium first-letter:uppercase">
                   {viewMode === "week"
                     ? `${format(weekStart, "dd MMM", { locale: ptBR })} - ${format(weekEnd, "dd MMM yyyy", { locale: ptBR })}`
-                    : format(anchorDate, DAY_HEADER_FORMAT, { locale: ptBR })}
+                    : viewMode === "month"
+                      ? format(anchorDate, "MMMM 'de' yyyy", { locale: ptBR })
+                      : format(anchorDate, DAY_HEADER_FORMAT, { locale: ptBR })}
                 </span>
               </button>
             </PopoverTrigger>
@@ -866,8 +937,29 @@ export default function AgendaPage() {
         </p>
       )}
 
-      {/* Week View */}
-      {isLoading ? (
+      {/* Month / Week / Day View */}
+      {viewMode === "month" ? (
+        <MonthView
+          month={anchorDate}
+          appointmentsByDay={appointmentsByDay}
+          googleEventsByDay={googleEventsByDay}
+          onSelectDay={handleDrillToDay}
+          onSelectAppointment={(a) =>
+            handleOpenDialog({
+              id: a.id,
+              dateTime: a.dateTime,
+              durationMinutes: a.durationMinutes ?? 30,
+              patientId: a.patientId,
+              notes: a.notes,
+              status: a.status,
+            })
+          }
+          onCreateOnDay={handleCreateOnDay}
+          getStatusColor={getStatusColor}
+          getStatusLabel={getStatusLabel}
+          loading={isLoading}
+        />
+      ) : isLoading ? (
         <div className="grid gap-4">
           {Array.from({ length: viewMode === "week" ? 7 : 1 }).map((_, i) => (
             <Card key={i}>
@@ -976,13 +1068,11 @@ export default function AgendaPage() {
                         return (
                           <div
                             key={appointment.id}
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 hover:shadow-sm cursor-pointer"
+                            onClick={() => handleOpenDialog(appointment)}
+                            className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 hover:shadow-sm cursor-pointer"
                           >
-                            <div
-                              className="flex items-center gap-4 flex-1 cursor-pointer"
-                              onClick={() => handleOpenDialog(appointment)}
-                            >
-                              <div className="flex items-center gap-2 text-sm">
+                            <div className="flex min-w-0 items-center gap-4 flex-1">
+                              <div className="flex shrink-0 items-center gap-2 text-sm">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
                                 <span className="font-medium">
                                   {format(parseISO(appointment.dateTime), "HH:mm")}
@@ -991,37 +1081,13 @@ export default function AgendaPage() {
                                   ({appointment.durationMinutes ?? 30} min)
                                 </span>
                               </div>
-                              <span className="font-medium">
+                              <span className="truncate font-medium">
                                 {appointment.patient?.name}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge className={getStatusColor(appointment.status)}>
-                                {getStatusLabel(appointment.status)}
-                              </Badge>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                    <MoreVertical className="h-4 w-4" />
-                                    <span className="sr-only">Alterar status</span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {statusOptions
-                                    .filter((s) => s.value !== appointment.status)
-                                    .map((option) => (
-                                      <DropdownMenuItem
-                                        key={option.value}
-                                        onClick={() => handleStatusChange(appointment.id, option.value)}
-                                      >
-                                        <Badge className={`${getStatusColor(option.value)} mr-2`}>
-                                          {option.label}
-                                        </Badge>
-                                      </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
+                            <Badge className={`${getStatusColor(appointment.status)} shrink-0`}>
+                              {getStatusLabel(appointment.status)}
+                            </Badge>
                           </div>
                         );
                       })}
