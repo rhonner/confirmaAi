@@ -11,8 +11,8 @@
  * `LEGAL_UPDATED_LABEL`. Ao mudar o texto de forma material, BUMPe a versão.
  */
 
-export const LEGAL_VERSION = "2026-06-20";
-export const LEGAL_UPDATED_LABEL = "20 de junho de 2026";
+export const LEGAL_VERSION = "2026-07-10";
+export const LEGAL_UPDATED_LABEL = "10 de julho de 2026";
 
 /** Marcadores que o operador deve preencher antes de publicar de verdade. */
 export const CONTROLLER_NAME = "[A PREENCHER: razão social / nome do responsável]";
@@ -34,6 +34,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     paragraphs: [
       "A Clínica Organizada ajuda profissionais e estabelecimentos de saúde e bem-estar a gerenciar agendamentos, cadastrar pacientes e enviar confirmações e lembretes automáticos por WhatsApp, reduzindo faltas (no-shows).",
       "O envio de mensagens depende de uma conexão ativa de WhatsApp do próprio usuário, feita pelo Serviço. A disponibilidade do WhatsApp é de terceiros e pode variar.",
+      "Opcionalmente, você pode conectar sua conta do Google para visualizar os eventos da sua Google Agenda dentro do Serviço, apenas como referência (somente leitura). O Serviço não cria, edita nem exclui eventos na sua Google Agenda.",
     ],
   },
   {
@@ -134,7 +135,17 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     ],
   },
   {
-    heading: "8. Alterações desta Política",
+    heading: "8. Integração com o Google Calendar (Google Agenda)",
+    paragraphs: [
+      "A conexão com o Google Calendar é opcional e só ocorre após seu consentimento explícito na tela do Google. Ao conectar, o Serviço recebe acesso somente-leitura aos eventos da sua Google Agenda (escopo www.googleapis.com/auth/calendar.events.readonly).",
+      "Uso: os eventos da sua Google Agenda são exibidos apenas como blocos de contexto (somente leitura), ao lado dos seus agendamentos, para ajudar no planejamento. O Serviço não cria, edita nem exclui eventos na sua Google Agenda, e esses eventos não recebem confirmações automáticas por WhatsApp.",
+      "Armazenamento e compartilhamento: as credenciais de acesso (tokens do Google) são armazenadas de forma cifrada; os eventos são consultados em tempo real e não são retidos de forma persistente pelo Serviço. Não usamos os dados da sua Google Agenda para publicidade, não os vendemos e não os compartilhamos com terceiros, exceto os provedores de hospedagem estritamente necessários para operar o recurso.",
+      "O uso e a transferência, pelo Serviço, de informações recebidas das APIs do Google obedecem à Política de Dados do Usuário dos Serviços de API do Google (Google API Services User Data Policy), inclusive aos requisitos de Uso Limitado (Limited Use).",
+      "Revogação: você pode desconectar a Google Agenda a qualquer momento nas Configurações do Serviço, ou revogar o acesso em myaccount.google.com/permissions. Ao desconectar, revogamos e removemos os tokens armazenados.",
+    ],
+  },
+  {
+    heading: "9. Alterações desta Política",
     paragraphs: [
       "Podemos atualizar esta Política. A versão vigente fica sempre disponível nesta página, com a data de última atualização; mudanças materiais serão comunicadas.",
     ],

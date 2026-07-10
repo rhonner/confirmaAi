@@ -2,7 +2,9 @@
 
 > Conexão OAuth por tenant com o Google Calendar (feature **PREMIUM**), para trazer os eventos da agenda do Google para dentro do ConfirmaAí. Entregue em fases: **A (overlay só-leitura) → B (importação seletiva + confirmação opt-in) → C (sync bidirecional)**.
 
-## Status (2026-07-06 — credencial real + E2E validado)
+## Status (2026-07-10 — E2E real ampliado: overlay real + OAUTH-05/06/07)
+
+- **2026-07-10:** com a credencial real, validados via Chrome MCP: **overlay renderizando eventos REAIS** (timed/dia-inteiro/privado→"Ocupado"/intercalação com agendamentos), **OAUTH-06** (revoke externo → NEEDS_RECONSENT → reconnect), **OAUTH-07** (scope-mismatch não corrompe conexão) e **OAUTH-05** (reconnect com refresh novo). Detalhe em § Validação E2E real — rodada 2. Só **OAUTH-08** (troca de conta) segue pendente. Bloqueadores de GA inalterados (Vercel + verificação OAuth).
 
 - **Fase A — fundação de backend: IMPLEMENTADA e validada** (sessão 1). Modelo `GoogleCalendarConnection`, cifra de token AES-256-GCM, gate de entitlement PREMIUM e **teardown LGPD** (revoke + delete no delete de conta e rede de segurança na purga).
 - **Fase A — rotas OAuth + UI + overlay: IMPLEMENTADAS e validadas** (sessão 2; tsc · vitest 326 · build · test:sprints 135 · walk-through Playwright 23/23 com credencial FAKE — ver § Validação manual no browser; code-review xhigh de 35 agentes com 15 achados endereçados — ver § Code-review). Fluxo completo: `oauth.ts` (PKCE S256 + state em cookie httpOnly), rotas `connect/callback/disconnect/status/events`, card em /configuracoes, overlay read-only na agenda. **Commitado + pushado em `bc3b1e5` (branch `v1.0.1`).**
@@ -108,7 +110,8 @@ Agrupados; **críticos** exigem validação obrigatória antes de GA. Passos det
 ## Dependências externas
 
 1. ✅ **Projeto no Google Cloud Console** — `ConfirmaAi` (`confirmaai-501623`) na conta **wcwecalc@gmail.com** (2026-07-06). Consent screen Externo, modo Testando; credencial "Aplicativo da Web" `ConfirmaAi Web`.
-2. ✅ **Env vars** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GCAL_TOKEN_ENC_KEY` no `.env` de dev (`.env` é gitignored — secrets nunca no repo). `GOOGLE_OAUTH_REDIRECT_URI` explícito (por causa da porta 3001, ver § Provisionamento). **Falta: as mesmas 3 vars no Vercel.**
+2. ⏳ **Env vars** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GCAL_TOKEN_ENC_KEY` no `.env` de dev (`.env` é gitignored — secrets nunca no repo). `GOOGLE_OAUTH_REDIRECT_URI` explícito (por causa da porta 3001, ver § Provisionamento). **Vercel (produção, projeto `saas1`, 2026-07-10): ✅ 4/4 vars completos.** `GOOGLE_CLIENT_ID` + `GOOGLE_OAUTH_REDIRECT_URI` (=`https://clinicaorganizada.com/api/integrations/google-calendar/callback`) adicionados via CLI pelo assistente; `GOOGLE_CLIENT_SECRET` + `GCAL_TOKEN_ENC_KEY` (nova, prod-only) adicionados pelo dono via `... | vercel env add` (o classificador de credencial bloqueia o assistente de materializar secret). Confirmado com `vercel env ls production`. **`GCAL_TOKEN_ENC_KEY` de prod é independente da de dev** (bancos separados; higiene de chave).
+   - ✅ **Redirect de prod adicionado ao cliente OAuth** `ConfirmaAi Web` (`https://clinicaorganizada.com/api/integrations/google-calendar/callback`) em 2026-07-10 (agora 3 redirects: localhost:3000, :3001, prod). Prod serve na raiz `clinicaorganizada.com` (www→raiz).
 3. ✅ **Escopo** `https://www.googleapis.com/auth/calendar.events.readonly` registrado (confidencial) + test users `wcwecalc@`, `rhonner.matheus@`.
 4. ⏳ **Verificação OAuth** do Google (escopo sensível) — **ainda não iniciada**; leva dias/semanas. Sem ela: modo Testando (cap 100 users, refresh expira em 7d). Bloqueia GA.
 
@@ -132,7 +135,35 @@ Login no app como usuário PREMIUM (seed via `toggle-admin-plan.ts PREMIUM`), co
 - **OAUTH-05**: `GET /events` refez o access token a partir do refresh e chamou o Google (log: 200 em ~1.3s, round-trip real) → resposta `{ data: { connected: true, events: [] } }` (**sem `degraded`**; `events` vazio porque o calendário da wcwecalc não tinha eventos na semana — resultado válido).
 - **OAUTH-07**: escopo concedido no callback = `calendar.events.readonly openid email`.
 
-**O que SÓ falta validar com credencial real:** overlay renderizando eventos REAIS (calendário estava vazio na semana testada); revoke externo → NEEDS_RECONSENT (OAUTH-06); troca de conta (OAUTH-08); e o modo Testing (refresh expira em 7d).
+**O que SÓ falta validar com credencial real:** overlay renderizando eventos REAIS (calendário estava vazio na semana testada); revoke externo → NEEDS_RECONSENT (OAUTH-06); troca de conta (OAUTH-08); e o modo Testing (refresh expira em 7d). **→ Overlay real, OAUTH-06/05/07 validados em 2026-07-10 (ver seção abaixo); só OAUTH-08 segue pendente.**
+
+## Validação E2E real — rodada 2 (2026-07-10 — Chrome MCP, dev em localhost:3001, credencial REAL, conta wcwecalc)
+
+Fechou os gaps que a rodada de 2026-07-06 não pôde cobrir (calendário estava vazio). Perfil Chrome = WeCalc; **aprendizado crítico**: a conta ativa u/0 é `rhonner.matheus@gmail.com` — a conexão do app é com `wcwecalc@gmail.com` (u/2); confirmar SEMPRE pela conta, não pelo nome de exibição ("Rhonner Matheus" também é o display de uma conta ≠ da conectada).
+
+- **Overlay com eventos REAIS [fecha o gap principal]:** criados 4 eventos de teste no Google Calendar da wcwecalc. Confirmado na `/agenda` do app: (1) **timed** "09:30–10:30" com badge "Google"; (2) **dia-inteiro** pinado no topo com label "Dia inteiro"; (3) **privado** (`visibility=particular`) renderizado com título **"Ocupado"** (redação de PII confirmada com dado real); (4) **intercalação por horário com agendamentos reais** — evento Google 11:00–12:00 apareceu entre os agendamentos das 09:00 e 14:30 no mesmo dia, sem menu de ações nem pill de status (firewall visual). Dia só-Google não cai no empty state. `GET /events` = 200 (round-trip real ao Google).
+- **OAUTH-06 [crítico] — revoke externo → NEEDS_RECONSENT:** dono removeu o acesso do app em myaccount.google.com (Apps vinculados → ConfirmaAí → "Excluir tudo"; lista caiu de 8→7 apps, "acesso à conta" 1→0). Próximo `/events` (com access token cacheado ainda válido) → Google 401 → retry 1× → refresh → `invalid_grant` → DB `NEEDS_RECONSENT` + `lastError="invalid_grant no refresh"`, **token mantido**, `revokedAt` nulo. `/events` seguiu 200 (degradou em silêncio, nunca 5xx). UI: banner âmbar na agenda ("conexão expirou — reconecte em Configurações"), blocos Google somem, **agendamentos intactos**; card "Reconexão necessária" + botões Reconectar/Desconectar. Exercita 401-retry **e** persistência de reconsent.
+- **OAUTH-07 [bônus, credencial real] — scope-mismatch não corrompe conexão saudável:** na 1ª tentativa de reconnect o dono **não marcou o checkbox do escopo do calendário** → Google concedeu só `email openid` → callback detectou mismatch → `?gcal_error=scope` e, por ser a **mesma conta com conexão existente**, **NÃO revogou** o grant nem alterou a linha NEEDS_RECONSENT (comportamento do fix #2 do code-review confirmado ao vivo).
+- **OAUTH-05 [bônus] — reconnect completo:** 2ª tentativa com o escopo concedido → callback trocou code+PKCE por tokens → `?gcal=connected` → DB `CONNECTED`, escopos com `calendar.events.readonly`, `connectedAt` renovado, refresh token novo (relógio de 7d do Testing reiniciado → expira ~2026-07-17), access token fresco. Overlay real voltou a renderizar.
+
+**Gotcha de GA reconfirmado ao vivo:** a tela "O Google não verificou este app" aparece em TODO consent enquanto o app não passar pela **verificação OAuth** — inclusive em produção. Sem verificação aprovada, todo cliente pagante vê o aviso de app não-verificado. É bloqueador duro de GA do PREMIUM.
+
+**Só falta com credencial real:** OAUTH-08 (troca de conta Google — reconectar com conta ≠ da conectada; exige 2 rodadas de consent e troca qual conta fica ligada). Tentado em 2026-07-10 mas falhou por **timeout do state** (consent > 10 min por causa das telas do Google + tempo humano); o branch same-account (não revoga) já está coberto pelas reconexões de hoje.
+
+## Melhoria de UX: erro de consent persistente no card (2026-07-10)
+
+Feedback do dono ao vivo: quando a pessoa conclui o login **sem marcar o checkbox** do escopo, o erro só aparecia como **toast efêmero** — ela ficava sem saber o que houve nem como refazer. Implementado em `google-calendar-connection.tsx`:
+
+- O desfecho de erro do callback (`?gcal_error=<motivo>`) agora vira **estado persistente** (`callbackError`) além do toast: um **alerta inline dentro do card** ("Não foi possível conectar" + mensagem específica) com um botão **"Tentar novamente"** (reinicia o `connect`) e um "×" para dispensar.
+- Mensagens de `scope` e `state` reescritas para acionáveis: `scope` orienta marcar a caixa "Ver eventos em todas as suas agendas"; `state` explica que a sessão de segurança expira em ~10 min e pede rapidez.
+- **Aprendizado (state cookie TTL):** o cookie de state/PKCE tem TTL de 600s; consentimentos reais lentos (aviso de app não-verificado + hesitação) podem estourar isso → `gcal_error=state`. A nova UX cobre esse caso; se virar fricção recorrente em produção, avaliar subir o TTL.
+- **Code-review xhigh (2026-07-10, 18 agentes) — 4 fixes aplicados:** (1) alerta agora é **limpo ao desconectar com sucesso** (não fica "Não foi possível conectar" ao lado de "não conectada"); (2) `handleConnect` **não limpa o erro otimisticamente** (retry que falha mantém a mensagem — o sucesso limpa via redirect+effect); (3) **botão de refazer não é mais duplicado** (só o "Tentar novamente" do alerta quando há erro; o "Conectar" de baixo some); (4) mensagens `scope`/`state` **reescritas** sem citar o label PT-BR fixo do checkbox do Google (funciona com a conta Google em qualquer idioma). Aceito por design: alerta suprimido para `plan`/`session` quando o card fica oculto (não-premium sem card = PREMIUM oculto; sessão morta → login). Gate re-rodado verde.
+
+### Invariante confirmado ao vivo — NÃO existe "meio conectado" (2026-07-10)
+
+Pergunta do dono: "se eu conectar do zero e não marcar o checkbox, fico meio conectado?" **Não.** Validado E2E com credencial real: connect do zero (sem linha) + escopo sem calendário → o callback (`callback/route.ts:82-87`) **verifica o escopo ANTES de qualquer upsert**, revoga o grant recém-criado (higiene, pois não há conexão existente) e retorna `?gcal_error=scope` **sem gravar linha** → o app fica **DISCONNECTED** (não num limbo) + o novo alerta inline. Se já existisse conexão saudável da MESMA conta, ela ficaria **intacta** (o scope-mismatch não a toca). Gate após a mudança de UI: tsc · vitest 326 · build · sprints 135/135 (verde).
+
+> Helpers de dev novos (gitignore não os cobre; são scripts de teste): `scripts/check-gcal-state.ts` (lê estado da conexão), `scripts/gcal-set-status.ts` (força status sem tocar token), `scripts/gcal-delete-connection.ts` (apaga a linha → DISCONNECTED).
 
 ## Fluxo OAuth implementado (Fase A, sessão 2)
 
@@ -185,6 +216,13 @@ Workflow de 35 agentes (finders por ângulo + verificação adversarial independ
 
 ## Como estender / próximos passos
 
-1. **Dono (bloqueia GA):** provisionar credenciais reais (§ Dependências externas), setar env em dev E no Vercel (`GOOGLE_CLIENT_ID/SECRET`, `GCAL_TOKEN_ENC_KEY`; `GOOGLE_OAUTH_REDIRECT_URI` opcional — deriva de `NEXT_PUBLIC_APP_URL`) e **iniciar a verificação OAuth** no Google Cloud Console (escopo sensível; dias/semanas).
+1. **Dono (bloqueia GA):** (a) **✅ credenciais reais provisionadas**; (b) **✅ Vercel: 4/4 vars em produção** (`GOOGLE_CLIENT_ID`, `GOOGLE_OAUTH_REDIRECT_URI`, `GOOGLE_CLIENT_SECRET`, `GCAL_TOKEN_ENC_KEY`); (c) **✅ redirect de prod no cliente OAuth adicionado**; (d) **⏳ verificação OAuth** (escopo sensível; dias/semanas) — **maior bloqueador restante**. **CNPJ NÃO é exigido pelo Google** (nem pela LGPD-PF: o campo legal aceita CPF). Prep feita em 2026-07-10:
+   - **consent screen (Branding):** página inicial `clinicaorganizada.com`, política `/privacidade`, termos `/termos`, domínio autorizado, e-mails de contato — salvos.
+   - **(d2) nome do app ✅ renomeado** "ConfirmaAí" → **"Clínica Organizada"** (consistência com domínio/marca; consent agora diz "Clínica Organizada").
+   - **(d1) política de privacidade:** adicionada a **seção 8 "Integração com o Google Calendar"** em `src/lib/legal/content.ts` (uso read-only, tokens cifrados, sem venda/compartilhamento, **afirmação de Uso Limitado / Google API Services User Data Policy**, revogação) + menção nos Termos + `LEGAL_VERSION` bumpado p/ `2026-07-10` (sem gate de reconsent — `LEGAL_VERSION` só carimba signup novo). **FALTA do dono:** preencher os 3 placeholders (`CONTROLLER_NAME`, `CONTROLLER_DOC`=**CPF** basta, `DPO_EMAIL`) — CPF o próprio dono digita (assistente não insere documento). Revisão de advogado recomendada (não é requisito do Google).
+   - **(d3) logo** quadrado 120×120 (≤1MB) — recomendado p/ brand verification (dono fornece).
+   - **(d4) vídeo demo** (YouTube) — escopo é **sensível (não restrito)**, então vídeo normalmente NÃO é obrigatório; Google pode pedir no review.
+   - App segue em **"Testando"** (2/100) — **NÃO publiquei/submeti** (aguarda d1 placeholders). Depois: Publicar app (Testing→Production) + Central de verificação (justificativa: overlay read-only da própria agenda, sem escrita).
+   (e) merge do código do GCal `v1.0.1` → `main` (rotas não estão em prod) + redeploy; (f) destravar PREMIUM (`plans.ts hidden:false`) só após (d)+(e)+E2E em prod.
 2. **Com credencial real:** validar E2E no Chrome MCP a matriz OAUTH-01..08 (consent real, refresh, revoke externo, troca de conta) + eventos reais no overlay → só então destravar PREMIUM (`plans.ts` `hidden:false`).
 3. **Fase B:** modelo `ExternalEvent` + sync incremental (`syncToken`, resumível) + fluxo "Promover" (matching acima) + propagação de cancelamento/reagendamento + cron de retry de revoke pendente (limitação do disconnect). Atualizar este arquivo.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -16,15 +16,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CalendarDays, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckCircle2, RefreshCw, X } from "lucide-react";
 
 /** Mensagens dos desfechos do callback OAuth (`?gcal=` / `?gcal_error=`). */
 const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
   denied: "Conexão cancelada no Google.",
-  state: "A sessão do fluxo de conexão expirou. Tente conectar novamente.",
+  state:
+    "O tempo do consentimento esgotou (a sessão de segurança expira em ~10 min). Conecte novamente e conclua sem demora.",
   plan: "Recurso disponível apenas no plano Premium.",
   scope:
-    "A permissão de leitura da agenda não foi concedida. Marque o acesso ao Google Calendar na tela de consentimento.",
+    "Você concluiu o login sem autorizar o acesso à agenda. Conecte novamente e, na tela do Google, permita que o ConfirmaAí veja os eventos do seu Google Calendar.",
   no_refresh:
     "O Google não devolveu as credenciais esperadas. Remova o acesso do ConfirmaAí em myaccount.google.com/permissions e tente novamente.",
   session: "Sua sessão expirou durante a conexão. Faça login e tente de novo.",
@@ -43,8 +44,11 @@ export function GoogleCalendarConnection() {
   const connect = useGoogleCalendarConnect();
   const disconnect = useGoogleCalendarDisconnect();
   const queryClient = useQueryClient();
+  // Erro do último callback OAuth, persistido no card (não só toast efêmero) —
+  // senão a pessoa que erra o consentimento não vê o que aconteceu nem como refazer.
+  const [callbackError, setCallbackError] = useState<string | null>(null);
 
-  // Desfecho do callback OAuth: toast + limpa a URL (uma vez, no mount).
+  // Desfecho do callback OAuth: toast + mensagem persistente + limpa a URL (uma vez, no mount).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ok = params.get("gcal");
@@ -52,16 +56,25 @@ export function GoogleCalendarConnection() {
     if (!ok && !err) return;
     if (ok === "connected") {
       toast.success("Google Agenda conectada! Seus eventos aparecem na agenda.");
+      setCallbackError(null);
       queryClient.invalidateQueries({ queryKey: ["gcal-status"] });
       queryClient.invalidateQueries({ queryKey: ["gcal-events"] });
     } else if (err) {
       toast.error(CALLBACK_ERROR_MESSAGES[err] ?? CALLBACK_ERROR_MESSAGES.internal);
+      setCallbackError(err);
     }
     params.delete("gcal");
     params.delete("gcal_error");
     const qs = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
   }, [queryClient]);
+
+  // Reinicia o fluxo de conexão. NÃO limpa o erro persistido aqui: se o connect
+  // falhar (sem redirect ao Google), a mensagem tem que continuar visível. O
+  // sucesso redireciona e o callback volta com ?gcal=connected, que limpa no effect.
+  const handleConnect = () => {
+    connect.mutate();
+  };
 
   const data = status.data;
   if (!data) return null;
@@ -84,6 +97,9 @@ export function GoogleCalendarConnection() {
       return;
     }
     await disconnect.mutateAsync();
+    // Desconectou com sucesso → some com um eventual alerta de erro antigo
+    // (senão fica "Não foi possível conectar" ao lado de "não conectada").
+    setCallbackError(null);
   };
 
   return (
@@ -99,6 +115,40 @@ export function GoogleCalendarConnection() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {callbackError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-3 rounded-md border border-yellow-500/40 bg-yellow-50 p-3 text-sm dark:bg-yellow-950/30"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" />
+            <div className="flex-1">
+              <p className="font-medium">Não foi possível conectar</p>
+              <p className="mt-0.5 text-muted-foreground">
+                {CALLBACK_ERROR_MESSAGES[callbackError] ?? CALLBACK_ERROR_MESSAGES.internal}
+              </p>
+              {canStartConnect && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-2"
+                  onClick={handleConnect}
+                  disabled={connect.isPending}
+                >
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  {connect.isPending ? "Redirecionando..." : "Tentar novamente"}
+                </Button>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label="Dispensar aviso"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => setCallbackError(null)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             {isConnected ? (
@@ -145,12 +195,14 @@ export function GoogleCalendarConnection() {
                 {disconnect.isPending ? "Desconectando..." : "Desconectar"}
               </Button>
             )}
-            {!isConnected && canStartConnect && (
+            {/* Quando há erro de callback, o botão de refazer vive DENTRO do
+                alerta ("Tentar novamente") — não duplicar aqui embaixo. */}
+            {!isConnected && canStartConnect && !callbackError && (
               <Button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
-                  connect.mutate();
+                  handleConnect();
                 }}
                 disabled={connect.isPending}
               >
