@@ -222,3 +222,17 @@ Sessão da **Fase C**: um `Appointment` criado/editado/cancelado/excluído no ap
 ## [2026-07-10 21:40] ingest | GCal Fase C: gotcha de suporte "achei que não espelhou" — 2 páginas atualizadas + addendum no raw
 
 Follow-up de debug da mesma sessão. Dono reportou "criei agendamento e não espelhou" → investigado e **espelhou sim** (`googleEventId` gravado + evento vivo na agenda da wcwecalc, confirmado por `scripts/gcal-list-raw.ts`). Dois comportamentos CORRETOS que parecem bug, agora documentados: (1) **no-op silencioso** em grant só-leitura → agendamentos criados antes do reconsent de escrita não espelham; backfill só ao editar (não há job em massa = B2); (2) o evento vai pra agenda da **conta CONECTADA** (wcwecalc), não da conta de login do app nem da conta padrão do navegador → olhar a conta errada é o falso-negativo nº1. Registrado em `.context/features/google-calendar.md` § "Diagnóstico / gotchas de suporte (Fase C)" + nota na synthesis [[google-calendar-integration-state]] (Contradições/lacunas) + addendum no raw. Sem página de conceito nova (o gotcha de conta já é [[claude-chrome-per-profile-extension]]; o resto é operacional da feature).
+
+## [2026-07-10 22:15] ingest | Agenda: visão de Mês + unificação das ações (status/exclusão) — +1 raw, +2 concepts, 1 entity + index/log
+
+Sessão de UI em Agendamentos. **Visão Mês** nova (`month-view.tsx`: grid 6 semanas, chips por status + Google, drill p/ Dia, "+" cria com data, pontos no mobile) reaproveitando `getMonthGridRange` como fonte única do range. Depois, a pedido do dono, **unificação das ações nas 3 visões**: removido o menu "⋮" por-card; a **janela de edição** virou o único lugar de ação (ganhou `<select>` Status; Excluir já existia). Antes era inconsistente (Dia/Semana só status; Mês só excluir). Trade-off aceito: status virou 2–3 cliques.
+
+O `/code-review high` (workflow, 16 agentes) pegou **1 regressão de perda de dados que eu introduzi** + 2 defeitos de correção da visão Mês, todos corrigidos e re-verificados no Chrome:
+- [[edit-form-clobbers-concurrent-field]] (novo concept): a janela mandava `status` SEMPRE → salvar edição de observações revertia uma confirmação (WhatsApp) / no-show (cron) feita no meio-tempo. Fix: só enviar `status` se `data.status !== selectedAppointment.status`.
+- Cap de 3 chips consumido por eventos "dia inteiro" do Google → agendamentos sumiam no "+N mais". Fix: **agendamentos primeiro**, depois Google (diverge de propósito do Dia/Semana).
+- Mês ignorava `isLoading` → grid vazio na navegação. Fix: prop `loading` → overlay "Carregando…".
+- `NOT_CONFIRMED` sem label pt-BR; memoização `itemsForDay`→`timelinesByDay`; import morto/comentários.
+
+Técnicas de teste que viraram concept [[chrome-mcp-drive-and-assert-via-js]]: setar select/input nativo via setter do prototype + `dispatch('change')` p/ o RHF captar (setas do select nativo do macOS são flaky pela extensão); interceptar `window.fetch` p/ asseverar o corpo do PUT (provou o fix do clobber: sem mudança → PUT sem `status`; com mudança → com `status`) e p/ injetar latência e capturar o overlay de loading. Adicionado à [[radix-popover-and-dialog]] o gotcha do **1º clique após fechar Dialog ser engolido** (recorreu o tempo todo no walk-through).
+
+Gate: tsc · vitest **357** · build · sprints **143/143**. Operacional em `.context/features/appointments.md` (§ visão Mês, § ações unificadas). Não commitado (dono via `gh`; mensagem de commit entregue no chat). index.md: raw 20→21.

@@ -12,7 +12,7 @@ Coisas concretas: libs, serviços, integrações, ferramentas.
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
 | [prisma-v7-extensions](pages/entities/prisma-v7-extensions.md) | `$extends({ query })` para auditoria automática; cuidados com recursão, ALS, tx | 2026-05-07 |
-| [radix-popover-and-dialog](pages/entities/radix-popover-and-dialog.md) | Gotchas: `.click()` programático não dispara Popover; variant `hard` em Dialog | 2026-05-07 |
+| [radix-popover-and-dialog](pages/entities/radix-popover-and-dialog.md) | Gotchas: `.click()` programático não dispara Popover; variant `hard` em Dialog; **1º clique após fechar Dialog é engolido** (teardown pointer-events) → clicar 2× no Chrome MCP | 2026-07-10 |
 | [asaas-integration](pages/entities/asaas-integration.md) | Endpoints, config env, sem portal-style Stripe; **PF sem CNPJ ok (NF-e não), painel não-automatizável** | 2026-06-10 |
 | [neon-postgres](pages/entities/neon-postgres.md) | DB de prod no Neon (projeto `confirmaai`, SP): cap Free 100 CU-hrs, **billing gerenciado pela Vercel**, Launch usage-based ($0.106/CU-h), scale-to-zero | 2026-06-26 |
 
@@ -67,6 +67,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [regression-test-assert-the-predicate](pages/concepts/regression-test-assert-the-predicate.md) | Grep da chamada (`findMany`) ≠ grep do predicado load-bearing (`!promotedIds.has`): check tautológico passa com o filtro invertido/removido. Asserte o predicado ou observe a saída real | 2026-07-10 |
 | [revive-cancelled-event-on-id-reuse](pages/concepts/revive-cancelled-event-on-id-reuse.md) | Id determinístico + delete real: reinserir bate no **tombstone** cancelado (409) sem restaurar. `409` de insert idempotente é ambíguo → ressuscitar via `patch status:"confirmed"`, não tratar como sucesso cego | 2026-07-10 |
 | [patch-merge-clear-requires-explicit-empty](pages/concepts/patch-merge-clear-requires-explicit-empty.md) | `events.patch` (merge semantics): omitir um campo NÃO o limpa. Reusar builder de create como corpo de patch mantém valor antigo ao esvaziar → enviar `""`/`null`. "Editar preenchendo ok, apagando não reflete" | 2026-07-10 |
+| [edit-form-clobbers-concurrent-field](pages/concepts/edit-form-clobbers-concurrent-field.md) | Form de edição que reenvia SEMPRE um campo capturado ao abrir sobrescreve mudança concorrente do servidor (webhook/cron) → só enviar o campo se mudou vs. o valor carregado; PUT com `updateData` explícito é pré-requisito | 2026-07-10 |
+| [chrome-mcp-drive-and-assert-via-js](pages/concepts/chrome-mcp-drive-and-assert-via-js.md) | Técnicas de teste no Chrome MCP: setar select/input nativo via setter do prototype + `dispatch('change')` p/ RHF captar; interceptar `window.fetch` p/ asseverar payload e injetar latência p/ ver loading | 2026-07-10 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -83,7 +85,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 20 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 21 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

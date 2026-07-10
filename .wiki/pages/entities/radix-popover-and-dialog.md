@@ -2,12 +2,14 @@
 title: Radix Popover & Dialog — gotchas
 type: entity
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-07-10
 tags: [radix, ui, gotcha, testing]
 sources:
   - raw/sessions/2026-05-07-sprint-1-3-monetizacao.md
+  - raw/sessions/2026-07-10-2200-agenda-month-view.md
 related:
   - .context/features/plan-quota.md
+  - pages/concepts/chrome-mcp-drive-and-assert-via-js.md
 status: stable
 ---
 
@@ -51,6 +53,17 @@ Radix Popover usa **pointer events** (`onPointerDown` interno), não o `click` c
 - Click fora → não fecha ✓
 - ESC → não fecha ✓
 - Click no "Assinar Pro" → navega ✓
+
+## Dialog: o 1º clique após fechar é engolido
+
+Ao fechar um `Dialog`/`AlertDialog` (via `Cancelar`, ESC, click-fora, ou submit que fecha), o teardown do Radix (remoção do overlay + release do focus/pointer-events lock) **absorve o clique imediatamente seguinte**. No próprio Radix isso raramente incomoda um humano (o clique some num piscar), mas em **roteiro de teste no Chrome MCP** é determinístico e recorrente: o primeiro `computer.left_click` depois de fechar um modal não faz nada.
+
+**Implicações pra teste (Chrome MCP):**
+- Depois de fechar um Dialog, **clique 2×** no próximo alvo (ou intercale um `screenshot`/`wait`).
+- Vale também para fechar um `AlertDialog` sobreposto a um Dialog: o clique seguinte (ex.: `Cancelar` do Dialog de baixo) é engolido; use `Escape` ou re-clique.
+- Não é bug da app — é o ciclo de vida do Radix. Não "conserte" no produto por causa do teste.
+
+Faz par com as técnicas em [[chrome-mcp-drive-and-assert-via-js]].
 
 ## Implicação pra Definition of Done
 
