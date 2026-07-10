@@ -58,6 +58,10 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [nextauth-getserversession-noop-res](pages/concepts/nextauth-getserversession-noop-res.md) | `getServerSession` (RSC, 1 arg) roda o callback `jwt` mas usa `res` no-op → cookie reescrito é descartado; throttle via `token.checkedAt` não persiste no servidor → usar cache em memória (`Map<userId,ts>`) | 2026-07-04 |
 | [external-event-firewall](pages/concepts/external-event-firewall.md) | Registros de fonte externa (Google Calendar) em **tabela separada só-leitura**, não coluna `source` em `Appointment` — senão o scheduler manda WhatsApp/marca NO_SHOW falso. Firewall físico > filtro que se esquece | 2026-07-05 |
 | [soft-delete-skips-cascade-cleanup](pages/concepts/soft-delete-skips-cascade-cleanup.md) | Soft-delete nunca remove `User` → `onDelete:Cascade` **jamais dispara** → token OAuth vivo fica órfão (LGPD). Teardown explícito: pós-commit, isolado, keep-on-failure + retry na purga | 2026-07-05 |
+| [oauth-scope-check-before-persist](pages/concepts/oauth-scope-check-before-persist.md) | Callback valida escopo concedido **antes** do upsert → **não existe "meio conectado"**; fresh connect sem o escopo rejeita limpo (revoga o grant novo, não grava linha) | 2026-07-10 |
+| [oauth-state-cookie-ttl-expiry](pages/concepts/oauth-state-cookie-ttl-expiry.md) | Cookie de state/PKCE expira em ~10 min → consent real lento (aviso "app não verificado") estoura em `gcal_error=state` mesmo com o escopo concedido; ≠ scope-mismatch | 2026-07-10 |
+| [google-oauth-verification-sensitive-scope](pages/concepts/google-oauth-verification-sensitive-scope.md) | Verificação de escopo **sensível** (`calendar.events.readonly`): exige política c/ Uso Limitado + nome↔domínio + logo. **CNPJ NÃO exigido** (CPF ok); vídeo geralmente não (é de escopo *restrito*) | 2026-07-10 |
+| [vercel-preview-build-no-db-creds](pages/concepts/vercel-preview-build-no-db-creds.md) | Preview deploy falha no `vercel-build` (`prisma migrate deploy` sem `DIRECT_URL`/`DATABASE_URL`, Production-only por design). Não afeta prod; fix cosmético = guard `VERCEL_ENV` | 2026-07-10 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -66,7 +70,7 @@ Sumários cruzados, comparações, teses evolutivas.
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
 | [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 + Sprint 10 em progresso: admin/atividade, reset de senha, emails transacionais), incidente de migration, Sentry+UptimeRobot ativos | 2026-06-14 |
-| [google-calendar-integration-state](pages/synthesis/google-calendar-integration-state.md) | Feature de core que destrava o PREMIUM. Faseamento A→B→C; firewall `ExternalEvent`; OAuth separado; matching por telefone. **Fase A completa em código** (backend + OAuth PKCE + card + overlay), validada com credencial fake; GA pendente de credencial real + verificação OAuth | 2026-07-05 |
+| [google-calendar-integration-state](pages/synthesis/google-calendar-integration-state.md) | Feature de core que destrava o PREMIUM. Faseamento A→B→C; firewall `ExternalEvent`; OAuth separado. **🚀 Fase A EM PRODUÇÃO (dark)** desde 2026-07-10 (merge + deploy OK); E2E real validado (OAUTH-05/06/07 + overlay real); Vercel/OAuth/política configurados. GA pendente só de **verificação OAuth** + `hidden:false` | 2026-07-10 |
 
 ---
 
@@ -74,7 +78,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 17 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 18 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 
