@@ -7,11 +7,13 @@ tags: [pattern, data-model, multi-tenancy, integrations, scheduler]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
+  - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
   - .context/features/google-calendar.md
 related:
   - .context/features/scheduler.md
   - pages/concepts/quota-ledger-immortal-slot.md
   - pages/concepts/idempotent-link-under-race.md
+  - pages/concepts/revive-cancelled-event-on-id-reuse.md
 status: stable
 ---
 
@@ -39,6 +41,16 @@ O padrão saiu do design para o código:
 - **Promoção** = `POST /convert` (idempotente, tx Serializable, quota + conflito), matching telefone→CPF→patientId. Ver [[idempotent-link-under-race]] para a corrida.
 - **De-dup do overlay**: a rota de eventos filtra os já promovidos (`!promotedIds.has(e.id)`) para não mostrar o bloco Google **e** o `Appointment` no mesmo dia. É a face de leitura do firewall: o promovido migra de "evento externo" para "domínio".
 - Validado E2E (Chrome MCP, credencial real): promover → `Appointment` PENDING → some do overlay; o evento **continua intacto no Google** (escopo readonly, promoção não escreve nada lá).
+
+## Estendido à Fase C (2026-07-10) — firewall nos DOIS sentidos
+
+A Fase C passou a **escrever** no Google (espelhar `Appointment`→evento). Isso abre um novo caminho de loop: o evento que NÓS criamos volta na listagem do overlay e poderia ser "promovido" a um segundo `Appointment` (create→mirror→promote→…). O firewall foi estendido para cobrir o sentido inverso:
+
+- **Tag de origem-app**: o evento espelho carrega `extendedProperties.private.confirmaaiOrigin="app"`. `mapGoogleEvent`/`mapGoogleEventDetail` retornam `null` para eventos com essa tag → **somem do overlay** (não viram bloco promovível). É a blindagem **id-independente** (funciona mesmo se a persistência do `googleEventId` falhou).
+- **De-dup por `Appointment.googleEventId`**: a rota `events` também esconde eventos cujo id bate num `googleEventId` de algum `Appointment` do tenant (backstop do drop por tag).
+- **`/convert` rejeita origem-app**: promover um evento cujo id já está gravado num `Appointment` é bloqueado (defesa contra chamada direta à API que não passa pelo overlay).
+- **Mirror ignora promovidos**: `mirror.ts` pula qualquer `Appointment` que tenha `ExternalEvent` vinculado — nunca reescreve/apaga o evento ORIGINAL que o usuário criou no Google (só espelha agendamentos nativos). O sentido Google→app continua **manual** (Fase B).
+- O scheduler segue sem enxergar nada (GCAL.7/10 intactos). Detalhe operacional + os 3 fixes de review em `.context/features/google-calendar.md` § Fase C; ver também [[revive-cancelled-event-on-id-reuse]].
 
 ## Quando aplicar / quando NÃO
 

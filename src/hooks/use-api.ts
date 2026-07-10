@@ -391,6 +391,10 @@ export type GcalStatus = {
   status: "DISCONNECTED" | "CONNECTED" | "NEEDS_RECONSENT";
   googleAccountEmail: string | null;
   connectedAt: string | null;
+  /** Fase C: espelhamento app→Google ativo. */
+  mirrorActive: boolean;
+  /** Fase C: conectado só-leitura (legado) → reconectar p/ ativar espelhamento. */
+  needsWriteReconsent: boolean;
 };
 
 export type GcalEvent = {

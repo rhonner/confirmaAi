@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { AppointmentStatus } from "@/generated/prisma/client"
 import { createAppointmentSchema } from "@/lib/validations/appointment"
@@ -6,6 +6,7 @@ import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorRe
 import { findConflictingAppointment } from "@/lib/services/conflict"
 import { startOfDayInAppTz, endOfDayInAppTz } from "@/lib/timezone"
 import { auditWrap } from "@/lib/audit"
+import { syncAppointmentCreate } from "@/lib/services/google/mirror"
 import type { ApiResponse, PaginatedResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -181,6 +182,13 @@ export const POST = auditWrap(async (request: NextRequest) => {
         messageLogs: true,
       },
     })
+
+    // Fase C: espelha no Google Calendar do tenant (best-effort, pós-resposta —
+    // não bloqueia a criação nem quebra se o Google falhar). No-op se não for
+    // PREMIUM conectado com escopo de escrita.
+    const createdUserId = session.user.id
+    const createdId = appointment.id
+    after(() => syncAppointmentCreate(createdUserId, createdId))
 
     return NextResponse.json<ApiResponse<AppointmentResponse>>(
       { data: appointment, message: "Agendamento criado com sucesso" },

@@ -66,7 +66,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Painel Admin         | [features/admin.md](features/admin.md)               | `/admin/audit` (allowlist `ADMIN_EMAILS`, gate em layout+API); métricas cross-tenant (WhatsApp %, pagantes, fraude) + auditoria. Atividade do user em `/configuracoes/atividade` |
 | Reset de conta Free  | [features/account-reset.md](features/account-reset.md) | `POST /api/account/reset` (1× vitalício): apaga Patient + PatientQuotaSlot e zera quota; guardas FREE + 0 agendamentos + dedup por audit |
 | LGPD & Conta         | [features/lgpd-account.md](features/lgpd-account.md) | Termos/Privacidade + aceite no signup, `GET /api/account/export`, `DELETE /api/account` (soft delete + anonimização, bloqueia login) + purga 30d no cron |
-| Google Calendar      | [features/google-calendar.md](features/google-calendar.md) | Conexão OAuth por tenant (PREMIUM). Firewall: eventos nunca viram `Appointment` por sync. **Fase A** (OAuth PKCE + card + overlay read-only) **e Fase B — promoção manual evento→agendamento** (`ExternalEvent` + `/convert` + `/event-signals` + de-dup + prefill) completas e validadas E2E com credencial real. GA pendente de verificação OAuth do Google; sync contínuo (B2) não iniciado |
+| Google Calendar      | [features/google-calendar.md](features/google-calendar.md) | Conexão OAuth por tenant (PREMIUM). Firewall nos 2 sentidos: evento do Google nunca vira `Appointment` por sync; espelho criado por nós nunca vira bloco promovível. **Fase A** (OAuth PKCE + overlay read-only), **Fase B** (promoção manual evento→agendamento) e **Fase C** (espelhar `Appointment`→Google via `mirror.ts` + escopo `calendar.events` write + tag anti-loop + `after()` best-effort) completas e validadas E2E com credencial real. ⛳ GA bloqueado por **verificação OAuth do escopo de escrita**; sync contínuo Google→app (B2) não iniciado |
 
 ## Índice de fluxos cruzados
 
@@ -100,7 +100,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 1. **`npx tsc --noEmit`** — sem erros de tipo.
 2. **`TZ=UTC npx vitest run`** — 100% verde.
 3. **`npm run build`** — build de produção limpo.
-4. **`npm run test:sprints`** — checklist E2E no DB local com 100% pass (script versionado em `scripts/test-sprints.ts`; **adicionar checks da nova sprint** sempre que fechar uma).
+4. **`npm run test:sprints`** — checklist E2E no DB local com 100% pass (script versionado em `scripts/test-sprints.ts`; **adicionar checks da nova sprint** sempre que fechar uma). ⚠️ **Rodar ISOLADO** — concorrente com `vitest` (que tem testes de integração no mesmo Postgres local) dá erro de Prisma por contenção/limpeza de dados; não é regressão.
 5. **Teste manual no Chrome via MCP** — para qualquer mudança que toque UI, dev server + clicar pelo fluxo crítico do usuário **de verdade**, com screenshots como evidência. Cobrir golden path + 1-2 edge cases. NÃO confiar só em "componente existe + Playwright básico de renderização" — isso prova compilação, não comportamento.
 6. **Documentar a validação** — em `.context/features/<feature>.md` adicionar/atualizar seção "Validação manual no browser" com os passos confirmados (vira artefato de regressão para a próxima sprint).
 7. **Helpers de toggle de estado** — para fluxos dependentes de estado (ex: plano FREE vs PRO), criar helper em `scripts/` que alterna rápido em dev (ver `scripts/toggle-admin-plan.ts`). Sempre reverter ao estado original (PRO no caso do `rhonner.matheus@gmail.com`) ao fim do teste.

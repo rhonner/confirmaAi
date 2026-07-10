@@ -1,6 +1,10 @@
 # Feature: Integração Google Calendar
 
-> Conexão OAuth por tenant com o Google Calendar (feature **PREMIUM**), para trazer os eventos da agenda do Google para dentro do ConfirmaAí. Entregue em fases: **A (overlay só-leitura) → B (importação seletiva + confirmação opt-in) → C (sync bidirecional)**.
+> Conexão OAuth por tenant com o Google Calendar (feature **PREMIUM**), para trazer os eventos da agenda do Google para dentro do ConfirmaAí. Entregue em fases: **A (overlay só-leitura) → B (importação seletiva + confirmação opt-in) → C (sync app→Google)**.
+
+## Status (2026-07-10 — Fase C: espelhamento app→Google IMPLEMENTADA e validada E2E com credencial real)
+
+- **2026-07-10 (Fase C — mirror app→Google):** um `Appointment` criado/editado/cancelado/excluído no app é **espelhado** como evento no Google Calendar do tenant. **Decisões do dono (as 4 que governam o build):** (1) escreve na **agenda principal** (`primary`) — escopo só `calendar.events`, sem seletor de calendário; (2) **ligado automaticamente ao conectar** (sem toggle opt-in; gate = conexão CONNECTED + escopo de escrita + PREMIUM); (3) **só ações no app (v1)** — webhook (confirmação do paciente) e cron (no-show) NÃO mexem no evento; (4) cancelar/excluir/no-show **apaga** o evento no Google. **Escopo OAuth mudou** `calendar.events.readonly` → `calendar.events` (read/write) — quem já estava conectado vira "só-leitura" e precisa **reconectar** (o card mostra "Reconecte para ativar"). Mirror é **best-effort via `after()`** (pós-resposta, nunca quebra/500 a mutação do Appointment nem lança). **Firewall nos DOIS sentidos:** o evento que NÓS criamos carrega tag `extendedProperties.private.confirmaaiOrigin="app"` → `mapGoogleEvent` o descarta do overlay (não vira bloco promovível) + de-dup por `Appointment.googleEventId` na rota de events + `/convert` rejeita promover evento origem-app; e o mirror **ignora** agendamentos promovidos DO Google (com `ExternalEvent`) — nunca reescreve o evento original do usuário. Id do evento é **determinístico** (`appOriginEventId` = base32hex do appointmentId) → `events.insert` idempotente (409). **Gate verde** (tsc · vitest **357** · build · sprints **143/143** c/ GCAL.12–15). **Code-review adversarial (workflow, 7 dimensões × verificação independente):** 3 achados CONFIRMED corrigidos + 2 falso-positivos descartados; ver § Code-review Fase C. **E2E real (Chrome MCP, wcwecalc, escopo de escrita):** create/cancel/reabrir(ressuscitar)/reagendar+limpar-obs/excluir/renomear-paciente + de-dup do overlay + estados do card — todos conferidos contra a Google Agenda real (§ Validação E2E Fase C). **Mudanças não commitadas** (dono commita via `gh`). ⚠️ Escopo `calendar.events` é AINDA mais sensível → **nova verificação OAuth do Google** é obrigatória antes do GA (planejar junto com a verificação já pendente da Fase A).
 
 ## Status (2026-07-10 — Fase B: promoção manual evento→agendamento IMPLEMENTADA e validada E2E)
 
@@ -72,6 +76,18 @@ Por quê **e-mail não é a chave de unicidade certa**:
 | Hooks | `useGoogleEventSignals` / `useGoogleCalendarConvert` em `src/hooks/use-api.ts` | ✅ Fase B |
 | UI de promoção | botão "Promover" no `GoogleEventBlock` + diálogo modo-promoção em `agenda/page.tsx`; `defaultValues` no `patient-form-dialog.tsx` | ✅ Fase B |
 | Checks de regressão B | `GCAL.8–11` em `scripts/test-sprints.ts` (link+idempotência, de-dup, firewall B, cascade) | ✅ Fase B |
+| Colunas de espelho | `Appointment.googleEventId` + `googleCalendarId` em `prisma/schema.prisma` + migration `20260710195220_add_appointment_google_event` | ✅ Fase C |
+| Escopo de escrita | `CALENDAR_EVENTS_SCOPE` + `hasWriteScope` em `oauth.ts` (REQUESTED_SCOPES agora pede `calendar.events`); `hasCalendarScope` aceita readonly OU write | ✅ Fase C |
+| Helpers de escrita | `createGoogleEvent`/`patchGoogleEvent`/`deleteGoogleEvent` + `performGoogleWrite` + `buildEventResource` + `appOriginEventId` + `isAppOriginRaw` em `calendar.ts` (NÃO tocam `Appointment` — firewall GCAL.7) | ✅ Fase C |
+| Orquestração do mirror | `src/lib/services/google/mirror.ts` (`syncAppointmentCreate/Update/Delete` + `syncPatientRename` + `mirroringEnabled` gate + persiste `googleEventId`; ignora promovidos c/ `ExternalEvent`) | ✅ Fase C |
+| Tag anti-loop | `extendedProperties.private.confirmaaiOrigin="app"` no evento; `mapGoogleEvent`/`mapGoogleEventDetail` descartam origem-app; máscara de campos inclui `extendedProperties` | ✅ Fase C |
+| Hooks nas rotas | `after()` em `appointments/route.ts` (POST), `appointments/[id]/route.ts` (PUT/DELETE — lê `googleEventId` antes do hard-delete), `patients/[id]/route.ts` (PUT, rename) | ✅ Fase C |
+| Entitlement | action `gcal.push` em `entitlements.ts` (mesmo gate PREMIUM; FORA do email-verify); label `gcal.pushed` | ✅ Fase C |
+| De-dup 2 sentidos | `events/route.ts` filtra `ExternalEvent` (Fase B) **e** `Appointment.googleEventId` (Fase C); `convert/route.ts` rejeita evento origem-app | ✅ Fase C |
+| UI (status DTO + card) | `status/route.ts` expõe `mirrorActive`/`needsWriteReconsent`; card mostra "espelhados" ou "Reconecte para ativar" | ✅ Fase C |
+| Legal | `content.ts` §8 + §2 reescritos p/ leitura+escrita (afirmação de Uso Limitado mantida) | ✅ Fase C |
+| Helper de dev | `scripts/gcal-list-raw.ts` (READ-ONLY: lista eventos origem-app na Google Agenda via token, p/ validar create/patch/delete server-to-server) | ✅ Fase C |
+| Checks de regressão C | `GCAL.12–15` em `scripts/test-sprints.ts` (gate push, escopo, firewall 2 sentidos, wiring do mirror) | ✅ Fase C |
 
 ## Modelo `GoogleCalendarConnection` (1:1 com User)
 
@@ -288,6 +304,61 @@ Usuário-seed PREMIUM, conexão CONNECTED. Confirmado com eventos REAIS do Googl
 - **Cron de retry de revoke pendente** (limitação do disconnect, documentada na Fase A).
 - Escrita no Google (Fase C, bidirecional) — escopo é `readonly`.
 
+## Fase C — sync app→Google (espelhamento) [2026-07-10]
+
+Responde ao pedido do dono ("crio agendamento no app e não cria no Google" — antes a integração era mão-única Google→app). Agora um `Appointment` nativo é **espelhado** como evento no Google Calendar do tenant.
+
+### As 4 decisões do dono (governam o build)
+
+1. **Calendário = `primary`** (agenda principal). Escopo só `calendar.events` (o mais leve). SEM seletor de calendário (um picker exigiria `calendar.readonly` extra p/ `calendarList.list` → mais consentimento/verificação).
+2. **Ligado automaticamente ao conectar** — não há toggle opt-in. Gate: conexão `CONNECTED` + escopo de escrita (`hasWriteScope`) + `gcal.push` (PREMIUM). Grant legado só-leitura → mirror faz **no-op** até reconectar (card avisa).
+3. **Só ações no app (v1)** — os hooks estão só nas rotas de `Appointment` (POST/PUT/DELETE) e `Patient` (PUT rename). A confirmação do paciente por WhatsApp (webhook) e o no-show automático (cron) **NÃO** atualizam o evento no Google no v1 (evita chamadas ao Google no ack do webhook e no orçamento de 45s do cron). Fica p/ B2.
+4. **Cancelar/excluir/no-show → apaga** o evento no Google (`events.delete`).
+
+### Arquitetura (por que `mirror.ts` separado de `calendar.ts`)
+
+O check **GCAL.7** proíbe `calendar.ts` de referenciar `Appointment` (firewall). Então:
+- **`calendar.ts`** ganhou os PRIMITIVOS de escrita (`createGoogleEvent`/`patchGoogleEvent`/`deleteGoogleEvent` via `performGoogleWrite`) que só falam com a API do Google + `GoogleCalendarConnection` (token). Reaproveitam `ensureAccessToken` + retry-401 + classificação-403 (transitório vs permissão) + `INVALID_GRANT`→NEEDS_RECONSENT + **nunca-lança** (mesmo contrato dos fetchers).
+- **`mirror.ts`** (novo) ORQUESTRA: lê o `Appointment`, decide insert/patch/delete, persiste `googleEventId`, faz o gate de plano (`gcal.push`), e **ignora agendamentos promovidos DO Google** (`externalEvent != null`) — nunca reescreve o evento original do usuário. É chamado via **`after()`** das rotas (pós-resposta): best-effort, nunca quebra a mutação nem lança.
+
+### Firewall nos DOIS sentidos (invariante duro)
+
+- **app→Google não vira loop:** o evento que criamos carrega `extendedProperties.private.confirmaaiOrigin="app"`. `mapGoogleEvent`/`mapGoogleEventDetail` retornam `null` p/ eventos com essa tag → some do overlay (não vira bloco "Promover"). Backstop: a rota `events` também filtra por `Appointment.googleEventId`; e `/convert` rejeita promover um evento cujo id bate em algum `Appointment.googleEventId` do tenant.
+- **Google→app continua manual:** o mirror pula qualquer `Appointment` com `ExternalEvent` (promovido). O scheduler segue sem enxergar nada (GCAL.7/10).
+
+### Idempotência + máquina de estados
+
+- **Id determinístico** `appOriginEventId(appointmentId) = "cai" + sha256hex(id)` (base32hex válido no Google). `events.insert` reenviado bate no mesmo id → 409, tratado como sucesso idempotente.
+- **CREATE:** insert + persiste `googleEventId`. **UPDATE:** se `CANCELED/NO_SHOW` → delete + limpa `googleEventId`; senão se tem `googleEventId` → patch; senão (backfill/reabertura) → create. **DELETE:** lê `googleEventId` ANTES do hard-delete → delete. `NOT_CONFIRMED` NÃO apaga (o horário ainda existe).
+- **`status:"confirmed"` explícito** no `buildEventResource`: no insert é default (inócuo), mas num patch **RESSUSCITA** um evento que ficou `cancelled` (reabertura de agendamento) — ver fix #1.
+
+### Code-review adversarial Fase C (workflow, 7 dimensões × verificação independente)
+
+Dimensões firewall/best-effort/multi-tenancy/token-403 **limpas**. 3 achados CONFIRMED corrigidos + 2 falso-positivos descartados (403 com corpo não-JSON → mesma classe pré-existente aceita do read-path; guard do convert por id em vez de tag → suficiente pois o overlay já dropa por tag):
+
+1. **[corrigido] Reabertura de cancelado deixava o evento invisível** (`calendar.ts` createGoogleEvent 409): cancelar apaga o evento (tombstone) e limpa `googleEventId`; reabrir fazia insert do mesmo id determinístico → 409 tratado como sucesso cego → evento ficava `cancelled` p/ sempre. **Fix:** no 409, em vez de sucesso cego, faz `events.patch` com `status:"confirmed"` (ressuscita o tombstone; inócuo se já vivo). [[revive-cancelled-event-on-id-reuse]]
+2. **[corrigido] Limpar observações não limpava a description no Google** (`buildEventResource`): a chave `description` era omitida quando vazia, mas `events.patch` tem merge semantics (omitir ≠ limpar). **Fix:** sempre envia `description: input.description ?? ""`. [[patch-merge-clear-requires-explicit-empty]]
+3. **[corrigido] Renomear paciente não atualizava o título dos eventos espelho** (`patients/[id]/route.ts`): o mirror só disparava pelas rotas de Appointment. **Fix:** `after()` na rota de paciente quando o nome muda → `syncPatientRename` re-patcha os eventos futuros, ativos, nativos (não-promovidos) do paciente.
+
+### Validação E2E Fase C (2026-07-10 — Chrome MCP, dev :3001, credencial real wcwecalc, escopo de ESCRITA)
+
+Reconexão com o escopo `calendar.events` (dono deu o consent) → card "Seus agendamentos são espelhados automaticamente". Verificado com a Google Agenda REAL (via `scripts/gcal-list-raw.ts`, server-to-server, filtrando `privateExtendedProperty=confirmaaiOrigin=app`):
+- **CREATE** (form da agenda, Maria Santos 11/07 15:00 60min + obs) → evento `confirmed`, summary "Maria Santos", `start=2026-07-11T15:00:00-03:00` (TZ correto), `description="Retorno pos-operatorio"`, tag + id determinístico batendo com `Appointment.googleEventId`.
+- **CANCELAR** (status→Cancelado) → evento vira `cancelled` (some da agenda), `Appointment.googleEventId` limpo.
+- **REABRIR** (status→Confirmado) [fix #1] → evento **ressuscitado** para `confirmed`, `googleEventId` re-persistido.
+- **REAGENDAR + LIMPAR OBS** (diálogo Editar, 16:30 + obs vazia) [fix #2] → evento movido p/ `16:30-03:00`, `description=null` (limpo de verdade).
+- **EXCLUIR** (hard delete) → `Appointment` sumiu do DB; evento apagado (`cancelled`) — id lido antes do delete.
+- **RENOMEAR PACIENTE** ("Maria Santos"→"Maria Santos Silva") [fix #3] → summary do evento futuro atualizado; tombstone antigo intacto.
+- **DE-DUP / firewall ao vivo:** o espelho "Maria Santos" NUNCA apareceu como bloco Google promovível (só o agendamento gerenciado); o evento de terceiro "tetes" seguiu com "Promover" normal.
+- **Card:** estado conectado-só-leitura ("Reconecte para ativar") → após reconsent → "espelhados automaticamente". Dados de teste revertidos (agendamentos apagados, paciente renomeado de volta).
+
+### O que a Fase C NÃO faz (fica para B2 / adiante)
+
+- Espelhar transições NÃO feitas na tela: confirmação do paciente por WhatsApp (webhook) e no-show do cron não refletem no evento (v1 = só ações no app).
+- Sentido Google→app contínuo (sync incremental / `syncToken`) — segue Fase B2.
+- Backfill em massa dos agendamentos antigos (só re-espelha o que for tocado; edição de um agendamento antigo faz backfill preguiçoso via create).
+- Reconciliação de edições feitas nos DOIS lados / watch channels.
+
 ## Fluxos relacionados
 
 - [features/scheduler.md](scheduler.md) — o firewall existe por causa dos filtros de `sendConfirmations`/`markNoShows`.
@@ -309,4 +380,6 @@ Usuário-seed PREMIUM, conexão CONNECTED. Confirmado com eventos REAIS do Googl
 2. **Com credencial real:** validar E2E no Chrome MCP a matriz OAUTH-01..08 (consent real, refresh, revoke externo, troca de conta) + eventos reais no overlay → só então destravar PREMIUM (`plans.ts` `hidden:false`).
 3. **Fase B — promoção manual: ✅ FEITA (2026-07-10)** — `ExternalEvent` + `POST /convert` + `/event-signals` + de-dup + UI "Promover" + prefill. Validada E2E (ver § Fase B). **Não commitada** (dono via `gh`).
 4. **Fase B2 (sync contínuo) — pendente:** sync incremental (`syncToken`, resumível, dirigido por requisição) que **persista** `ExternalEvent` sem promoção + propagação de cancelamento/reagendamento do Google para o `Appointment` promovido (cancelar no Google → `Appointment` CANCELED; reagendar → transição explícita, não só zerar `confirmationSentAt`) + cron de retry de revoke pendente + lock de refresh de token em DB. Ver § Guardas transversais.
-5. **Fase C:** sync bidirecional (escrita no Google) — exige escopo além de `readonly`.
+5. **Fase C — sync app→Google: ✅ FEITA (2026-07-10)** — decisões (primary/auto-on/só-app/delete-on-cancel), escopo `calendar.events`, `mirror.ts`, tag anti-loop, de-dup 2 sentidos, 3 fixes de review, E2E real. Ver § Fase C acima. **Não commitada** (dono via `gh`).
+6. **⛳ PRÓXIMO — verificação OAuth do escopo de ESCRITA (bloqueia GA):** o escopo agora é `calendar.events` (read/write), **mais sensível** que o `.readonly` da Fase A. A verificação do Google (já pendente da Fase A) precisa ser feita para ESTE escopo — planejar/submeter para `calendar.events`. Sem verificação: modo "Testando" (cap 100 users, refresh expira em 7d, aviso de app não-verificado em todo consent). Só destravar PREMIUM (`plans.ts hidden:false`) depois de: verificação aprovada + E2E em produção + placeholders legais preenchidos (controlador/CPF/DPO). A troca de escopo também exige que **todos os conectados reconectem** (o card já cobre isso com "Reconecte para ativar").
+7. **Fase B2 / reconciliação (adiante):** espelhar transições não-UI (webhook confirmação → patch; cron no-show → delete no Google) com sub-orçamento; sync incremental Google→app (`syncToken`); backfill em massa; watch/push channels; lock de refresh de token em DB. WhatsApp/no-show seguem dirigidos só pelo `Appointment`.

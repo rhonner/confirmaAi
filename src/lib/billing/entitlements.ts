@@ -14,7 +14,8 @@ export type Action =
   | "report.advanced"
   | "gcal.connect"
   | "gcal.sync"
-  | "gcal.convert";
+  | "gcal.convert"
+  | "gcal.push";
 
 export type DenyReason =
   | "QUOTA_EXCEEDED"
@@ -138,12 +139,16 @@ export async function check(
         : { allowed: false, reason: "PLAN_REQUIRED", upgrade: "PRO" };
 
     // Google Calendar é feature exclusiva do PREMIUM (plans.ts). O gate cobre
-    // conectar, sincronizar e converter evento→agendamento. `convert` ainda
-    // passa pelo gate de quota de paciente separadamente (reserveSlotInTx).
-    // Re-checar `gcal.sync` a cada rodada do cron evita sync grátis pós-downgrade.
+    // conectar, sincronizar, converter evento→agendamento e o PUSH (Fase C:
+    // espelhar Appointment no Google). `convert` ainda passa pelo gate de quota
+    // de paciente separadamente (reserveSlotInTx). `gcal.push` NÃO entra na
+    // lista de e-mail-verificado acima: não cria dado no app (o Appointment já
+    // existe e passou pelo seu gate); re-checá-lo a cada mutação evita espelhar
+    // de graça após downgrade (igual ao motivo de re-checar `gcal.sync`).
     case "gcal.connect":
     case "gcal.sync":
     case "gcal.convert":
+    case "gcal.push":
       return plan.features.googleCalendar
         ? { allowed: true }
         : { allowed: false, reason: "PLAN_REQUIRED", upgrade: "PREMIUM" };

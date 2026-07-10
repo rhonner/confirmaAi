@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { updatePatientSchema } from "@/lib/validations/patient"
 import {
@@ -11,6 +11,7 @@ import {
 import { auditWrap } from "@/lib/audit"
 import { attachCpfToExistingSlot, canonicalizePhone, hashCpf } from "@/lib/billing"
 import { canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
+import { syncPatientRename } from "@/lib/services/google/mirror"
 import type { ApiResponse, PatientResponse } from "@/lib/types/api"
 
 export async function GET(
@@ -117,6 +118,13 @@ export const PUT = auditWrap(async (
 
     if (promoteCpf) {
       await attachCpfToExistingSlot(prisma, session.user.id, patient.id, promoteCpf)
+    }
+
+    // Fase C: se o nome mudou, atualiza o título dos eventos espelho no Google
+    // (best-effort, pós-resposta). No-op se não for PREMIUM conectado c/ escrita.
+    if (typeof data.name === "string" && data.name !== existingPatient.name) {
+      const renameUserId = session.user.id
+      after(() => syncPatientRename(renameUserId, patient.id))
     }
 
     return NextResponse.json<ApiResponse<PatientResponse>>({

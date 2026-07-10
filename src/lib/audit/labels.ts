@@ -107,6 +107,7 @@ const LABELS: Record<string, string> = {
   "gcal.connected": "Google Agenda conectada",
   "gcal.disconnected": "Google Agenda desconectada",
   "gcal.promoted": "Evento do Google promovido a agendamento",
+  "gcal.pushed": "Agendamento espelhado no Google Agenda",
 };
 
 export function actionLabel(action: string): string {

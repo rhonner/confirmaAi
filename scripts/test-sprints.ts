@@ -2340,6 +2340,110 @@ async function main() {
       exists(`${gcalRouteBase}/event-signals/route.ts`),
   );
 
+  // ====================================================================
+  // GOOGLE CALENDAR — FASE C (sync app→Google: espelhar Appointment)
+  // ====================================================================
+  console.log("\n━━━ GOOGLE CALENDAR — FASE C ━━━\n");
+
+  // GCAL.12 — gate gcal.push (PREMIUM) NÃO exige e-mail verificado (o
+  // Appointment já existe; não cria dado no app) + coluna googleEventId existe.
+  await prisma.subscription.update({
+    where: { userId: gcalUser.id },
+    data: { adminOverrideUntil: new Date(Date.now() + 60_000) },
+  });
+  // gcalUser está com emailVerifiedAt = null desde GCAL.3.
+  const gcalPushGate = await checkEntitlement(gcalUser.id, "gcal.push");
+  const gcalMirrorPatient = await prisma.patient.create({
+    data: {
+      name: "Mirror Paciente",
+      phone: "+5511966665555",
+      phoneCanonical: "5511966665555",
+      userId: gcalUser.id,
+    },
+  });
+  const gcalMirrorAppt = await prisma.appointment.create({
+    data: {
+      patientId: gcalMirrorPatient.id,
+      userId: gcalUser.id,
+      dateTime: new Date(Date.now() + 172_800_000),
+      durationMinutes: 30,
+      googleEventId: "caitest123",
+      googleCalendarId: "primary",
+    },
+  });
+  check(
+    "GCAL.12 gate gcal.push (PREMIUM, sem exigir e-mail verificado) + coluna Appointment.googleEventId",
+    10,
+    gcalPushGate.allowed && gcalMirrorAppt.googleEventId === "caitest123",
+  );
+
+  // GCAL.13 — escopo OAuth virou LEITURA+ESCRITA (calendar.events); readonly não
+  // dá escrita; qualquer um dos dois satisfaz a leitura (callback não rejeita).
+  const {
+    hasWriteScope: gcalHasWrite,
+    hasCalendarScope: gcalHasCal,
+    CALENDAR_EVENTS_SCOPE: GCAL_WRITE_SCOPE,
+    CALENDAR_EVENTS_READONLY_SCOPE: GCAL_RO_SCOPE,
+  } = await import("../src/lib/services/google/oauth");
+  check(
+    "GCAL.13 escopo read/write (calendar.events): hasWriteScope só p/ write; hasCalendarScope p/ ambos",
+    10,
+    gcalOauthSrc.includes(GCAL_WRITE_SCOPE) &&
+      gcalHasWrite(`openid email ${GCAL_WRITE_SCOPE}`) === true &&
+      gcalHasWrite(`openid email ${GCAL_RO_SCOPE}`) === false &&
+      gcalHasCal(`openid email ${GCAL_RO_SCOPE}`) === true &&
+      gcalHasCal(`openid email ${GCAL_WRITE_SCOPE}`) === true,
+  );
+
+  // GCAL.14 — firewall nos DOIS sentidos: (a) eventos origem-app somem do overlay
+  // (mapGoogleEvent → null pela tag); (b) events route de-dup por
+  // Appointment.googleEventId; (c) convert rejeita promover um evento origem-app.
+  const {
+    mapGoogleEvent: gcalMap,
+    appOriginEventId: gcalDeterministicId,
+    APP_ORIGIN_TAG: GCAL_TAG,
+    APP_ORIGIN_VALUE: GCAL_TAGVAL,
+  } = await import("../src/lib/services/google/calendar");
+  const gcalConvertSrc = readFileSync(join(root, `${gcalRouteBase}/convert/route.ts`), "utf8");
+  const gcalMappedAppOrigin = gcalMap({
+    id: "mirror-x",
+    status: "confirmed",
+    start: { dateTime: "2026-07-07T14:00:00-03:00" },
+    end: { dateTime: "2026-07-07T15:00:00-03:00" },
+    eventType: "default",
+    extendedProperties: { private: { [GCAL_TAG]: GCAL_TAGVAL } },
+  });
+  check(
+    "GCAL.14 firewall 2 sentidos: overlay descarta origem-app (tag) + de-dup por Appointment.googleEventId + convert bloqueia loop",
+    10,
+    gcalMappedAppOrigin === null &&
+      /^[a-v0-9]{5,1024}$/.test(gcalDeterministicId("appt-xyz")) &&
+      gcalCalendarSrc.includes("isAppOriginRaw") &&
+      gcalEventsSrc.includes("appointment.findMany") &&
+      gcalConvertSrc.includes("googleEventId: input.googleEventId"),
+  );
+
+  // GCAL.15 — wiring do mirror: rotas disparam via after() e o mirror IGNORA
+  // agendamentos promovidos DO Google (externalEvent) + gateia por escopo de escrita.
+  const gcalApptRouteSrc = readFileSync(join(root, "src/app/api/appointments/route.ts"), "utf8");
+  const gcalApptIdRouteSrc = readFileSync(
+    join(root, "src/app/api/appointments/[id]/route.ts"),
+    "utf8",
+  );
+  const gcalMirrorSrc = readFileSync(join(root, "src/lib/services/google/mirror.ts"), "utf8");
+  check(
+    "GCAL.15 mirror: rotas usam after()+sync*; mirror ignora promovidos (externalEvent) e gateia escopo de escrita",
+    10,
+    gcalApptRouteSrc.includes("syncAppointmentCreate") &&
+      gcalApptRouteSrc.includes("after(") &&
+      gcalApptIdRouteSrc.includes("syncAppointmentUpdate") &&
+      gcalApptIdRouteSrc.includes("syncAppointmentDelete") &&
+      gcalApptIdRouteSrc.includes("googleEventId") &&
+      gcalMirrorSrc.includes("externalEvent") &&
+      gcalMirrorSrc.includes("hasWriteScope") &&
+      gcalMirrorSrc.includes("createGoogleEvent"),
+  );
+
   // cleanup GCal (cascade apaga a conexão)
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");

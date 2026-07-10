@@ -56,7 +56,7 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [phone-mask-roundtrip-country-code](pages/concepts/phone-mask-roundtrip-country-code.md) | Máscara de telefone canônico↔display: strip do `55` só por tamanho reabsorve o `+55` como DDD ao digitar (acumula "5"); o `+` desambigua país vs DDD-55. Testar o componente, não a fiação | 2026-06-27 |
 | [scrollbar-gutter-stable](pages/concepts/scrollbar-gutter-stable.md) | `scrollbar-gutter:stable` no scroller (`<main>`) mata o "pulo" horizontal entre página que rola × que não rola; em macOS overlay (barra 0px) não reproduz mas o fix é seguro | 2026-07-04 |
 | [nextauth-getserversession-noop-res](pages/concepts/nextauth-getserversession-noop-res.md) | `getServerSession` (RSC, 1 arg) roda o callback `jwt` mas usa `res` no-op → cookie reescrito é descartado; throttle via `token.checkedAt` não persiste no servidor → usar cache em memória (`Map<userId,ts>`) | 2026-07-04 |
-| [external-event-firewall](pages/concepts/external-event-firewall.md) | Registros de fonte externa (Google Calendar) em **tabela separada só-leitura**, não coluna `source` em `Appointment` — senão o scheduler manda WhatsApp/marca NO_SHOW falso. Firewall físico > filtro que se esquece. **Implementado na Fase B** (promoção + de-dup do overlay) | 2026-07-10 |
+| [external-event-firewall](pages/concepts/external-event-firewall.md) | Registros de fonte externa (Google Calendar) em **tabela separada só-leitura**, não coluna `source` em `Appointment` — senão o scheduler manda WhatsApp/marca NO_SHOW falso. Firewall físico > filtro que se esquece. **Fase B** (promoção + de-dup) + **Fase C** (firewall nos DOIS sentidos: tag origem-app dropada + de-dup por `Appointment.googleEventId`; mirror ignora promovidos) | 2026-07-10 |
 | [soft-delete-skips-cascade-cleanup](pages/concepts/soft-delete-skips-cascade-cleanup.md) | Soft-delete nunca remove `User` → `onDelete:Cascade` **jamais dispara** → token OAuth vivo fica órfão (LGPD). Teardown explícito: pós-commit, isolado, keep-on-failure + retry na purga | 2026-07-05 |
 | [oauth-scope-check-before-persist](pages/concepts/oauth-scope-check-before-persist.md) | Callback valida escopo concedido **antes** do upsert → **não existe "meio conectado"**; fresh connect sem o escopo rejeita limpo (revoga o grant novo, não grava linha) | 2026-07-10 |
 | [oauth-state-cookie-ttl-expiry](pages/concepts/oauth-state-cookie-ttl-expiry.md) | Cookie de state/PKCE expira em ~10 min → consent real lento (aviso "app não verificado") estoura em `gcal_error=state` mesmo com o escopo concedido; ≠ scope-mismatch | 2026-07-10 |
@@ -65,6 +65,8 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [idempotent-link-under-race](pages/concepts/idempotent-link-under-race.md) | Vínculo idempotente sob corrida: no catch de P2002/P2034, cheque o link já-existente ANTES do erro de unique de outra entidade (senão o perdedor vê erro sobre um efeito que já ocorreu). Corolário: tx Serializable NÃO protege read de conflito feito fora dela | 2026-07-10 |
 | [stale-async-response-guard](pages/concepts/stale-async-response-guard.md) | Callback assíncrono (`onSuccess`) que grava em estado compartilhado deve checar via ref-espelho se o contexto ainda é o ativo — senão vaza dados de um contexto abandonado (nome/telefone de evento fechado → form limpo) | 2026-07-10 |
 | [regression-test-assert-the-predicate](pages/concepts/regression-test-assert-the-predicate.md) | Grep da chamada (`findMany`) ≠ grep do predicado load-bearing (`!promotedIds.has`): check tautológico passa com o filtro invertido/removido. Asserte o predicado ou observe a saída real | 2026-07-10 |
+| [revive-cancelled-event-on-id-reuse](pages/concepts/revive-cancelled-event-on-id-reuse.md) | Id determinístico + delete real: reinserir bate no **tombstone** cancelado (409) sem restaurar. `409` de insert idempotente é ambíguo → ressuscitar via `patch status:"confirmed"`, não tratar como sucesso cego | 2026-07-10 |
+| [patch-merge-clear-requires-explicit-empty](pages/concepts/patch-merge-clear-requires-explicit-empty.md) | `events.patch` (merge semantics): omitir um campo NÃO o limpa. Reusar builder de create como corpo de patch mantém valor antigo ao esvaziar → enviar `""`/`null`. "Editar preenchendo ok, apagando não reflete" | 2026-07-10 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -73,7 +75,7 @@ Sumários cruzados, comparações, teses evolutivas.
 | Página | Resumo | Atualizado |
 | ------ | ------ | ---------- |
 | [monetization-v2-state](pages/synthesis/monetization-v2-state.md) | Snapshot vivo: **v2 EM PRODUÇÃO** (9/11 + Sprint 10 em progresso: admin/atividade, reset de senha, emails transacionais), incidente de migration, Sentry+UptimeRobot ativos | 2026-06-14 |
-| [google-calendar-integration-state](pages/synthesis/google-calendar-integration-state.md) | Feature de core que destrava o PREMIUM. Faseamento A→B→C; firewall `ExternalEvent`; OAuth separado. **Fase A EM PRODUÇÃO (dark)** + **Fase B (promoção manual evento→agendamento) implementada e validada E2E** (2026-07-10; não commitada). GA pendente de **verificação OAuth** + `hidden:false`; sync contínuo (B2) não iniciado | 2026-07-10 |
+| [google-calendar-integration-state](pages/synthesis/google-calendar-integration-state.md) | Feature de core que destrava o PREMIUM. Faseamento A→B→C; firewall `ExternalEvent` (agora nos 2 sentidos); OAuth separado. **Fase A EM PRODUÇÃO (dark)**; **Fase B (promoção manual)** e **Fase C (mirror app→Google via `mirror.ts` + escopo write + `after()` best-effort)** implementadas e validadas E2E com credencial real (2026-07-10; não commitadas). ⛳ GA pendente de **verificação OAuth do escopo de ESCRITA** + `hidden:false`; sync contínuo Google→app (B2) não iniciado | 2026-07-10 |
 
 ---
 
@@ -81,7 +83,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 19 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 20 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

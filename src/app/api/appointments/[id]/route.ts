@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { updateAppointmentSchema } from "@/lib/validations/appointment"
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth-helpers"
 import { findConflictingAppointment } from "@/lib/services/conflict"
 import { auditWrap } from "@/lib/audit"
+import { syncAppointmentUpdate, syncAppointmentDelete } from "@/lib/services/google/mirror"
 import type { ApiResponse, AppointmentResponse } from "@/lib/types/api"
 
 export async function GET(
@@ -148,6 +149,11 @@ export const PUT = auditWrap(async (
       },
     })
 
+    // Fase C: reflete a edição no Google Calendar (patch; delete se virou
+    // CANCELED/NO_SHOW; cria se ainda não espelhado). Best-effort, pós-resposta.
+    const updatedUserId = session.user.id
+    after(() => syncAppointmentUpdate(updatedUserId, id))
+
     return NextResponse.json<ApiResponse<AppointmentResponse>>({
       data: appointment,
       message: "Agendamento atualizado com sucesso",
@@ -169,11 +175,18 @@ export const DELETE = auditWrap(async (
       return unauthorizedResponse()
     }
 
-    // Verify appointment exists and belongs to user
+    // Verify appointment exists and belongs to user. Captura googleEventId +
+    // se é promovido DO Google (externalEvent) ANTES do hard delete — depois
+    // dele a linha (e o link) somem por cascade e o id seria irrecuperável.
     const appointment = await prisma.appointment.findFirst({
       where: {
         id,
         userId: session.user.id,
+      },
+      select: {
+        id: true,
+        googleEventId: true,
+        externalEvent: { select: { id: true } },
       },
     })
 
@@ -184,6 +197,20 @@ export const DELETE = auditWrap(async (
     await prisma.appointment.delete({
       where: { id },
     })
+
+    // Fase C: apaga o evento espelho no Google (best-effort, pós-resposta).
+    // Não toca eventos promovidos DO Google (hadExternalEvent) — o evento
+    // original é do usuário.
+    const deletedUserId = session.user.id
+    const deletedGoogleEventId = appointment.googleEventId
+    const hadExternalEvent = appointment.externalEvent !== null
+    after(() =>
+      syncAppointmentDelete(deletedUserId, {
+        appointmentId: id,
+        googleEventId: deletedGoogleEventId,
+        hadExternalEvent,
+      }),
+    )
 
     return NextResponse.json<ApiResponse<null>>({
       data: null,

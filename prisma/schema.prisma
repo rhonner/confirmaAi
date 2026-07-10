@@ -180,6 +180,13 @@ model Appointment {
   reminderSentAt     DateTime?
   confirmedAt        DateTime?
   notes              String?
+  // Fase C (sync app→Google): id do evento espelhado no Google Calendar do
+  // tenant (null = ainda não espelhado). Chave da de-dup do overlay no sentido
+  // app→Google (o evento que NÓS criamos não pode reaparecer como promovível).
+  // NÃO é setado em agendamentos promovidos DO Google (esses têm ExternalEvent;
+  // o mirror os ignora). Ver .context/features/google-calendar.md § Fase C.
+  googleEventId      String?
+  googleCalendarId   String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 

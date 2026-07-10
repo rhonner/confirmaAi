@@ -110,8 +110,8 @@ export function GoogleCalendarConnection() {
           Google Agenda
         </CardTitle>
         <CardDescription>
-          Veja os eventos do seu Google Calendar dentro da agenda do ConfirmaAí
-          (somente leitura).
+          Veja os eventos do seu Google Calendar dentro da agenda do ConfirmaAí,
+          e espelhe seus agendamentos no Google automaticamente.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -163,6 +163,15 @@ export function GoogleCalendarConnection() {
                   <p className="text-sm text-muted-foreground">
                     {data.googleAccountEmail ?? "Conta Google conectada"}
                   </p>
+                  {data.mirrorActive ? (
+                    <p className="mt-1 text-sm text-green-700 dark:text-green-500">
+                      Seus agendamentos são espelhados automaticamente nesta agenda.
+                    </p>
+                  ) : data.needsWriteReconsent ? (
+                    <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-500">
+                      Reconecte para ativar o espelhamento dos seus agendamentos no Google.
+                    </p>
+                  ) : null}
                 </>
               ) : needsReconsent ? (
                 <>
@@ -182,6 +191,20 @@ export function GoogleCalendarConnection() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Conectado só-leitura (grant legado): reconectar para conceder o
+                escopo de escrita e ativar o espelhamento (Fase C). */}
+            {isConnected && data.needsWriteReconsent && canStartConnect && !callbackError && (
+              <Button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConnect();
+                }}
+                disabled={connect.isPending}
+              >
+                {connect.isPending ? "Redirecionando..." : "Reconectar para ativar"}
+              </Button>
+            )}
             {/* Desconectar disponível SEMPRE que existe conexão (inclusive em
                 NEEDS_RECONSENT com plano rebaixado — senão o tenant fica preso
                 com um grant que não consegue nem renovar nem revogar). */}
@@ -217,7 +240,9 @@ export function GoogleCalendarConnection() {
         </div>
         <p className="mt-4 text-[11px] text-muted-foreground">
           Eventos do Google aparecem apenas como blocos de contexto — eles não
-          recebem confirmações automáticas de WhatsApp.
+          recebem confirmações automáticas de WhatsApp. Os agendamentos que você
+          cria no ConfirmaAí são espelhados na sua agenda principal do Google
+          (sem convidar o paciente); cancelar ou excluir remove o evento de lá.
         </p>
       </CardContent>
     </Card>

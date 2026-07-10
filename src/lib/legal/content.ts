@@ -34,7 +34,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     paragraphs: [
       "A Clínica Organizada ajuda profissionais e estabelecimentos de saúde e bem-estar a gerenciar agendamentos, cadastrar pacientes e enviar confirmações e lembretes automáticos por WhatsApp, reduzindo faltas (no-shows).",
       "O envio de mensagens depende de uma conexão ativa de WhatsApp do próprio usuário, feita pelo Serviço. A disponibilidade do WhatsApp é de terceiros e pode variar.",
-      "Opcionalmente, você pode conectar sua conta do Google para visualizar os eventos da sua Google Agenda dentro do Serviço, apenas como referência (somente leitura). O Serviço não cria, edita nem exclui eventos na sua Google Agenda.",
+      "Opcionalmente, você pode conectar sua conta do Google para visualizar os eventos da sua Google Agenda dentro do Serviço e para que os agendamentos que você criar no Serviço sejam espelhados automaticamente na sua Google Agenda. Ao conectar, o Serviço pode criar, atualizar e excluir eventos que ele próprio gera na sua Google Agenda, correspondentes aos seus agendamentos.",
     ],
   },
   {
@@ -137,9 +137,10 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
   {
     heading: "8. Integração com o Google Calendar (Google Agenda)",
     paragraphs: [
-      "A conexão com o Google Calendar é opcional e só ocorre após seu consentimento explícito na tela do Google. Ao conectar, o Serviço recebe acesso somente-leitura aos eventos da sua Google Agenda (escopo www.googleapis.com/auth/calendar.events.readonly).",
-      "Uso: os eventos da sua Google Agenda são exibidos apenas como blocos de contexto (somente leitura), ao lado dos seus agendamentos, para ajudar no planejamento. O Serviço não cria, edita nem exclui eventos na sua Google Agenda, e esses eventos não recebem confirmações automáticas por WhatsApp.",
-      "Armazenamento e compartilhamento: as credenciais de acesso (tokens do Google) são armazenadas de forma cifrada; os eventos são consultados em tempo real e não são retidos de forma persistente pelo Serviço. Não usamos os dados da sua Google Agenda para publicidade, não os vendemos e não os compartilhamos com terceiros, exceto os provedores de hospedagem estritamente necessários para operar o recurso.",
+      "A conexão com o Google Calendar é opcional e só ocorre após seu consentimento explícito na tela do Google. Ao conectar, o Serviço recebe acesso de leitura e escrita aos eventos da sua Google Agenda (escopo www.googleapis.com/auth/calendar.events).",
+      "Uso — leitura: os eventos da sua Google Agenda são exibidos como blocos de contexto, ao lado dos seus agendamentos, para ajudar no planejamento; esses eventos não recebem confirmações automáticas por WhatsApp.",
+      "Uso — escrita: os agendamentos que você cria no Serviço são espelhados como eventos na sua agenda principal do Google; editar um agendamento atualiza o evento correspondente e cancelar ou excluir remove esse evento. O Serviço só cria, edita ou exclui eventos que ele próprio gerou; não modifica outros eventos da sua agenda, e não adiciona o paciente como convidado (não enviamos convites em seu nome).",
+      "Armazenamento e compartilhamento: as credenciais de acesso (tokens do Google) são armazenadas de forma cifrada; os eventos lidos são consultados em tempo real e não são retidos de forma persistente pelo Serviço. Não usamos os dados da sua Google Agenda para publicidade, não os vendemos e não os compartilhamos com terceiros, exceto os provedores de hospedagem estritamente necessários para operar o recurso.",
       "O uso e a transferência, pelo Serviço, de informações recebidas das APIs do Google obedecem à Política de Dados do Usuário dos Serviços de API do Google (Google API Services User Data Policy), inclusive aos requisitos de Uso Limitado (Limited Use).",
       "Revogação: você pode desconectar a Google Agenda a qualquer momento nas Configurações do Serviço, ou revogar o acesso em myaccount.google.com/permissions. Ao desconectar, revogamos e removemos os tokens armazenados.",
     ],

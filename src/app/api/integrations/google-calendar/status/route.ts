@@ -6,7 +6,7 @@ import {
   serverErrorResponse,
 } from "@/lib/auth-helpers";
 import { check } from "@/lib/billing/entitlements";
-import { isGoogleOAuthConfigured } from "@/lib/services/google/oauth";
+import { hasWriteScope, isGoogleOAuthConfigured } from "@/lib/services/google/oauth";
 import type { ApiResponse } from "@/lib/types/api";
 
 type GcalStatusResponse = {
@@ -17,6 +17,10 @@ type GcalStatusResponse = {
   status: "DISCONNECTED" | "CONNECTED" | "NEEDS_RECONSENT";
   googleAccountEmail: string | null;
   connectedAt: string | null;
+  /** Fase C: espelhamento app→Google ativo (conectado + escopo de escrita + plano). */
+  mirrorActive: boolean;
+  /** Fase C: conectado mas grant só-leitura (legado) → reconectar p/ ativar o espelhamento. */
+  needsWriteReconsent: boolean;
 };
 
 /**
@@ -36,6 +40,7 @@ export async function GET() {
         where: { userId },
         select: {
           status: true,
+          scopes: true,
           googleAccountEmail: true,
           connectedAt: true,
         },
@@ -51,6 +56,8 @@ export async function GET() {
           ? "NEEDS_RECONSENT"
           : "CONNECTED";
 
+    const hasWrite = conn ? hasWriteScope(conn.scopes) : false;
+
     return NextResponse.json<ApiResponse<GcalStatusResponse>>({
       data: {
         configured: isGoogleOAuthConfigured(),
@@ -59,6 +66,8 @@ export async function GET() {
         googleAccountEmail: status === "DISCONNECTED" ? null : (conn?.googleAccountEmail ?? null),
         connectedAt:
           status === "DISCONNECTED" ? null : (conn?.connectedAt?.toISOString() ?? null),
+        mirrorActive: status === "CONNECTED" && hasWrite && decision.allowed,
+        needsWriteReconsent: status === "CONNECTED" && !hasWrite,
       },
     });
   } catch (error) {

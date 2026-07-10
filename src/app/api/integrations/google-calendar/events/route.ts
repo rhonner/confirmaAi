@@ -71,20 +71,30 @@ export async function GET(request: NextRequest) {
     const result = await fetchGoogleEventsForUser(userId, { timeMin, timeMax });
 
     if (result.ok) {
-      // De-dup (Fase B): esconde do overlay os eventos JÁ promovidos a
-      // agendamento (senão o dia mostraria o bloco Google E o Appointment).
+      // De-dup nos DOIS sentidos: esconde do overlay tanto os eventos JÁ
+      // promovidos a agendamento (Fase B, Google→app) quanto os que NÓS criamos
+      // espelhando um agendamento (Fase C, app→Google) — senão o dia mostraria
+      // o bloco Google E o Appointment, e o nosso próprio espelho seria
+      // "promovível" (loop → duplicata). O de-dup Fase C é backstop do drop por
+      // tag em mapGoogleEvent (cobre o caso raro de a tag não ter sido gravada).
       let events = result.events;
       if (events.length) {
-        const promoted = await prisma.externalEvent.findMany({
-          where: {
-            userId,
-            googleEventId: { in: events.map((e) => e.id) },
-            appointmentId: { not: null },
-          },
-          select: { googleEventId: true },
-        });
-        if (promoted.length) {
-          const promotedIds = new Set(promoted.map((p) => p.googleEventId));
+        const eventIds = events.map((e) => e.id);
+        const [promoted, appMirrored] = await Promise.all([
+          prisma.externalEvent.findMany({
+            where: { userId, googleEventId: { in: eventIds }, appointmentId: { not: null } },
+            select: { googleEventId: true },
+          }),
+          prisma.appointment.findMany({
+            where: { userId, googleEventId: { in: eventIds } },
+            select: { googleEventId: true },
+          }),
+        ]);
+        const promotedIds = new Set<string>([
+          ...promoted.map((p) => p.googleEventId),
+          ...appMirrored.map((a) => a.googleEventId).filter((id): id is string => id !== null),
+        ]);
+        if (promotedIds.size) {
           events = events.filter((e) => !promotedIds.has(e.id));
         }
       }

@@ -13,12 +13,20 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
-/** Escopo sensível mínimo da Fase A/B: leitura de eventos. */
+/** Escopo de LEITURA de eventos (Fase A/B — overlay). Grants legados têm só isto. */
 export const CALENDAR_EVENTS_READONLY_SCOPE =
   "https://www.googleapis.com/auth/calendar.events.readonly";
 
+/**
+ * Escopo de LEITURA+ESCRITA de eventos (Fase C — espelhar agendamentos no
+ * Google). Inclui leitura, então SUBSTITUI o readonly no consent. Escopo mais
+ * sensível → exige nova verificação OAuth do Google e re-consentimento de quem
+ * já estava conectado (o grant antigo só tinha readonly).
+ */
+export const CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
 /** openid+email para identificar a conta Google conectada (exibida na UI). */
-const REQUESTED_SCOPES = ["openid", "email", CALENDAR_EVENTS_READONLY_SCOPE];
+const REQUESTED_SCOPES = ["openid", "email", CALENDAR_EVENTS_SCOPE];
 
 /** Cookies httpOnly de vida curta usados entre /connect e /callback. */
 export const GCAL_STATE_COOKIE = "gcal_oauth_state";
@@ -224,8 +232,26 @@ export function decodeIdTokenEmail(idToken: string | undefined): string | null {
   }
 }
 
+/**
+ * Acesso de LEITURA à agenda concedido? Satisfeito por QUALQUER um dos escopos
+ * de eventos — o write (`calendar.events`) inclui a leitura, e grants legados
+ * têm só o readonly. Usado pelo guard de scope-mismatch do callback: sem isto,
+ * ao trocar o pedido para o escopo de escrita, todo consent válido (que volta
+ * `calendar.events`, não `...readonly`) seria falsamente rejeitado como scope.
+ */
 export function hasCalendarScope(grantedScopes: string): boolean {
-  return grantedScopes.split(/\s+/).includes(CALENDAR_EVENTS_READONLY_SCOPE);
+  const scopes = grantedScopes.split(/\s+/);
+  return scopes.includes(CALENDAR_EVENTS_SCOPE) || scopes.includes(CALENDAR_EVENTS_READONLY_SCOPE);
+}
+
+/**
+ * Acesso de ESCRITA concedido? Só o escopo `calendar.events` (o readonly NÃO
+ * dá escrita). O mirror da Fase C gateia por isto — grant legado só-leitura não
+ * pode escrever (403 insufficientPermissions), então o mirror faz no-op até a
+ * pessoa reconectar e re-consentir o escopo de escrita.
+ */
+export function hasWriteScope(grantedScopes: string): boolean {
+  return grantedScopes.split(/\s+/).includes(CALENDAR_EVENTS_SCOPE);
 }
 
 function expiryFrom(expiresInSeconds: number | undefined): Date {

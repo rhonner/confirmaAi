@@ -32,10 +32,14 @@ import type { ApiResponse, AppointmentResponse } from "@/lib/types/api";
  * Appointment gerado é um agendamento normal). Idempotente por evento
  * (`@@unique([userId, googleEventId])`).
  *
- * NÃO escreve nada no Google (escopo é `calendar.events.readonly`). Depois de
- * promovido, o `events` route esconde o evento do overlay (de-dup por
- * ExternalEvent). Cancelar o evento no Google NÃO reflete no app (snapshot;
- * sync contínuo é Fase B2).
+ * NÃO escreve nada no Google (promoção é sentido Google→app; embora o escopo
+ * agora seja `calendar.events` read/write por causa do mirror da Fase C, este
+ * fluxo é deliberadamente só de leitura). Depois de promovido, o `events` route
+ * esconde o evento do overlay (de-dup por ExternalEvent). Cancelar o evento no
+ * Google NÃO reflete no app (snapshot; sync contínuo é Fase B2).
+ *
+ * FIREWALL Fase C: rejeita promover um evento que NÓS criamos (espelho de um
+ * Appointment) — senão criaria um segundo Appointment do próprio espelho (loop).
  */
 const convertSchema = z
   .object({
@@ -119,6 +123,20 @@ export const POST = auditWrap(async (request: NextRequest) => {
 
     const existing = await alreadyPromotedResponse();
     if (existing) return existing;
+
+    // Firewall Fase C: se o evento é um espelho que NÓS criamos (id gravado em
+    // algum Appointment do tenant), promovê-lo criaria um Appointment duplicado
+    // do próprio espelho (loop). O overlay já esconde esses eventos (drop por
+    // tag + de-dup), mas uma chamada direta à API não passa pelo overlay.
+    const appOrigin = await prisma.appointment.findFirst({
+      where: { userId, googleEventId: input.googleEventId },
+      select: { id: true },
+    });
+    if (appOrigin) {
+      return badRequestResponse(
+        "Esse evento foi criado pelo app a partir de um agendamento — ele já corresponde a um agendamento",
+      );
+    }
 
     // Rejeita passado — senão markNoShows marcaria NO_SHOW falso no próximo cron.
     const when = new Date(input.dateTime);

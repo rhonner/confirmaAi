@@ -13,7 +13,9 @@ import {
   statesMatch,
   verifyStateCookie,
   GoogleOAuthError,
+  hasWriteScope,
   CALENDAR_EVENTS_READONLY_SCOPE,
+  CALENDAR_EVENTS_SCOPE,
 } from "@/lib/services/google/oauth";
 
 const ENV_KEYS = [
@@ -124,8 +126,12 @@ describe("buildAuthUrl", () => {
     expect(p.get("client_id")).toBe("test-client-id.apps.googleusercontent.com");
     expect(p.get("redirect_uri")).toContain("/api/integrations/google-calendar/callback");
     expect(p.get("response_type")).toBe("code");
-    expect(p.get("scope")).toContain(CALENDAR_EVENTS_READONLY_SCOPE);
-    expect(p.get("scope")).toContain("email");
+    // Fase C: pede o escopo de LEITURA+ESCRITA (calendar.events), NÃO o readonly
+    // (membership exata — evita falso-positivo já que readonly contém a substring).
+    const scopes = p.get("scope")!.split(" ");
+    expect(scopes).toContain(CALENDAR_EVENTS_SCOPE);
+    expect(scopes).not.toContain(CALENDAR_EVENTS_READONLY_SCOPE);
+    expect(scopes).toContain("email");
     expect(p.get("access_type")).toBe("offline");
     expect(p.get("prompt")).toBe("consent");
     expect(p.get("state")).toBe("st-1");
@@ -173,11 +179,22 @@ describe("decodeIdTokenEmail", () => {
   });
 });
 
-describe("hasCalendarScope", () => {
-  it("detecta o escopo concedido (OAUTH-07)", () => {
+describe("hasCalendarScope (LEITURA satisfeita por qualquer escopo de eventos)", () => {
+  it("detecta acesso de leitura via readonly OU write (OAUTH-07 / Fase C)", () => {
     expect(hasCalendarScope(`openid email ${CALENDAR_EVENTS_READONLY_SCOPE}`)).toBe(true);
+    expect(hasCalendarScope(`openid email ${CALENDAR_EVENTS_SCOPE}`)).toBe(true);
     expect(hasCalendarScope("openid email")).toBe(false);
     expect(hasCalendarScope("")).toBe(false);
+  });
+});
+
+describe("hasWriteScope (ESCRITA só via calendar.events)", () => {
+  it("true só com o escopo de escrita; readonly NÃO conta", () => {
+    expect(hasWriteScope(`openid email ${CALENDAR_EVENTS_SCOPE}`)).toBe(true);
+    // readonly não dá escrita (mesmo contendo a substring calendar.events).
+    expect(hasWriteScope(`openid email ${CALENDAR_EVENTS_READONLY_SCOPE}`)).toBe(false);
+    expect(hasWriteScope("openid email")).toBe(false);
+    expect(hasWriteScope("")).toBe(false);
   });
 });
 

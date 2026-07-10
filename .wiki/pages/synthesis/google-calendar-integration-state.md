@@ -9,6 +9,7 @@ sources:
   - raw/sessions/2026-07-05-google-calendar-oauth-ui-fase-a-complete.md
   - raw/sessions/2026-07-10-google-calendar-e2e-verify-prod.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
+  - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
   - .context/features/google-calendar.md
 related:
   - pages/concepts/external-event-firewall.md
@@ -18,6 +19,8 @@ related:
   - pages/concepts/google-oauth-verification-sensitive-scope.md
   - pages/concepts/idempotent-link-under-race.md
   - pages/concepts/stale-async-response-guard.md
+  - pages/concepts/revive-cancelled-event-on-id-reuse.md
+  - pages/concepts/patch-merge-clear-requires-explicit-empty.md
   - pages/synthesis/monetization-v2-state.md
 status: draft
 ---
@@ -30,7 +33,7 @@ Entrega faseada, cada fase independentemente entregável:
 
 - **Fase A — overlay só-leitura**: conexão OAuth por tenant + eventos do Google exibidos na agenda como blocos só-leitura (live-fetch). Zero risco de WhatsApp. Constrói toda a infra (OAuth, cifra de token, gate, teardown).
 - **Fase B — promoção manual (✅ implementada 2026-07-10)**: `ExternalEvent` + `POST /convert` + `/event-signals` (prefill) + de-dup do overlay + UI "Promover". Evento vira `Appointment` só por ação manual. **Nuance**: `ExternalEvent` é populado **lazy na promoção** — o sync incremental que *persiste* eventos ficou para **B2** (não iniciado), junto de propagação de cancelamento/reagendamento e cron de retry de revoke.
-- **Fase C — sync bidirecional**: push channels + reconciliação + escrita no Google (exige escopo além de `readonly`). Só se pedido.
+- **Fase C — sync app→Google (✅ implementada + validada E2E 2026-07-10)**: `Appointment` criado/editado/cancelado/excluído no ConfirmaAí é espelhado como evento no Google. Escopo de **escrita** (`calendar.events`) → conectados legados reconectam; `mirror.ts` via `after()` best-effort; **de-dup nos dois sentidos**; escrita nunca quebra a mutação. Ver § Fase C abaixo. ⛳ GA depende de **nova verificação OAuth** do escopo de escrita.
 
 ## Evidências / decisões
 
@@ -53,9 +56,21 @@ Entrega faseada, cada fase independentemente entregável:
 
 - **O que faz**: transforma um bloco Google do overlay em `Appointment` gerenciado ("Promover"), com matching de paciente (telefone→CPF→patientId) e **pré-preenchimento** (nome do título; telefone/e-mail via `/event-signals` fazendo `events.get` real). Ao promover, o evento **sai do overlay** (de-dup por `ExternalEvent` linkado) e o dia mostra o agendamento — que agora recebe o maquinário normal (confirmação WhatsApp, no-show). O firewall vale aqui: o scheduler nunca lê `ExternalEvent`. Ver [[external-event-firewall]].
 - **Detalhe operacional completo**: `.context/features/google-calendar.md` § Fase B.
-- **Code-review adversarial** (workflow 7 dimensões × verificação, 11 agentes): firewall/multi-tenancy/quota/privacidade **limpos**; 4 achados menores → 3 fixes ([[idempotent-link-under-race]], [[stale-async-response-guard]], teste tautológico [[regression-test-assert-the-predicate]]) + 1 documentado (conflito checado fora da tx; Serializable não protege double-booking — mesma classe do `POST /appointments`).
-- **Gate**: tsc · vitest **343** · build · sprints **139/139** (GCAL.8–11).
+- **Dois code-reviews adversariais** (workflows): 1ª rodada (7 dimensões × verificação) — firewall/multi-tenancy/quota/privacidade **limpos**; 4 achados → 3 fixes ([[idempotent-link-under-race]], [[stale-async-response-guard]], teste tautológico [[regression-test-assert-the-predicate]]) + 1 documentado (conflito fora da tx; Serializable não protege double-booking — mesma classe do `POST /appointments`). 2ª rodada (xhigh, 20 agentes, antes do commit) — 1 **falso-positivo** descartado (promover evento de dia-inteiro: não há botão para dia-inteiro; verificadores discordaram, resolvido lendo o código) + 3 fixes menores (e-mail agora pré-preenchido; título só-prefixo não vira nome; msg de colisão deduplicada) + 2 limitações documentadas.
+- **Gate**: tsc · vitest **345** · build · sprints **139/139** (GCAL.8–11). ⚠️ rodar `test:sprints` isolado (contenção no DB local se concorrente com o vitest de integração).
 - **E2E real** (Chrome MCP, wcwecalc): prefill nome+telefone confirmado com evento "Consulta Ana Paula 11 97777-1234" → "Ana Paula" + (11) 97777-1234; promover → PENDING; de-dup no overlay (persiste após reload); evento intacto no Google. **Responde à pergunta antiga**: o parsing de telefone no título é confiável para *pré-preencher* (o usuário sempre confirma/edita; `isValidPhone` é o filtro real, a regex só localiza).
+
+## Fase C — sync app→Google / mirror (2026-07-10, implementada + validada E2E com credencial REAL, não commitada)
+
+- **O que faz**: criar/editar/reagendar/cancelar/excluir um `Appointment` NATIVO no app espelha o evento correspondente no Google Calendar do tenant. Responde à queixa do dono ("crio no app e não aparece no Google"). Detalhe operacional completo em `.context/features/google-calendar.md` § Fase C.
+- **4 decisões do dono** (governam o build): escreve na **agenda principal** (`primary`) → escopo só `calendar.events`, sem seletor; **ligado automaticamente ao conectar** (sem toggle); **só ações no app (v1)** — webhook/cron não mexem no evento (fica p/ B2); cancelar/excluir/no-show **apaga** no Google.
+- **Arquitetura**: primitivos de escrita ficam em `calendar.ts` (não tocam `Appointment` — mantém o check de firewall GCAL.7); a ORQUESTRAÇÃO (lê o agendamento, decide insert/patch/delete, persiste `googleEventId`, gate de plano, pula promovidos) vive em `mirror.ts`, chamado via **`after()`** das rotas → best-effort pós-resposta, **nunca quebra/500 a mutação nem lança**. Id do evento é **determinístico** (`appOriginEventId`) → `events.insert` idempotente.
+- **Firewall estendido aos DOIS sentidos**: o evento origem-app é dropado do overlay pela tag `confirmaaiOrigin=app` (+ de-dup por `Appointment.googleEventId` + `/convert` rejeita origem-app); o mirror ignora agendamentos promovidos DO Google (`ExternalEvent`) para não reescrever o evento original do usuário. Ver [[external-event-firewall]].
+- **Escopo mudou** `calendar.events.readonly` → `calendar.events` (write): `hasCalendarScope` passou a aceitar os dois (leitura satisfeita por qualquer um → callback não rejeita à toa); `hasWriteScope` exige o de escrita. Conectados legados só-leitura fazem **no-op** no mirror e o card mostra "Reconecte para ativar".
+- **Code-review adversarial** (workflow, 7 dimensões × verificação independente, 13 agentes): dims firewall/best-effort/multi-tenancy/token-403 **limpas**; **3 fixes** — [[revive-cancelled-event-on-id-reuse]] (409 na reabertura não é sucesso cego → patch `status:"confirmed"` ressuscita o tombstone), [[patch-merge-clear-requires-explicit-empty]] (limpar observação exige `description:""`, senão o merge do patch mantém a antiga), e renomear paciente dispara `syncPatientRename` (o mirror antes só disparava pelas rotas de Appointment); **2 falso-positivos** descartados (403 com corpo não-JSON → mesma classe pré-existente aceita do read-path; guard do convert por id em vez de tag → suficiente pois o overlay já dropa por tag).
+- **Gate**: tsc · vitest **357** · build · sprints **143/143** (GCAL.12–15). ⚠️ rodar `test:sprints` isolado.
+- **E2E real** (Chrome MCP, wcwecalc, **escopo de ESCRITA** — dono deu o consent): reconexão → card "espelhados automaticamente"; **create** (form) → evento confirmed, TZ correto, summary/desc/tag/id batendo; **cancelar** → evento apagado (tombstone), `googleEventId` limpo; **reabrir** → evento **ressuscitado**; **reagendar+limpar-obs** → movido + `description` limpa; **excluir** → evento removido; **renomear paciente** → summary atualizado; **de-dup ao vivo** → o espelho nunca apareceu como bloco "Promover". Conferido server-to-server via `scripts/gcal-list-raw.ts` (lista eventos origem-app pela `privateExtendedProperty`). Dados de teste revertidos.
+- **Aprendizado de verificação E2E**: para checar o lado Google de forma confiável, um script que usa o token da conexão + `events.list?privateExtendedProperty=confirmaaiOrigin=app&showDeleted=true` bate direto na API (vê inclusive tombstones cancelados) — mais robusto que raspar `calendar.google.com`.
 
 ## Contradições / lacunas
 
@@ -64,8 +79,9 @@ Entrega faseada, cada fase independentemente entregável:
 
 ## Próximas perguntas
 
-- Verificação OAuth: prep feita (branding/nome/política); falta o dono preencher o controlador (CPF) e submeter. Quanto tempo o review do Google leva na prática?
-- ~~Fase B: parsing de telefone confiável para pré-preencher?~~ **Resolvido**: sim, como sugestão editável (E2E acima). A pergunta viva agora é **B2**: quando/se fazer o sync contínuo que persiste `ExternalEvent` + propaga cancelamento/reagendamento do Google.
+- **Verificação OAuth do escopo de ESCRITA** (agora o bloqueador nº1): a Fase C trocou p/ `calendar.events` (write), **mais sensível** que o `.readonly`. A verificação (já pendente da Fase A) tem que cobrir ESTE escopo — o review do Google para escopo sensível de escrita pode ser mais rigoroso. Falta o dono preencher o controlador (CPF) na política e submeter.
+- ~~Fase C: como espelhar sem virar loop / sem quebrar a criação?~~ **Resolvido** (E2E acima): tag origem-app + de-dup 2 sentidos + `after()` best-effort.
+- **B2** (vivo): sync contínuo Google→app que persiste `ExternalEvent` + propaga cancelamento/reagendamento; e espelhar as transições NÃO-UI da Fase C (confirmação por WhatsApp via webhook → patch; no-show do cron → delete) com sub-orçamento no cron.
 - Vale o guard `VERCEL_ENV` no `vercel-build` pra parar de sujar o PR com preview vermelho? (hoje: não — [[vercel-preview-build-no-db-creds]])
 
 ## Cross-refs
@@ -74,6 +90,7 @@ Entrega faseada, cada fase independentemente entregável:
 - [[external-event-firewall]], [[soft-delete-skips-cascade-cleanup]], [[../concepts/dev-fallback-without-secrets]]
 - [[oauth-scope-check-before-persist]], [[oauth-state-cookie-ttl-expiry]], [[google-oauth-verification-sensitive-scope]], [[vercel-preview-build-no-db-creds]] — aprendizados da sessão 2026-07-10 (E2E/prod/config).
 - [[idempotent-link-under-race]], [[stale-async-response-guard]], [[regression-test-assert-the-predicate]] — aprendizados da Fase B (promoção).
+- [[revive-cancelled-event-on-id-reuse]], [[patch-merge-clear-requires-explicit-empty]] — aprendizados da Fase C (mirror app→Google).
 - [[monetization-v2-state]] — PREMIUM no contexto de planos.
 
 ## Fontes
