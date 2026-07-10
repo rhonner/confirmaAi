@@ -2243,6 +2243,103 @@ async function main() {
       purgeSrc.includes("revokeGoogleGrant"),
   );
 
+  // GCAL.8 (Fase B) — promoção: Appointment + ExternalEvent linkados; o unique
+  // (userId, googleEventId) garante idempotência (não promove o mesmo 2×).
+  const gcalPatient = await prisma.patient.create({
+    data: {
+      name: "Promo Paciente",
+      phone: "+5511977776666",
+      phoneCanonical: "5511977776666",
+      userId: gcalUser.id,
+    },
+  });
+  const gcalAppt = await prisma.appointment.create({
+    data: {
+      patientId: gcalPatient.id,
+      userId: gcalUser.id,
+      dateTime: new Date(Date.now() + 86_400_000),
+      durationMinutes: 30,
+    },
+  });
+  const gcalEventId = `evt-${Date.now()}`;
+  await prisma.externalEvent.create({
+    data: {
+      userId: gcalUser.id,
+      googleEventId: gcalEventId,
+      title: "Consulta Promo",
+      startsAt: gcalAppt.dateTime,
+      allDay: false,
+      appointmentId: gcalAppt.id,
+    },
+  });
+  let gcalIdempotent = false;
+  try {
+    await prisma.externalEvent.create({
+      data: {
+        userId: gcalUser.id,
+        googleEventId: gcalEventId,
+        title: "dup",
+        startsAt: gcalAppt.dateTime,
+        allDay: false,
+      },
+    });
+  } catch (e) {
+    gcalIdempotent = (e as { code?: string }).code === "P2002";
+  }
+  const gcalLinked = await prisma.externalEvent.findUnique({
+    where: { userId_googleEventId: { userId: gcalUser.id, googleEventId: gcalEventId } },
+  });
+  check(
+    "GCAL.8 promoção: ExternalEvent linkado ao Appointment + unique(userId,googleEventId) idempotente",
+    10,
+    !!gcalLinked && gcalLinked.appointmentId === gcalAppt.id && gcalIdempotent,
+  );
+
+  // GCAL.9 — overlay de-dup: eventos já promovidos somem do overlay (query +
+  // filtro presente na rota de events).
+  const gcalEventsSrc = readFileSync(join(root, `${gcalRouteBase}/events/route.ts`), "utf8");
+  const gcalDedup = await prisma.externalEvent.findMany({
+    where: {
+      userId: gcalUser.id,
+      googleEventId: { in: [gcalEventId, "nao-existe"] },
+      appointmentId: { not: null },
+    },
+    select: { googleEventId: true },
+  });
+  check(
+    "GCAL.9 overlay de-dup esconde eventos promovidos (query só o promovido + predicado de EXCLUSÃO real na rota)",
+    10,
+    gcalDedup.length === 1 &&
+      gcalDedup[0].googleEventId === gcalEventId &&
+      gcalEventsSrc.includes("externalEvent.findMany") &&
+      // Assere o predicado que carrega a de-dup, não só a existência da query:
+      // um filtro invertido (`promotedIds.has`) ou removido derruba este check.
+      gcalEventsSrc.includes("!promotedIds.has"),
+  );
+
+  // GCAL.10 — FIREWALL Fase B: o scheduler NUNCA pode mencionar ExternalEvent
+  // (senão eventos importados herdariam WhatsApp/no-show).
+  const gcalSchedulerSrc = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+  check(
+    "GCAL.10 firewall Fase B: scheduler.ts NÃO menciona ExternalEvent",
+    10,
+    !/externalevent/i.test(gcalSchedulerSrc),
+  );
+
+  // GCAL.11 — apagar o Appointment cascateia o ExternalEvent (o evento volta a
+  // ser promovível, não fica escondido pra sempre) + rotas Fase B existem.
+  await prisma.appointment.delete({ where: { id: gcalAppt.id } });
+  const gcalEEAfterDelete = await prisma.externalEvent.findUnique({
+    where: { userId_googleEventId: { userId: gcalUser.id, googleEventId: gcalEventId } },
+  });
+  check(
+    "GCAL.11 delete do Appointment cascateia ExternalEvent (evento volta ao overlay) + rotas convert/event-signals existem",
+    10,
+    gcalEEAfterDelete === null &&
+      exists(`${gcalRouteBase}/convert/route.ts`) &&
+      exists(`${gcalRouteBase}/event-signals/route.ts`),
+  );
+
   // cleanup GCal (cascade apaga a conexão)
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");

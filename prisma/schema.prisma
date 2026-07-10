@@ -124,6 +124,7 @@ model User {
   subscription      Subscription?
   patientQuotaSlots PatientQuotaSlot[]
   googleCalendar    GoogleCalendarConnection?
+  externalEvents    ExternalEvent[]
 
   @@index([cpfHash])
   @@index([deletedAt])
@@ -182,9 +183,10 @@ model Appointment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messageLogs MessageLog[]
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageLogs   MessageLog[]
+  externalEvent ExternalEvent?
 
   @@index([userId])
   @@index([patientId])
@@ -334,4 +336,33 @@ model GoogleCalendarConnection {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
+}
+
+// Evento do Google Calendar persistido SOMENTE quando promovido a Appointment
+// (Fase B — populado lazy na promoção; NÃO há full-sync ainda). FIREWALL: o
+// scheduler (sendConfirmations/sendReminders/markNoShows) NUNCA consulta esta
+// tabela — só toca Appointment. NÃO faz parte de AUDITED_MODELS (guarda
+// título/horário de terceiros). Ver .context/features/google-calendar.md.
+model ExternalEvent {
+  id            String    @id @default(cuid())
+  userId        String
+  googleEventId String
+  calendarId    String    @default("primary")
+  // Snapshot do evento no momento da promoção (contexto + de-dup no overlay).
+  title         String
+  startsAt      DateTime
+  endsAt        DateTime?
+  allDay        Boolean   @default(false)
+  googleStatus  String?
+  // Agendamento gerado pela promoção (1:1). Cascade: apagar o Appointment
+  // libera o evento pra reaparecer no overlay e ser promovido de novo.
+  appointmentId String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleEventId])
+  @@index([userId])
 }

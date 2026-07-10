@@ -2,14 +2,16 @@
 title: Firewall de eventos externos (tabela separada vs coluna source)
 type: concept
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-10
 tags: [pattern, data-model, multi-tenancy, integrations, scheduler]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
+  - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - .context/features/google-calendar.md
 related:
   - .context/features/scheduler.md
   - pages/concepts/quota-ledger-immortal-slot.md
+  - pages/concepts/idempotent-link-under-race.md
 status: stable
 ---
 
@@ -29,6 +31,14 @@ Ao trazer eventos do Google Calendar para dentro do ConfirmaAí, a tentação é
 - **Tabela separada = firewall físico**: o scheduler/dashboard só consultam `Appointment`; uma `ExternalEvent` nunca aparece a menos que explicitamente unida. Impossível esquecer um filtro que não precisa existir.
 - **Promoção explícita como única ponte**: um evento externo só vira `Appointment` (e só então pode mandar WhatsApp / consumir vaga de quota) via ação **manual** do usuário, que passa pelo caminho normal (`reserveSlotInTx` 1×, telefone válido exigido). Ver [[quota-ledger-immortal-slot]].
 - **Idempotência no vínculo**: a promoção é idempotente em `ExternalEvent.appointmentId @unique` (duplo-clique não cria 2 agendamentos nem queima 2 vagas vitalícias).
+
+## Estado: implementado na Fase B (2026-07-10)
+
+O padrão saiu do design para o código:
+- **`ExternalEvent`** existe (migration `20260710170250_add_external_event`), mas é populado **lazy só na promoção** (não há full-sync que insira eventos). O scheduler **nunca** o menciona — regressão `GCAL.10` falha se mencionar.
+- **Promoção** = `POST /convert` (idempotente, tx Serializable, quota + conflito), matching telefone→CPF→patientId. Ver [[idempotent-link-under-race]] para a corrida.
+- **De-dup do overlay**: a rota de eventos filtra os já promovidos (`!promotedIds.has(e.id)`) para não mostrar o bloco Google **e** o `Appointment` no mesmo dia. É a face de leitura do firewall: o promovido migra de "evento externo" para "domínio".
+- Validado E2E (Chrome MCP, credencial real): promover → `Appointment` PENDING → some do overlay; o evento **continua intacto no Google** (escopo readonly, promoção não escreve nada lá).
 
 ## Quando aplicar / quando NÃO
 

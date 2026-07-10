@@ -8,6 +8,7 @@ sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
   - raw/sessions/2026-07-05-google-calendar-oauth-ui-fase-a-complete.md
   - raw/sessions/2026-07-10-google-calendar-e2e-verify-prod.md
+  - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - .context/features/google-calendar.md
 related:
   - pages/concepts/external-event-firewall.md
@@ -15,6 +16,8 @@ related:
   - pages/concepts/oauth-scope-check-before-persist.md
   - pages/concepts/oauth-state-cookie-ttl-expiry.md
   - pages/concepts/google-oauth-verification-sensitive-scope.md
+  - pages/concepts/idempotent-link-under-race.md
+  - pages/concepts/stale-async-response-guard.md
   - pages/synthesis/monetization-v2-state.md
 status: draft
 ---
@@ -26,8 +29,8 @@ status: draft
 Entrega faseada, cada fase independentemente entregável:
 
 - **Fase A — overlay só-leitura**: conexão OAuth por tenant + eventos do Google exibidos na agenda como blocos só-leitura (live-fetch). Zero risco de WhatsApp. Constrói toda a infra (OAuth, cifra de token, gate, teardown).
-- **Fase B — importação seletiva + confirmação opt-in**: eventos persistem numa tabela separada `ExternalEvent`; viram `Appointment` só por **promoção manual**.
-- **Fase C — sync bidirecional**: push channels + reconciliação. Só se pedido.
+- **Fase B — promoção manual (✅ implementada 2026-07-10)**: `ExternalEvent` + `POST /convert` + `/event-signals` (prefill) + de-dup do overlay + UI "Promover". Evento vira `Appointment` só por ação manual. **Nuance**: `ExternalEvent` é populado **lazy na promoção** — o sync incremental que *persiste* eventos ficou para **B2** (não iniciado), junto de propagação de cancelamento/reagendamento e cron de retry de revoke.
+- **Fase C — sync bidirecional**: push channels + reconciliação + escrita no Google (exige escopo além de `readonly`). Só se pedido.
 
 ## Evidências / decisões
 
@@ -46,6 +49,14 @@ Entrega faseada, cada fase independentemente entregável:
 - **Aprendizado-chave do OAuth Google** (mantido): revogar um refresh token derruba o grant inteiro do par conta+app — na reconexão, só revogar o token antigo se a conta MUDOU.
 - **Bloqueio restante para GA (dono):** (1) **verificação OAuth** do Google — maior item ([[google-oauth-verification-sensitive-scope]]); a prep está feita (branding/URLs/nome/política); falta preencher o controlador na política (nome + **CPF** — CNPJ não é exigido — + DPO) e submeter; (2) `plans.ts hidden:false` só após a verificação + E2E em prod.
 
+## Fase B — promoção manual (2026-07-10, implementada + validada E2E, não commitada)
+
+- **O que faz**: transforma um bloco Google do overlay em `Appointment` gerenciado ("Promover"), com matching de paciente (telefone→CPF→patientId) e **pré-preenchimento** (nome do título; telefone/e-mail via `/event-signals` fazendo `events.get` real). Ao promover, o evento **sai do overlay** (de-dup por `ExternalEvent` linkado) e o dia mostra o agendamento — que agora recebe o maquinário normal (confirmação WhatsApp, no-show). O firewall vale aqui: o scheduler nunca lê `ExternalEvent`. Ver [[external-event-firewall]].
+- **Detalhe operacional completo**: `.context/features/google-calendar.md` § Fase B.
+- **Code-review adversarial** (workflow 7 dimensões × verificação, 11 agentes): firewall/multi-tenancy/quota/privacidade **limpos**; 4 achados menores → 3 fixes ([[idempotent-link-under-race]], [[stale-async-response-guard]], teste tautológico [[regression-test-assert-the-predicate]]) + 1 documentado (conflito checado fora da tx; Serializable não protege double-booking — mesma classe do `POST /appointments`).
+- **Gate**: tsc · vitest **343** · build · sprints **139/139** (GCAL.8–11).
+- **E2E real** (Chrome MCP, wcwecalc): prefill nome+telefone confirmado com evento "Consulta Ana Paula 11 97777-1234" → "Ana Paula" + (11) 97777-1234; promover → PENDING; de-dup no overlay (persiste após reload); evento intacto no Google. **Responde à pergunta antiga**: o parsing de telefone no título é confiável para *pré-preencher* (o usuário sempre confirma/edita; `isValidPhone` é o filtro real, a regex só localiza).
+
 ## Contradições / lacunas
 
 - `CLAUDE.md` raiz descreve stack aspiracional (Fastify etc.) — irrelevante aqui; a verdade é Next.js monolito.
@@ -54,14 +65,15 @@ Entrega faseada, cada fase independentemente entregável:
 ## Próximas perguntas
 
 - Verificação OAuth: prep feita (branding/nome/política); falta o dono preencher o controlador (CPF) e submeter. Quanto tempo o review do Google leva na prática?
-- Fase B: parsing de telefone no título/descrição do evento é confiável o suficiente para pré-preencher a promoção?
+- ~~Fase B: parsing de telefone confiável para pré-preencher?~~ **Resolvido**: sim, como sugestão editável (E2E acima). A pergunta viva agora é **B2**: quando/se fazer o sync contínuo que persiste `ExternalEvent` + propaga cancelamento/reagendamento do Google.
 - Vale o guard `VERCEL_ENV` no `vercel-build` pra parar de sujar o PR com preview vermelho? (hoje: não — [[vercel-preview-build-no-db-creds]])
 
 ## Cross-refs
 
 - `.context/features/google-calendar.md` — operacional + matriz de 47+2 cenários.
 - [[external-event-firewall]], [[soft-delete-skips-cascade-cleanup]], [[../concepts/dev-fallback-without-secrets]]
-- [[oauth-scope-check-before-persist]], [[oauth-state-cookie-ttl-expiry]], [[google-oauth-verification-sensitive-scope]], [[vercel-preview-build-no-db-creds]] — aprendizados da sessão 2026-07-10.
+- [[oauth-scope-check-before-persist]], [[oauth-state-cookie-ttl-expiry]], [[google-oauth-verification-sensitive-scope]], [[vercel-preview-build-no-db-creds]] — aprendizados da sessão 2026-07-10 (E2E/prod/config).
+- [[idempotent-link-under-race]], [[stale-async-response-guard]], [[regression-test-assert-the-predicate]] — aprendizados da Fase B (promoção).
 - [[monetization-v2-state]] — PREMIUM no contexto de planos.
 
 ## Fontes

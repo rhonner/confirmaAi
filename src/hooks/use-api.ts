@@ -480,6 +480,80 @@ export function useGoogleCalendarEvents(
   });
 }
 
+// Google Calendar (Fase B — promoção evento → agendamento)
+export type GcalPromoteSignals = {
+  suggestedPhone?: string;
+  suggestedName?: string;
+  suggestedEmail?: string;
+};
+
+/** Sinais (nome/telefone/e-mail) de um evento para pré-preencher a promoção. */
+export function useGoogleEventSignals() {
+  return useMutation({
+    mutationFn: (eventId: string) =>
+      fetchApi<{ signals: GcalPromoteSignals; isPrivate: boolean }>(
+        "/api/integrations/google-calendar/event-signals",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId }),
+        },
+      ),
+  });
+}
+
+export type GcalPromotePayload = {
+  googleEventId: string;
+  calendarId?: string;
+  dateTime: string;
+  durationMinutes?: number;
+  notes?: string | null;
+  patientId?: string;
+  patient?: {
+    name: string;
+    phone: string;
+    cpf?: string | null;
+    email?: string | null;
+    notes?: string | null;
+  };
+  snapshot: {
+    title: string;
+    startsAt: string;
+    endsAt?: string | null;
+    allDay?: boolean;
+    googleStatus?: string | null;
+  };
+};
+
+/** Promove um evento do Google a agendamento gerenciado (Fase B). */
+export function useGoogleCalendarConvert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GcalPromotePayload) =>
+      fetchApi<{
+        appointment: Appointment;
+        created?: boolean;
+        reused?: boolean;
+        alreadyPromoted?: boolean;
+      }>("/api/integrations/google-calendar/convert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["gcal-events"] });
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(
+        res.alreadyPromoted ? "Evento já estava promovido" : "Evento promovido a agendamento",
+      );
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
 // Settings
 export function useSettings() {
   return useQuery({

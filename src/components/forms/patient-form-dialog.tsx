@@ -57,6 +57,9 @@ type PatientFormDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   patient?: ExistingPatient | null
+  /** Pré-preenche o form de CRIAÇÃO (ignorado ao editar um `patient`). Usado
+   *  pela promoção do Google Calendar para sugerir nome/telefone do evento. */
+  defaultValues?: { name?: string; phone?: string; cpf?: string; email?: string }
   onSaved?: (patient: { id: string; name: string; phone: string }) => void
 }
 
@@ -64,6 +67,7 @@ export function PatientFormDialog({
   open,
   onOpenChange,
   patient,
+  defaultValues,
   onSaved,
 }: PatientFormDialogProps) {
   const createMutation = useCreatePatient()
@@ -90,13 +94,21 @@ export function PatientFormDialog({
     defaultValues: { name: "", phone: "", cpf: "", email: "", notes: "" },
   })
 
+  // Lê os defaults via ref: o reset roda só na ABERTURA (deps sem defaultValues).
+  // Senão, o enriquecimento assíncrono dos sinais do evento (promoção) criaria
+  // um novo objeto e re-resetaria o form aberto, apagando o que o usuário digitou.
+  const defaultValuesRef = React.useRef(defaultValues)
+  defaultValuesRef.current = defaultValues
   React.useEffect(() => {
     if (open) {
+      // Editando: usa os dados do paciente. Criando: usa os defaults sugeridos
+      // (ex.: promoção do Google Calendar) ou vazio.
+      const dv = defaultValuesRef.current
       reset({
-        name: patient?.name ?? "",
-        phone: patient?.phone ?? "",
-        cpf: patient?.cpf ? formatCpf(canonicalizeCpf(patient.cpf)) : "",
-        email: patient?.email ?? "",
+        name: patient?.name ?? dv?.name ?? "",
+        phone: patient?.phone ?? dv?.phone ?? "",
+        cpf: patient?.cpf ? formatCpf(canonicalizeCpf(patient.cpf)) : dv?.cpf ?? "",
+        email: patient?.email ?? dv?.email ?? "",
         notes: patient?.notes ?? "",
       })
     }

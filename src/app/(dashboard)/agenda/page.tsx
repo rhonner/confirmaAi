@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,8 +11,11 @@ import {
   usePatients,
   useGoogleCalendarEvents,
   useGoogleCalendarStatus,
+  useGoogleCalendarConvert,
+  useGoogleEventSignals,
   type GcalEvent,
 } from "@/hooks/use-api";
+import { parseEventSignals } from "@/lib/services/google/promote-signals";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -123,45 +126,67 @@ const statusOptions = [
  * WhatsApp/status — eventos do Google não entram na tabela Appointment
  * (firewall, ver .context/features/google-calendar.md).
  */
-function GoogleEventBlock({ event }: { event: GcalEvent }) {
+function GoogleEventBlock({
+  event,
+  canPromote,
+  onPromote,
+}: {
+  event: GcalEvent;
+  canPromote?: boolean;
+  onPromote?: () => void;
+}) {
   const timeLabel = event.allDay
     ? "Dia inteiro"
     : `${format(parseISO(event.start), "HH:mm")} – ${format(parseISO(event.end), "HH:mm")}`;
-  const className =
-    "flex items-center justify-between gap-2 p-3 rounded-lg border border-dashed border-blue-400/40 bg-blue-500/5";
-  const content = (
-    <>
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <div className="flex shrink-0 items-center gap-2 text-sm">
-          <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <span className="font-medium">{timeLabel}</span>
-        </div>
-        <span className="truncate text-sm">{event.title}</span>
+  const info = (
+    <div className="flex min-w-0 flex-1 items-center gap-4">
+      <div className="flex shrink-0 items-center gap-2 text-sm">
+        <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <span className="font-medium">{timeLabel}</span>
       </div>
-      <Badge
-        variant="outline"
-        className="shrink-0 border-blue-400/50 text-blue-700 dark:text-blue-400"
-      >
-        Google
-      </Badge>
-    </>
+      <span className="truncate text-sm">{event.title}</span>
+    </div>
   );
-  if (event.htmlLink) {
-    return (
-      <a
-        href={event.htmlLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Evento do Google Calendar (somente leitura) — abrir no Google"
-        className={`${className} transition-colors hover:bg-blue-500/10`}
-      >
-        {content}
-      </a>
-    );
-  }
   return (
-    <div title="Evento do Google Calendar (somente leitura)" className={className}>
-      {content}
+    <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-dashed border-blue-400/40 bg-blue-500/5">
+      {/* Botão "Promover" fica FORA do link (link dentro de botão/vice-versa é
+          HTML inválido). O link do evento continua abrindo no Google. */}
+      {event.htmlLink ? (
+        <a
+          href={event.htmlLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Evento do Google Calendar (somente leitura) — abrir no Google"
+          className="flex min-w-0 flex-1 items-center rounded transition-opacity hover:opacity-80"
+        >
+          {info}
+        </a>
+      ) : (
+        <div title="Evento do Google Calendar (somente leitura)" className="flex min-w-0 flex-1">
+          {info}
+        </div>
+      )}
+      <div className="flex shrink-0 items-center gap-2">
+        {canPromote && onPromote && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={onPromote}
+            title="Criar um agendamento a partir deste evento"
+          >
+            <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
+            Promover
+          </Button>
+        )}
+        <Badge
+          variant="outline"
+          className="border-blue-400/50 text-blue-700 dark:text-blue-400"
+        >
+          Google
+        </Badge>
+      </div>
     </div>
   );
 }
@@ -182,6 +207,19 @@ export default function AgendaPage() {
   const [patientFilter, setPatientFilter] = useState<string>("ALL");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
+  // Promoção de evento do Google (Fase B): quando setado, o diálogo de
+  // agendamento entra em "modo promoção" e o submit chama /convert.
+  const [promoteEvent, setPromoteEvent] = useState<GcalEvent | null>(null);
+  // Pré-preenchimento sugerido para o form de NOVO paciente (sinais do evento).
+  const [newPatientDefaults, setNewPatientDefaults] = useState<{ name?: string; phone?: string; email?: string }>({});
+  // Espelho de `promoteEvent` para o callback assíncrono dos sinais: o onSuccess
+  // captura o estado do momento do disparo, então usamos o ref para saber qual
+  // evento está ATIVO quando a resposta chega (evita repovoar defaults de um
+  // evento abandonado — ver guard no handleOpenPromote).
+  const promoteEventRef = useRef<GcalEvent | null>(null);
+  useEffect(() => {
+    promoteEventRef.current = promoteEvent;
+  }, [promoteEvent]);
   // Mini-calendário (date picker): controle de abertura e do mês exibido.
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -298,6 +336,8 @@ export default function AgendaPage() {
   const createMutation = useCreateAppointment();
   const updateMutation = useUpdateAppointment();
   const deleteMutation = useDeleteAppointment();
+  const convertMutation = useGoogleCalendarConvert();
+  const signalsMutation = useGoogleEventSignals();
 
   const {
     control,
@@ -375,6 +415,8 @@ export default function AgendaPage() {
   };
 
   const handleOpenDialog = (appointment?: typeof selectedAppointment) => {
+    setPromoteEvent(null);
+    setNewPatientDefaults({});
     if (appointment) {
       setSelectedAppointment(appointment);
       const appointmentDate = parseISO(appointment.dateTime);
@@ -400,11 +442,73 @@ export default function AgendaPage() {
     setDialogOpen(true);
   };
 
+  // Abre o diálogo em "modo promoção" a partir de um evento do Google.
+  const handleOpenPromote = (event: GcalEvent) => {
+    setSelectedAppointment(null);
+    setPromoteEvent(event);
+    const start = parseISO(event.start);
+    const end = parseISO(event.end);
+    const rawMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    // O <select> só lista DURATION_OPTIONS — encaixa na opção mais próxima.
+    const duration =
+      Number.isFinite(rawMinutes) && rawMinutes > 0
+        ? DURATION_OPTIONS.reduce(
+            (best, o) => (Math.abs(o - rawMinutes) < Math.abs(best - rawMinutes) ? o : best),
+            30,
+          )
+        : 30;
+    // Pré-preenche o nome pelo título já disponível no overlay (instantâneo).
+    const local = parseEventSignals({ title: event.title });
+    setNewPatientDefaults({
+      name: local.suggestedName,
+      phone: local.suggestedPhone,
+      email: local.suggestedEmail,
+    });
+    reset({
+      patientId: "",
+      date: format(start, "yyyy-MM-dd"),
+      time: format(start, "HH:mm"),
+      durationMinutes: duration,
+      notes: "",
+    });
+    setDialogOpen(true);
+    // Enriquece (telefone/e-mail) com descrição + convidados, de forma assíncrona.
+    signalsMutation.mutate(event.id, {
+      onSuccess: (res) => {
+        // Descarta respostas obsoletas: se o usuário fechou o diálogo ou trocou
+        // de evento antes de a busca resolver, os sinais deste evento NÃO podem
+        // vazar para os defaults de outro fluxo (ex.: "Novo Agendamento" limpo).
+        if (promoteEventRef.current?.id !== event.id) return;
+        setNewPatientDefaults((prev) => ({
+          name: res.signals.suggestedName ?? prev.name,
+          phone: res.signals.suggestedPhone ?? prev.phone,
+          email: res.signals.suggestedEmail ?? prev.email,
+        }));
+      },
+    });
+  };
+
   const onSubmit = async (data: AppointmentForm) => {
     try {
       const dateTime = new Date(`${data.date}T${data.time}:00`).toISOString();
 
-      if (selectedAppointment) {
+      if (promoteEvent) {
+        await convertMutation.mutateAsync({
+          googleEventId: promoteEvent.id,
+          dateTime,
+          durationMinutes: data.durationMinutes,
+          notes: data.notes,
+          patientId: data.patientId,
+          snapshot: {
+            title: promoteEvent.title,
+            startsAt: new Date(promoteEvent.start).toISOString(),
+            endsAt: new Date(promoteEvent.end).toISOString(),
+            allDay: promoteEvent.allDay,
+          },
+        });
+        setPromoteEvent(null);
+        setNewPatientDefaults({});
+      } else if (selectedAppointment) {
         await updateMutation.mutateAsync({
           id: selectedAppointment.id,
           patientId: data.patientId,
@@ -458,16 +562,31 @@ export default function AgendaPage() {
         }
       />
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(o) => {
+            setDialogOpen(o);
+            if (!o) {
+              setPromoteEvent(null);
+              setNewPatientDefaults({});
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {selectedAppointment ? "Editar" : "Novo"} Agendamento
+                {promoteEvent
+                  ? "Promover evento a agendamento"
+                  : selectedAppointment
+                    ? "Editar Agendamento"
+                    : "Novo Agendamento"}
               </DialogTitle>
               <DialogDescription>
-                {selectedAppointment
-                  ? "Atualize as informações do agendamento"
-                  : "Preencha os dados para criar um novo agendamento"}
+                {promoteEvent
+                  ? `Vincule "${promoteEvent.title}" a um paciente para gerenciar por aqui (confirmação por WhatsApp, faltas). O evento sai do overlay.`
+                  : selectedAppointment
+                    ? "Atualize as informações do agendamento"
+                    : "Preencha os dados para criar um novo agendamento"}
               </DialogDescription>
             </DialogHeader>
 
@@ -597,9 +716,11 @@ export default function AgendaPage() {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting
                     ? "Salvando..."
-                    : selectedAppointment
-                    ? "Atualizar"
-                    : "Criar"}
+                    : promoteEvent
+                      ? "Promover"
+                      : selectedAppointment
+                        ? "Atualizar"
+                        : "Criar"}
                 </Button>
               </DialogFooter>
             </form>
@@ -846,6 +967,8 @@ export default function AgendaPage() {
                             <GoogleEventBlock
                               key={`${item.event.id}-${dayKey}`}
                               event={item.event}
+                              canPromote={item.event.title !== "Ocupado"}
+                              onPromote={() => handleOpenPromote(item.event)}
                             />
                           );
                         }
@@ -915,6 +1038,7 @@ export default function AgendaPage() {
       <PatientFormDialog
         open={patientDialogOpen}
         onOpenChange={setPatientDialogOpen}
+        defaultValues={newPatientDefaults}
         onSaved={(p) => {
           // Auto-select the newly created patient in the appointment form.
           reset((prev) => ({ ...prev, patientId: p.id }));

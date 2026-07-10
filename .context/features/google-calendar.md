@@ -2,6 +2,10 @@
 
 > Conexão OAuth por tenant com o Google Calendar (feature **PREMIUM**), para trazer os eventos da agenda do Google para dentro do ConfirmaAí. Entregue em fases: **A (overlay só-leitura) → B (importação seletiva + confirmação opt-in) → C (sync bidirecional)**.
 
+## Status (2026-07-10 — Fase B: promoção manual evento→agendamento IMPLEMENTADA e validada E2E)
+
+- **2026-07-10 (Fase B — promoção manual):** implementada a **promoção de um evento do Google a um `Appointment` gerenciado** — a resposta operacional ao "como um evento vira paciente/agendamento". Inclui: modelo `ExternalEvent` (persistido **lazy só na promoção**, NÃO há full-sync ainda), rota `POST /convert` (idempotente, tx Serializable, quota/conflito), rota `POST /event-signals` (extrai nome/telefone/e-mail do evento p/ pré-preencher), de-dup do overlay (evento promovido some), botão "Promover" + diálogo em modo-promoção na agenda, e pré-preenchimento do form de paciente. **Gate verde** (tsc · vitest **345** · build · sprints 139/139 c/ GCAL.8–11). **Dois code-reviews adversariais (workflows)**: (1ª rodada, 7 dimensões) 4 achados → 3 corrigidos (idempotência de corrida, guard de sinais obsoletos, GCAL.9 tautológico) + 1 documentado (double-booking por corrida, classe pré-existente = POST /appointments); (2ª rodada, xhigh, 20 agentes) 1 **falso-positivo** descartado (promover dia-inteiro — sem botão para dia-inteiro) + 3 fixes menores (e-mail agora pré-preenchido; prefixo de agenda sozinho não vira nome do paciente; mensagem de colisão de paciente deduplicada) + 2 limitações menores documentadas (ver § Limitações conhecidas). **E2E real (Chrome MCP, credencial wcwecalc)**: prefill nome+telefone, criação/vínculo de paciente, promoção→PENDING, de-dup no overlay — ver § Fase B abaixo. **Sync contínuo (B2) segue NÃO iniciado.** Mudanças **não commitadas** (dono commita via `gh`).
+
 ## Status (2026-07-10 — E2E real ampliado: overlay real + OAUTH-05/06/07)
 
 - **2026-07-10:** com a credencial real, validados via Chrome MCP: **overlay renderizando eventos REAIS** (timed/dia-inteiro/privado→"Ocupado"/intercalação com agendamentos), **OAUTH-06** (revoke externo → NEEDS_RECONSENT → reconnect), **OAUTH-07** (scope-mismatch não corrompe conexão) e **OAUTH-05** (reconnect com refresh novo). Detalhe em § Validação E2E real — rodada 2. Só **OAUTH-08** (troca de conta) segue pendente. Bloqueadores de GA inalterados (Vercel + verificação OAuth).
@@ -58,8 +62,16 @@ Por quê **e-mail não é a chave de unicidade certa**:
 | UI de conexão | `src/components/settings/google-calendar-connection.tsx` (card em /configuracoes) | ✅ |
 | Overlay na agenda | `GoogleEventBlock` em `src/app/(dashboard)/agenda/page.tsx` (blocos azuis tracejados, intercalados por horário, dia-inteiro pinado) | ✅ |
 | Checks de regressão | `GCAL.1–7` em `scripts/test-sprints.ts` (gate, cifra, modelo 1:1, firewall, teardown) | ✅ |
-| Labels de auditoria | `gcal.connected` / `gcal.disconnected` em `src/lib/audit/labels.ts` | ✅ |
-| Tabela `ExternalEvent` | `prisma/schema.prisma` + sync incremental | ⏳ Fase B |
+| Labels de auditoria | `gcal.connected` / `gcal.disconnected` / `gcal.promoted` em `src/lib/audit/labels.ts` | ✅ |
+| Tabela `ExternalEvent` | `prisma/schema.prisma` + migration `20260710170250_add_external_event` (populada **lazy na promoção**; sync incremental é B2) | ✅ (promoção) |
+| Rota de promoção | `POST /api/integrations/google-calendar/convert/route.ts` (idempotente, tx Serializable, quota+conflito) | ✅ Fase B |
+| Rota de sinais (prefill) | `POST /api/integrations/google-calendar/event-signals/route.ts` (gate `gcal.sync`) | ✅ Fase B |
+| Extração de sinais (pura) | `src/lib/services/google/promote-signals.ts` + testes em `tests/unit/gcal-convert.test.ts` | ✅ Fase B |
+| events.get (1 evento, prefill) | `fetchGoogleEventById` + `mapGoogleEventDetail` em `src/lib/services/google/calendar.ts` | ✅ Fase B |
+| De-dup do overlay | filtro `!promotedIds.has(e.id)` em `.../events/route.ts` (esconde promovidos) | ✅ Fase B |
+| Hooks | `useGoogleEventSignals` / `useGoogleCalendarConvert` em `src/hooks/use-api.ts` | ✅ Fase B |
+| UI de promoção | botão "Promover" no `GoogleEventBlock` + diálogo modo-promoção em `agenda/page.tsx`; `defaultValues` no `patient-form-dialog.tsx` | ✅ Fase B |
+| Checks de regressão B | `GCAL.8–11` em `scripts/test-sprints.ts` (link+idempotência, de-dup, firewall B, cascade) | ✅ Fase B |
 
 ## Modelo `GoogleCalendarConnection` (1:1 com User)
 
@@ -206,6 +218,76 @@ Workflow de 35 agentes (finders por ângulo + verificação adversarial independ
 
 **Classe pré-existente documentada (sem mudança):** o agrupamento por dia no client usa o fuso do BROWSER (igual aos appointments) enquanto a janela de busca é America/Sao_Paulo — browser fora de SP desloca eventos de beira de meia-noite. Consistente com o resto da agenda; fix é app-wide (fora do escopo).
 
+## Fase B — Promoção manual (evento → agendamento) [2026-07-10]
+
+Implementa a decisão de design "como um evento vira paciente/agendamento" (§ acima): **promoção manual explícita**, com matching e pré-preenchimento. É a única forma de um evento do Google virar `Appointment` — coerente com o firewall.
+
+### Modelo `ExternalEvent` (populado LAZY na promoção — não há full-sync)
+
+`ExternalEvent` (migration `20260710170250_add_external_event`): `id`, `userId`, `googleEventId`, `calendarId`, snapshot (`title`, `startsAt`, `endsAt?`, `allDay`, `googleStatus?`), `appointmentId? @unique`, timestamps.
+- `@@unique([userId, googleEventId])` → **idempotência**: um evento não é promovido 2×.
+- `appointmentId @unique` + `onDelete: Cascade` (a partir de `Appointment`) → **apagar o agendamento libera o evento** para reaparecer no overlay e ser promovido de novo (validado em GCAL.11).
+- `onDelete: Cascade` a partir de `User`. **NÃO** está em `AUDITED_MODELS` (guarda título/horário de terceiros).
+- **Só é escrito na promoção** (não há sync incremental que popule a tabela — isso é B2). O comentário no schema deixa isso explícito.
+
+### Firewall estendido à Fase B (invariante duro)
+
+O `scheduler.ts` **nunca** menciona `ExternalEvent` (GCAL.10 falha se mencionar). Um evento do Google só vira alvo de WhatsApp/no-show **depois** de virar `Appointment` via promoção — que é justamente o comportamento desejado (o profissional escolheu gerenciá-lo). A tabela `ExternalEvent` em si é invisível ao scheduler.
+
+### `POST /convert` (`convert/route.ts`)
+
+Gate `gcal.convert` (PREMIUM+e-mail) → resolve paciente → cria `Appointment` PENDING → grava `ExternalEvent` linkado. Pontos sensíveis endereçados:
+- **Idempotência sequencial**: antes de tudo, se já existe `ExternalEvent` com `appointmentId`, devolve o agendamento existente (`alreadyPromoted:true`) sem criar nada.
+- **Resolução de paciente**: `patientId` explícito → senão match por **telefone** (`userId_phone` unique) → **CPF** (`userId_cpfHash`) → senão cria novo (exige `patient` com telefone válido; passa por `checkEntitlement("patient.create")` + `reserveSlotInTx` 1×, espelhando `POST /api/patients`).
+- **Rejeita passado** (`when < now`) → senão `markNoShows` marcaria NO_SHOW falso.
+- **Conflito de horário**: `findConflictingAppointment` — guard **suave, fora da tx** (mesma limitação do `POST /appointments`; ver achado de review abaixo).
+- **Tx Serializable**: cria paciente (se preciso) + `Appointment` + `ExternalEvent` atomicamente. Usa `create` (não `upsert`) no `ExternalEvent` para não orfanar sob corrida.
+- **Corrida (idempotência concorrente)**: no catch, para **qualquer P2002/P2034**, primeiro re-checa `alreadyPromotedResponse()` e devolve o agendamento do vencedor; só então cai nas mensagens de conflito de paciente. (Fix do review — antes, o perdedor que recriava o mesmo paciente via P2002 recebia "paciente já existe" para um evento que acabara de ser promovido.)
+- **Audit** `gcal.promoted` (metadata: googleEventId, patientId, created, reused).
+- ⚠️ O **frontend** só usa o caminho `patientId` (cria o paciente antes via `PatientFormDialog` e vincula); o caminho `patient:{...}` interno do convert existe para a API mas não é exercido pela UI hoje.
+
+### `POST /event-signals` + prefill (`event-signals/route.ts`, `promote-signals.ts`)
+
+- Gate de **leitura** (`gcal.sync`). Lê UM evento (`fetchGoogleEventById` → `events.get` com `description`+`attendees`, mesmo tratamento de token/401/403/invalid_grant do fetch de lista) e devolve **sinais parseados** (nome/telefone/e-mail candidatos) + `isPrivate`. **Nunca devolve a descrição crua** (evita vazar mais que o necessário); privado → sem sinais de nome.
+- `promote-signals.ts` (puro, testado): `extractPhone` (regex localiza candidatos BR; `isValidPhone` é o filtro real → canônico `+55...`), `parseEventSignals` (nome = título sem telefone e sem prefixo de agenda "Consulta/Sessão/…"; e-mail do 1º convidado ou do texto, minúsculo). Evento privado (`"Ocupado"`) → sem sugestão de nome.
+- **UI**: ao clicar "Promover", o diálogo abre em modo-promoção com data/hora do evento e duração encaixada em `DURATION_OPTIONS`; o nome é pré-preenchido **na hora** pelo título do overlay, e **enriquecido de forma assíncrona** (telefone/e-mail) quando `/event-signals` responde. Guard: a resposta assíncrona só aplica os defaults se o evento ainda for o ativo (evita vazar sinais de um evento abandonado para outro fluxo — fix do review).
+
+### De-dup do overlay (`events/route.ts`)
+
+Após o live-fetch, a rota consulta `ExternalEvent` do tenant (`googleEventId in [...]`, `appointmentId != null`) e **filtra** os promovidos (`events.filter((e) => !promotedIds.has(e.id))`). Assim o dia mostra o `Appointment` gerenciado, não o bloco Google duplicado. GCAL.9 assere o **predicado de exclusão** (não só a query).
+
+### Code-review adversarial (2026-07-10, workflow 7 dimensões × verificação independente)
+
+4 achados CONFIRMED, 0 refutados. As dimensões de **firewall/de-dup, multi-tenancy, quota/matching e privacidade/sinais não acharam nada** (isolamento por `userId`, firewall e redação de PII limpos). Fixes:
+1. **[corrigido] Corrida de idempotência** (`convert:282`): P2002 de paciente era avaliado antes do check de já-promovido → agora `alreadyPromotedResponse()` roda primeiro p/ P2002/P2034.
+2. **[corrigido] Sinais obsoletos** (`agenda:464`): `onSuccess` do `event-signals` repovoava `newPatientDefaults` mesmo após trocar/fechar o evento → guard por `promoteEventRef.current?.id === event.id`.
+3. **[corrigido] GCAL.9 tautológico**: grep de `externalEvent.findMany` não pegava um filtro invertido → agora assere `!promotedIds.has`.
+4. **[documentado] Double-booking por corrida** (`convert:177`): conflito checado fora da tx (a tx Serializable não protege) — **classe pré-existente idêntica ao `POST /appointments`**; endurecer exige constraint de exclusão no DB (mudança app-wide). Comentário no código deixa a limitação explícita.
+
+### Validação E2E real (2026-07-10 — Chrome MCP, dev :3001, credencial wcwecalc)
+
+Usuário-seed PREMIUM, conexão CONNECTED. Confirmado com eventos REAIS do Google:
+- **Botão "Promover"** aparece em bloco Google cronometrado; diálogo modo-promoção com data (11/07), hora (17:30) e duração (evento 60min → "1 hora") pré-preenchidos.
+- **Prefill de nome**: evento "teste2" → nome "teste2"; "Consulta Ana Paula 11 97777-1234" → **nome "Ana Paula"** (prefixo "Consulta" removido) **+ telefone (11) 97777-1234** (via `/event-signals` fazendo `events.get` real).
+- **Criar novo paciente** (form pré-preenchido) → **auto-seleção** no form de promoção → "Promover" → toast "Evento promovido a agendamento".
+- **DB conferido**: `ExternalEvent(title="teste2", appointmentId=…)` → `Appointment status=PENDING, 2026-07-11T20:30:00Z (=17:30 BRT), dur=60, patient teste2`. TZ correto.
+- **De-dup**: após promover, o bloco Google "teste2" **some do overlay** e persiste sumido após reload completo (é o `ExternalEvent` linkado que esconde). O agendamento gerenciado (Pendente, com menu de ações) aparece no lugar.
+- **Firewall confirmado ao vivo**: o evento "teste2" **continua existindo no Google** (a promoção não escreve/apaga nada lá — escopo readonly). Dados de teste revertidos ao fim (paciente/agendamento/ExternalEvent apagados via script).
+- **Coberto por unit+código (não re-E2E)**: idempotência de re-promoção (GCAL.8 + `alreadyPromotedResponse`); privado "Ocupado" sem botão "Promover" (`canPromote={title !== "Ocupado"}` + confirmação de overlay da rodada 2).
+
+### Limitações conhecidas menores (do 2º code-review xhigh, aceitas)
+
+- **Evento não-privado literalmente intitulado "Ocupado"**: o gate do botão é `canPromote={title !== "Ocupado"}` — como `"Ocupado"` é também o título redigido de eventos privados, um evento público que o usuário nomeie exatamente "Ocupado" não mostra "Promover". Edge raríssimo; corrigir exigiria carregar `isPrivate` no DTO do overlay (hoje só no DTO detalhado). Aceito.
+- **Telefone só na descrição + abrir "Novo Paciente" antes do enrich assíncrono**: o prefill de nome é síncrono (título); telefone/e-mail que só existam na **descrição** chegam via `/event-signals` (assíncrono). O `PatientFormDialog` reseta os campos só na **abertura** (para não sobrescrever o que o usuário digita) — se ele abrir o form de criação **antes** da resposta chegar (~janela de 1 request), o telefone da descrição não aparece e precisa ser digitado. O caminho comum (telefone no título) é síncrono e não sofre disso. Aceito.
+- **Falso-positivo descartado no review**: "promover evento de dia inteiro cria agendamento à meia-noite/120min" — **não procede**: eventos de dia inteiro são renderizados no bloco pinado SEM `canPromote`/`onPromote` (só eventos cronometrados têm "Promover"), então `handleOpenPromote` nunca é chamado para dia-inteiro.
+
+### O que a Fase B **NÃO** faz (fica para B2 / Fase C)
+
+- **Sync incremental** (`syncToken`, resumível) — `ExternalEvent` hoje só é populado na promoção, não há pull periódico que persista eventos.
+- **Propagação de cancelamento/reagendamento do Google** para o `Appointment` promovido (snapshot fixo no momento da promoção; cancelar/mover no Google NÃO reflete no app).
+- **Cron de retry de revoke pendente** (limitação do disconnect, documentada na Fase A).
+- Escrita no Google (Fase C, bidirecional) — escopo é `readonly`.
+
 ## Fluxos relacionados
 
 - [features/scheduler.md](scheduler.md) — o firewall existe por causa dos filtros de `sendConfirmations`/`markNoShows`.
@@ -225,4 +307,6 @@ Workflow de 35 agentes (finders por ângulo + verificação adversarial independ
    - App segue em **"Testando"** (2/100) — **NÃO publiquei/submeti** (aguarda d1 placeholders). Depois: Publicar app (Testing→Production) + Central de verificação (justificativa: overlay read-only da própria agenda, sem escrita).
    (e) **✅ merge `v1.0.1` → main + deploy de produção FEITO (2026-07-10)** — deploy `saas1-i4closbyv` Ready; migration `add_google_calendar_connection` aplicada em prod; smoke check OK (`/api/health` `{status:ok, database:ok}`, `/login` 200). **O backend do GCal está VIVO em produção, porém DARK** (PREMIUM `hidden:true` → invisível ao usuário). (f) destravar PREMIUM (`plans.ts hidden:false`) só após (d)+(e)+E2E em prod.
 2. **Com credencial real:** validar E2E no Chrome MCP a matriz OAUTH-01..08 (consent real, refresh, revoke externo, troca de conta) + eventos reais no overlay → só então destravar PREMIUM (`plans.ts` `hidden:false`).
-3. **Fase B:** modelo `ExternalEvent` + sync incremental (`syncToken`, resumível) + fluxo "Promover" (matching acima) + propagação de cancelamento/reagendamento + cron de retry de revoke pendente (limitação do disconnect). Atualizar este arquivo.
+3. **Fase B — promoção manual: ✅ FEITA (2026-07-10)** — `ExternalEvent` + `POST /convert` + `/event-signals` + de-dup + UI "Promover" + prefill. Validada E2E (ver § Fase B). **Não commitada** (dono via `gh`).
+4. **Fase B2 (sync contínuo) — pendente:** sync incremental (`syncToken`, resumível, dirigido por requisição) que **persista** `ExternalEvent` sem promoção + propagação de cancelamento/reagendamento do Google para o `Appointment` promovido (cancelar no Google → `Appointment` CANCELED; reagendar → transição explícita, não só zerar `confirmationSentAt`) + cron de retry de revoke pendente + lock de refresh de token em DB. Ver § Guardas transversais.
+5. **Fase C:** sync bidirecional (escrita no Google) — exige escopo além de `readonly`.

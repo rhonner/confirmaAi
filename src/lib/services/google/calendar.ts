@@ -34,16 +34,39 @@ export type GcalFetchResult =
   | { ok: true; events: GcalEventDTO[]; truncated: boolean }
   | { ok: false; reason: "NOT_CONNECTED" | "NEEDS_RECONSENT" | "UPSTREAM_ERROR" };
 
-/** Formato bruto (parcial) de um item do events.list. */
+/**
+ * DTO detalhado de UM evento (events.get) — usado só na promoção (Fase B) para
+ * pré-preencher o diálogo. Traz `description` + e-mails de convidados, que o
+ * DTO do overlay não carrega. Privado/confidencial → sem vazar descrição/nomes.
+ */
+export type GcalEventDetailDTO = {
+  id: string;
+  title: string;
+  description: string | null;
+  start: string;
+  end: string;
+  allDay: boolean;
+  htmlLink: string | null;
+  attendeeEmails: string[];
+  isPrivate: boolean;
+};
+
+export type GcalEventByIdResult =
+  | { ok: true; event: GcalEventDetailDTO }
+  | { ok: false; reason: "NOT_CONNECTED" | "NEEDS_RECONSENT" | "NOT_FOUND" | "UPSTREAM_ERROR" };
+
+/** Formato bruto (parcial) de um item do events.list / events.get. */
 export type RawGoogleEvent = {
   id?: string;
   status?: string;
   summary?: string;
+  description?: string;
   start?: { date?: string; dateTime?: string };
   end?: { date?: string; dateTime?: string };
   visibility?: string;
   eventType?: string;
   htmlLink?: string;
+  attendees?: Array<{ email?: string }>;
 };
 
 /**
@@ -81,6 +104,39 @@ export function mapGoogleEvent(raw: RawGoogleEvent): GcalEventDTO | null {
     end,
     allDay,
     htmlLink: raw.htmlLink ?? null,
+  };
+}
+
+/**
+ * Mapeia o evento bruto (events.get) para o DTO detalhado da promoção.
+ * Retorna `null` para cancelado / sem horário. Redige descrição e convidados
+ * quando o evento é privado/confidencial (mesma regra de `mapGoogleEvent`).
+ * Puro — testado.
+ */
+export function mapGoogleEventDetail(raw: RawGoogleEvent): GcalEventDetailDTO | null {
+  if (!raw.id) return null;
+  if (raw.status === "cancelled") return null;
+
+  const allDay = !!raw.start?.date;
+  const start = raw.start?.dateTime ?? raw.start?.date;
+  const end = raw.end?.dateTime ?? raw.end?.date;
+  if (!start || !end) return null;
+
+  const isPrivate = raw.visibility === "private" || raw.visibility === "confidential";
+  const title = isPrivate ? "Ocupado" : raw.summary?.trim() || "(Sem título)";
+
+  return {
+    id: raw.id,
+    title,
+    description: isPrivate ? null : raw.description?.trim() || null,
+    start,
+    end,
+    allDay,
+    htmlLink: raw.htmlLink ?? null,
+    attendeeEmails: isPrivate
+      ? []
+      : (raw.attendees ?? []).map((a) => a.email).filter((e): e is string => !!e),
+    isPrivate,
   };
 }
 
@@ -263,6 +319,92 @@ export async function fetchGoogleEventsForUser(
       area: "request",
       tenantUserId: userId,
       extra: { route: "gcal/events" },
+    });
+    return { ok: false, reason: "UPSTREAM_ERROR" };
+  }
+}
+
+async function getEventOnce(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+): Promise<Response> {
+  const url = new URL(
+    `${EVENTS_ENDPOINT}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+  );
+  url.searchParams.set(
+    "fields",
+    "id,status,summary,description,visibility,eventType,start,end,htmlLink,attendees(email)",
+  );
+  return fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(8_000),
+  });
+}
+
+/**
+ * Busca UM evento por id (events.get) com descrição + convidados — usado só na
+ * promoção (Fase B) para pré-preencher o diálogo. Mesmo contrato "nunca lança"
+ * e mesmo tratamento de token/401/403/invalid_grant do `fetchGoogleEventsForUser`.
+ * Gate de plano é do CHAMADOR.
+ */
+export async function fetchGoogleEventById(
+  userId: string,
+  eventId: string,
+): Promise<GcalEventByIdResult> {
+  const conn = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
+  if (!conn || conn.status === "REVOKED") return { ok: false, reason: "NOT_CONNECTED" };
+  if (conn.status === "NEEDS_RECONSENT") return { ok: false, reason: "NEEDS_RECONSENT" };
+
+  try {
+    let accessToken = await ensureAccessToken(conn);
+    let res = await getEventOnce(accessToken, conn.calendarId, eventId);
+
+    if (res.status === 401) {
+      accessToken = await ensureAccessToken(conn, { forceRefresh: true });
+      res = await getEventOnce(accessToken, conn.calendarId, eventId);
+    }
+
+    if (res.status === 404) return { ok: false, reason: "NOT_FOUND" };
+    if (res.status === 403) {
+      const body = await res.json().catch(() => null);
+      if (is403Transient(body)) {
+        await captureError(new Error("gcal events.get 403 transitório (rate limit)"), {
+          area: "request",
+          tenantUserId: userId,
+          extra: { route: "gcal/event-signals", status: 403 },
+        });
+        return { ok: false, reason: "UPSTREAM_ERROR" };
+      }
+      await markNeedsReconsent(userId, "events.get 403 (permissão)");
+      return { ok: false, reason: "NEEDS_RECONSENT" };
+    }
+    if (res.status === 401) {
+      await markNeedsReconsent(userId, "events.get 401");
+      return { ok: false, reason: "NEEDS_RECONSENT" };
+    }
+    if (!res.ok) {
+      await captureError(new Error(`gcal events.get ${res.status}`), {
+        area: "request",
+        tenantUserId: userId,
+        extra: { route: "gcal/event-signals", status: res.status },
+      });
+      return { ok: false, reason: "UPSTREAM_ERROR" };
+    }
+
+    const raw = (await res.json().catch(() => ({}))) as RawGoogleEvent;
+    const event = mapGoogleEventDetail(raw);
+    if (!event) return { ok: false, reason: "NOT_FOUND" };
+    return { ok: true, event };
+  } catch (err) {
+    if (err instanceof GoogleOAuthError && err.code === "INVALID_GRANT") {
+      await markNeedsReconsent(userId, "invalid_grant no refresh");
+      return { ok: false, reason: "NEEDS_RECONSENT" };
+    }
+    await captureError(err, {
+      area: "request",
+      tenantUserId: userId,
+      extra: { route: "gcal/event-signals" },
     });
     return { ok: false, reason: "UPSTREAM_ERROR" };
   }

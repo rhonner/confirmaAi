@@ -7,6 +7,7 @@ import {
   serverErrorResponse,
   paywallResponse,
 } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
 import { check } from "@/lib/billing/entitlements";
 import { fetchGoogleEventsForUser, type GcalEventDTO } from "@/lib/services/google/calendar";
 import { startOfDayInAppTz, endOfDayInAppTz } from "@/lib/timezone";
@@ -70,10 +71,27 @@ export async function GET(request: NextRequest) {
     const result = await fetchGoogleEventsForUser(userId, { timeMin, timeMax });
 
     if (result.ok) {
+      // De-dup (Fase B): esconde do overlay os eventos JÁ promovidos a
+      // agendamento (senão o dia mostraria o bloco Google E o Appointment).
+      let events = result.events;
+      if (events.length) {
+        const promoted = await prisma.externalEvent.findMany({
+          where: {
+            userId,
+            googleEventId: { in: events.map((e) => e.id) },
+            appointmentId: { not: null },
+          },
+          select: { googleEventId: true },
+        });
+        if (promoted.length) {
+          const promotedIds = new Set(promoted.map((p) => p.googleEventId));
+          events = events.filter((e) => !promotedIds.has(e.id));
+        }
+      }
       return NextResponse.json<ApiResponse<GcalEventsResponse>>({
         data: {
           connected: true,
-          events: result.events,
+          events,
           ...(result.truncated ? { truncated: true } : {}),
         },
       });
