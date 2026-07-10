@@ -11,7 +11,10 @@ export type Action =
   | "appointment.create"
   | "message.send"
   | "export.csv"
-  | "report.advanced";
+  | "report.advanced"
+  | "gcal.connect"
+  | "gcal.sync"
+  | "gcal.convert";
 
 export type DenyReason =
   | "QUOTA_EXCEEDED"
@@ -54,8 +57,15 @@ export async function check(
   const statusGate = checkStatus(sub);
   if (statusGate) return statusGate;
 
-  // Email não verificado bloqueia ações de criação (Sprint 4).
-  if (action === "patient.create" || action === "patient.import" || action === "appointment.create") {
+  // Email não verificado bloqueia ações de criação (Sprint 4). `gcal.convert`
+  // cria Patient+Appointment pelo mesmo mecanismo → mesmo gate (senão o import
+  // do Google seria um bypass do email-verify que as ações manuais exigem).
+  if (
+    action === "patient.create" ||
+    action === "patient.import" ||
+    action === "appointment.create" ||
+    action === "gcal.convert"
+  ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { emailVerifiedAt: true },
@@ -126,6 +136,17 @@ export async function check(
       return plan.features.advancedReports
         ? { allowed: true }
         : { allowed: false, reason: "PLAN_REQUIRED", upgrade: "PRO" };
+
+    // Google Calendar é feature exclusiva do PREMIUM (plans.ts). O gate cobre
+    // conectar, sincronizar e converter evento→agendamento. `convert` ainda
+    // passa pelo gate de quota de paciente separadamente (reserveSlotInTx).
+    // Re-checar `gcal.sync` a cada rodada do cron evita sync grátis pós-downgrade.
+    case "gcal.connect":
+    case "gcal.sync":
+    case "gcal.convert":
+      return plan.features.googleCalendar
+        ? { allowed: true }
+        : { allowed: false, reason: "PLAN_REQUIRED", upgrade: "PREMIUM" };
   }
 }
 

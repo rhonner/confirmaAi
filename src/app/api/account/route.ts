@@ -9,6 +9,8 @@ import {
 import { audit, auditWrap } from "@/lib/audit";
 import { getBillingProvider } from "@/lib/billing";
 import { captureError } from "@/lib/observability";
+import { decryptToken } from "@/lib/services/google/token-crypto";
+import { revokeGoogleGrant } from "@/lib/services/google/revoke";
 import type { ApiResponse } from "@/lib/types/api";
 
 /**
@@ -17,6 +19,7 @@ import type { ApiResponse } from "@/lib/types/api";
  * - ANONIMIZA a PII do dono (email→deleted-<id>@deleted.local libera o @unique,
  *   name/clinicName/cpf/cpfHash/whatsapp → genérico/null);
  * - cancela a assinatura no provider (best-effort) + marca local CANCELED;
+ * - revoga + apaga a conexão Google (best-effort, APÓS o commit — ver abaixo);
  * - MANTÉM os dados dos pacientes; uma purga no cron os apaga após 30 dias.
  * Os campos de consentimento (termsAcceptedAt etc.) são preservados (prova legal).
  */
@@ -81,6 +84,35 @@ export const DELETE = auditWrap(async (_request: NextRequest) => {
       entityId: userId,
       metadata: { hadSubscription: !!sub, plan: sub?.plan ?? null },
     });
+
+    // LGPD — teardown do Google: o refresh token é um grant vivo à agenda de uma
+    // pessoa. Feito DEPOIS do commit do soft-delete (revoke é irreversível — não
+    // pode rodar antes de uma tx que pode dar rollback) e ISOLADO em try/catch
+    // (falha aqui, inclusive tabela ausente, nunca quebra a exclusão, que é a
+    // operação crítica). Se o revoke FALHAR, mantém a conexão para a purga 30d
+    // retentar — senão o grant ficaria vivo sem token para novo revoke.
+    // Ver .context/features/google-calendar.md § LGPD.
+    try {
+      const gcal = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
+      if (gcal) {
+        const revoked = await revokeGoogleGrant(decryptToken(gcal.refreshTokenEnc));
+        if (revoked) {
+          await prisma.googleCalendarConnection.delete({ where: { userId } });
+        } else {
+          await captureError(new Error("gcal revoke falhou no delete de conta"), {
+            area: "request",
+            tenantUserId: userId,
+            extra: { route: "account/delete/gcal-revoke", retriedBy: "purge" },
+          });
+        }
+      }
+    } catch (err) {
+      await captureError(err, {
+        area: "request",
+        tenantUserId: userId,
+        extra: { route: "account/delete/gcal-teardown" },
+      });
+    }
 
     return NextResponse.json<ApiResponse<{ deleted: true }>>({
       data: { deleted: true },

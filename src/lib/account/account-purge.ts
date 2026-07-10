@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { captureError } from "@/lib/observability";
+import { decryptToken } from "@/lib/services/google/token-crypto";
+import { revokeGoogleGrant } from "@/lib/services/google/revoke";
 
 /**
  * Purga 30d (Sprint 11 / LGPD): contas soft-deleted (`deletedAt`) têm os dados
@@ -36,6 +38,25 @@ export async function runAccountPurge(now: Date = new Date()): Promise<{ account
     });
     for (const u of due) {
       try {
+        // Rede de segurança LGPD (fora da tx — é chamada de rede): uma conexão
+        // Google que sobreviveu ao delete de conta significa que o revoke falhou
+        // naquele momento. Revoga agora (best-effort) e apaga DE QUALQUER FORMA —
+        // aos 30d o token TEM que sumir do nosso banco. Isolado p/ não bloquear a
+        // purga de pacientes. Ver .context/features/google-calendar.md § LGPD.
+        try {
+          const gcal = await prisma.googleCalendarConnection.findUnique({ where: { userId: u.id } });
+          if (gcal) {
+            try {
+              await revokeGoogleGrant(decryptToken(gcal.refreshTokenEnc));
+            } catch (revokeErr) {
+              await captureError(revokeErr, { area: "cron", tenantUserId: u.id, extra: { stage: "gcal-revoke" } });
+            }
+            await prisma.googleCalendarConnection.delete({ where: { userId: u.id } });
+          }
+        } catch (gcalErr) {
+          await captureError(gcalErr, { area: "cron", tenantUserId: u.id, extra: { stage: "gcal-teardown" } });
+        }
+
         const patientsDeleted = await prisma.$transaction(
           async (tx) => {
             await tx.patientQuotaSlot.deleteMany({ where: { userId: u.id } });

@@ -66,6 +66,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Painel Admin         | [features/admin.md](features/admin.md)               | `/admin/audit` (allowlist `ADMIN_EMAILS`, gate em layout+API); métricas cross-tenant (WhatsApp %, pagantes, fraude) + auditoria. Atividade do user em `/configuracoes/atividade` |
 | Reset de conta Free  | [features/account-reset.md](features/account-reset.md) | `POST /api/account/reset` (1× vitalício): apaga Patient + PatientQuotaSlot e zera quota; guardas FREE + 0 agendamentos + dedup por audit |
 | LGPD & Conta         | [features/lgpd-account.md](features/lgpd-account.md) | Termos/Privacidade + aceite no signup, `GET /api/account/export`, `DELETE /api/account` (soft delete + anonimização, bloqueia login) + purga 30d no cron |
+| Google Calendar      | [features/google-calendar.md](features/google-calendar.md) | Conexão OAuth por tenant (PREMIUM). Firewall `ExternalEvent` (eventos nunca viram `Appointment` por sync). **Fase A completa em código** (backend + rotas OAuth PKCE + card + overlay read-only na agenda), validada com credencial fake; GA pendente de credencial Google real + verificação OAuth |
 
 ## Índice de fluxos cruzados
 

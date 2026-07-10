@@ -384,6 +384,102 @@ export function useWhatsappDisconnect() {
   });
 }
 
+// Google Calendar (Fase A — overlay somente-leitura)
+export type GcalStatus = {
+  configured: boolean;
+  allowed: boolean;
+  status: "DISCONNECTED" | "CONNECTED" | "NEEDS_RECONSENT";
+  googleAccountEmail: string | null;
+  connectedAt: string | null;
+};
+
+export type GcalEvent = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  htmlLink: string | null;
+};
+
+type GcalEventsResponse = {
+  connected: boolean;
+  needsReconsent?: boolean;
+  degraded?: boolean;
+  truncated?: boolean;
+  events: GcalEvent[];
+};
+
+export function useGoogleCalendarStatus() {
+  return useQuery({
+    queryKey: ["gcal-status"],
+    queryFn: () => fetchApi<GcalStatus>("/api/integrations/google-calendar/status"),
+    staleTime: 30_000,
+  });
+}
+
+export function useGoogleCalendarConnect() {
+  return useMutation({
+    mutationFn: () =>
+      fetchApi<{ authUrl: string }>("/api/integrations/google-calendar/connect", {
+        method: "POST",
+      }),
+    onSuccess: (res) => {
+      // Navegação real para o consent do Google (cookies de state/PKCE já
+      // foram plantados pela resposta do connect).
+      window.location.href = res.authUrl;
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useGoogleCalendarDisconnect() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchApi<{ disconnected: true; revoked: boolean }>(
+        "/api/integrations/google-calendar/disconnect",
+        { method: "POST" },
+      ),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["gcal-status"] });
+      queryClient.invalidateQueries({ queryKey: ["gcal-events"] });
+      if (res.revoked) {
+        toast.success("Google Agenda desconectada");
+      } else {
+        toast.warning(
+          "Desconectado por aqui, mas não foi possível revogar o acesso no Google. Revise em myaccount.google.com/permissions.",
+        );
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useGoogleCalendarEvents(
+  params: { startDate: string; endDate: string },
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["gcal-events", params],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("startDate", params.startDate);
+      searchParams.set("endDate", params.endDate);
+      return fetchApi<GcalEventsResponse>(
+        `/api/integrations/google-calendar/events?${searchParams.toString()}`,
+      );
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
 // Settings
 export function useSettings() {
   return useQuery({

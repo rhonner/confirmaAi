@@ -2,15 +2,17 @@
 title: Dev fallback sem chaves externas
 type: concept
 created: 2026-05-07
-updated: 2026-06-13
+updated: 2026-07-05
 tags: [pattern, dev-experience, integrations, secrets]
 sources:
   - raw/sessions/2026-05-07-sprint-4-5-monetizacao.md
+  - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
   - .context/features/observability.md
 related:
   - .context/features/auth.md
   - .context/features/billing.md
   - pages/concepts/optional-dependency-via-dynamic-import.md
+  - pages/synthesis/google-calendar-integration-state.md
 status: stable
 ---
 
@@ -71,6 +73,22 @@ return process.env.NODE_ENV === "production" ? new AsaasProvider() : new MockPro
 
 - Integrações que **modificam** estado externo de verdade (ex: enviar SMS pra número real, debitar cartão). Aí mesmo em dev usa sandbox real porque o efeito colateral importa.
 - Integrações que afetam métricas/auditoria reais. Mock pode mascarar bugs do mapeamento provider → domain.
+
+## Nuance crítica: chave de **segredo reversível** ≠ gatear por "não-produção" (2026-07-05)
+
+O gate padrão acima é `NODE_ENV !== "production"`. Isso é **inseguro para uma chave que cifra credenciais vivas** (ex: `GCAL_TOKEN_ENC_KEY` cifrando o refresh token do Google em `src/lib/services/google/token-crypto.ts`):
+
+- `NODE_ENV !== "production"` inclui **preview, staging e self-host mal-configurado**. Se o fallback devolver uma chave determinística conhecida (derivada de uma constante do fonte) nesses ambientes, **tokens reais** ficam cifrados com uma chave que qualquer um reproduz do código → quem ler o banco decifra e se passa pelo usuário. Achado #2 do code-review xhigh.
+- **Fix**: gatear o fallback ao **runner de teste**, não a "não-prod":
+  ```ts
+  if (!process.env.GCAL_TOKEN_ENC_KEY) {
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return DERIVED_TEST_KEY;
+    throw new Error("GCAL_TOKEN_ENC_KEY não está setado (obrigatório fora de testes)");
+  }
+  ```
+  Leitura **lazy** da chave (não no import) garante que build e rotas sem conexão não quebram sem a var.
+
+**Regra**: fallback de conveniência (log/DEV_BYPASS) é ok para segredos de **verificação** (reCAPTCHA/Resend). Para segredos de **cifra reversível** que protegem uma credencial viva, a ausência é erro fatal em **tudo que não é teste**. Ver [[google-calendar-integration-state]] e [[soft-delete-skips-cascade-cleanup]].
 
 ## Trade-offs
 

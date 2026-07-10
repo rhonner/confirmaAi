@@ -74,6 +74,12 @@ enum IdentifierType {
   PHONE
 }
 
+enum GoogleConnectionStatus {
+  CONNECTED
+  NEEDS_RECONSENT
+  REVOKED
+}
+
 // Models
 model User {
   id                         String         @id @default(cuid())
@@ -117,6 +123,7 @@ model User {
   settings          Settings?
   subscription      Subscription?
   patientQuotaSlots PatientQuotaSlot[]
+  googleCalendar    GoogleCalendarConnection?
 
   @@index([cpfHash])
   @@index([deletedAt])
@@ -299,4 +306,32 @@ model Settings {
   updatedAt               DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Conexão OAuth por tenant com o Google Calendar (feature PREMIUM). 1:1 com User.
+// NÃO faz parte de AUDITED_MODELS (src/lib/audit/prisma-extension.ts): os tokens
+// cifrados NUNCA podem cair no AuditLog. Tokens guardados via AES-256-GCM
+// (src/lib/services/google/token-crypto.ts). Ver .context/features/google-calendar.md.
+model GoogleCalendarConnection {
+  id                   String                 @id @default(cuid())
+  userId               String                 @unique
+  googleAccountEmail   String?
+  // Blobs AES-256-GCM versionados (prefixo "g1."). Refresh token é o grant vivo.
+  refreshTokenEnc      String
+  accessTokenEnc       String?
+  accessTokenExpiresAt DateTime?
+  // Escopos REALMENTE concedidos (space-joined) — pode diferir do solicitado.
+  scopes               String                 @default("")
+  calendarId           String                 @default("primary")
+  status               GoogleConnectionStatus @default(CONNECTED)
+  // Última falha (ex: invalid_grant) p/ surfacing de "Reconectar" na UI.
+  lastError            String?
+  connectedAt          DateTime               @default(now())
+  revokedAt            DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
 }

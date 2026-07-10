@@ -102,6 +102,10 @@ const LABELS: Record<string, string> = {
   // Admin
   "admin.override_set": "Override admin aplicado",
   "admin.override_cleared": "Override admin removido",
+
+  // Google Calendar
+  "gcal.connected": "Google Agenda conectada",
+  "gcal.disconnected": "Google Agenda desconectada",
 };
 
 export function actionLabel(action: string): string {
