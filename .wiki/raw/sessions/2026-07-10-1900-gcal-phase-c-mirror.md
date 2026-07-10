@@ -66,3 +66,12 @@ Reconexão (readonly→write) → card "espelhados automaticamente". Conferido c
 - [x] +2 concepts: `revive-cancelled-event-on-id-reuse`, `patch-merge-clear-requires-explicit-empty`
 - [x] atualizado `external-event-firewall` (firewall nos 2 sentidos)
 - [x] atualizado synthesis `google-calendar-integration-state` (Fase C done)
+
+## Addendum — debug pós-implementação (gotcha de suporte)
+
+O dono reportou "criei um agendamento e não espelhou". Investigado: **espelhou sim** — o `Appointment` mais recente tinha `googleEventId` gravado e o evento estava vivo na agenda da wcwecalc (confirmado via `scripts/gcal-list-raw.ts`). Dois aprendizados operacionais (comportamentos CORRETOS que parecem bug):
+
+1. **No-op silencioso em grant só-leitura (legado):** agendamentos criados ANTES do reconsent com escopo de escrita ficam sem espelho (mirror faz no-op, sem `hasWriteScope`); backfill é preguiçoso (só ao editar). Não é bug — é a fronteira do timestamp do reconsent.
+2. **Evento na conta CONECTADA ≠ conta de login/padrão do navegador:** o espelho vai pro `primary` da conta Google conectada (wcwecalc), não da conta ativa do Chrome (rhonner/u0). Olhar a conta errada = falso "não espelhou". Reforça [[claude-chrome-per-profile-extension]].
+
+Registrado em `.context/features/google-calendar.md` § "Diagnóstico / gotchas de suporte (Fase C)". Sem página de conceito nova (gotcha de conta já coberto).

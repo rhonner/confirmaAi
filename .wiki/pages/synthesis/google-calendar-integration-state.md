@@ -76,6 +76,7 @@ Entrega faseada, cada fase independentemente entregável:
 
 - `CLAUDE.md` raiz descreve stack aspiracional (Fastify etc.) — irrelevante aqui; a verdade é Next.js monolito.
 - Timezone: agrupamento por dia na agenda usa fuso do browser (classe pré-existente); import de eventos deve normalizar para `America/Sao_Paulo`/instante UTC.
+- **Gotcha de suporte da Fase C ("achei que não espelhou")**: o mirror faz **no-op silencioso** em conexão só-leitura (agendamentos criados antes do reconsent de escrita não espelham; backfill só ao editar) **e** o evento vai pra agenda da **conta Google conectada** (wcwecalc), não da conta de login/padrão do navegador — olhar a conta errada é a causa nº1 de falso-negativo. Diagnóstico server-to-server via `scripts/gcal-list-raw.ts`. Ver [[claude-chrome-per-profile-extension]] e `.context/features/google-calendar.md` § Diagnóstico.
 
 ## Próximas perguntas
 

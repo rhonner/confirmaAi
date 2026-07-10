@@ -352,6 +352,13 @@ Reconexão com o escopo `calendar.events` (dono deu o consent) → card "Seus ag
 - **DE-DUP / firewall ao vivo:** o espelho "Maria Santos" NUNCA apareceu como bloco Google promovível (só o agendamento gerenciado); o evento de terceiro "tetes" seguiu com "Promover" normal.
 - **Card:** estado conectado-só-leitura ("Reconecte para ativar") → após reconsent → "espelhados automaticamente". Dados de teste revertidos (agendamentos apagados, paciente renomeado de volta).
 
+### Diagnóstico / gotchas de suporte (Fase C) — "achei que não espelhou"
+
+Dois comportamentos CORRETOS que parecem bug (validados ao vivo com o dono em 2026-07-10):
+
+1. **No-op silencioso em conexão só-leitura (legado):** quem conectou na Fase A/B tem grant só `calendar.events.readonly`. O mirror faz `mirroringEnabled → false` (sem `hasWriteScope`) e **não escreve nada** — de propósito, não é erro. O card sinaliza ("Reconecte para ativar"), mas agendamentos **criados antes** do reconsent de escrita ficam com `googleEventId = null` e **não recebem backfill automático**. Backfill é **preguiçoso**: só ao **editar** o agendamento (o ramo de update sem `googleEventId` faz `createGoogleEvent`). Não há job de backfill em massa (é B2). → Se "só alguns espelharam", quase sempre a linha divisória é o timestamp do reconsent de escrita.
+2. **O evento vai pra agenda da CONTA CONECTADA, não da conta de login:** o espelho é escrito no `primary` da conta Google **conectada** (ex: `wcwecalc@gmail.com`), que pode ser diferente da conta com que o profissional loga no app E da conta Google **padrão/ativa** do navegador. Abrir `calendar.google.com` na conta padrão mostra "nada" — o evento está na agenda da conta conectada. É a causa nº1 de falso "não espelhou". Ver [[claude-chrome-per-profile-extension]] (confirmar pela conta logada, não pelo nome). **Ferramenta de diagnóstico:** `scripts/gcal-list-raw.ts` lista os eventos origem-app direto na API pela `privateExtendedProperty=confirmaaiOrigin=app` (com `showDeleted` vê tombstones) — prova server-to-server se o evento existe, independente de qual conta/agenda o humano está olhando.
+
 ### O que a Fase C NÃO faz (fica para B2 / adiante)
 
 - Espelhar transições NÃO feitas na tela: confirmação do paciente por WhatsApp (webhook) e no-show do cron não refletem no evento (v1 = só ações no app).
