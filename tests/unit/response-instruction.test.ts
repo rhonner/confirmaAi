@@ -54,6 +54,20 @@ describe("stripResponseInstruction", () => {
     const input = "Precisamos confirmar seu endereço antes da consulta.";
     expect(stripResponseInstruction(input)).toBe(input);
   });
+
+  it("preserves the user's deliberate internal formatting (double spaces, blank lines)", () => {
+    // Sem instrução para remover, o strip NÃO deve reescrever a formatação do
+    // corpo — só apara as pontas. (Regressão da normalização global removida.)
+    const input = "Olá {nome},\n\n\nSua consulta:  {data}  às  {hora}.";
+    expect(stripResponseInstruction(input)).toBe(input);
+  });
+
+  it("does not leave a double space when removing an instruction mid-text", () => {
+    const input =
+      "Confirme. Responda 1 para CONFIRMAR ou 2 para CANCELAR agora, obrigado.";
+    // A remoção consome o espaço antes do verbo; sobra espaço único, sem colapso global.
+    expect(stripResponseInstruction(input)).toBe("Confirme. agora, obrigado.");
+  });
 });
 
 describe("withResponseInstruction", () => {

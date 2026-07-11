@@ -15,6 +15,7 @@ import {
 import {
   RESPONSE_INSTRUCTION,
   withResponseInstruction,
+  stripResponseInstruction,
 } from "@/lib/services/message-template";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,8 +44,11 @@ const settingsSchema = z
     clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200),
     confirmationHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
     reminderHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
-    confirmationMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
-    reminderMessage: z.string().min(10, "Template deve ter no mínimo 10 caracteres").max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`),
+    // min(10) no CORPO (sem a instrução de resposta, anexada automaticamente):
+    // uma mensagem só-instrução vira "" após o strip → bloqueada; e um corpo
+    // curto legado não trava o save. Espelha o schema do backend.
+    confirmationMessage: z.string().max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`).refine((v) => stripResponseInstruction(v).length >= 10, "Template deve ter no mínimo 10 caracteres"),
+    reminderMessage: z.string().max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`).refine((v) => stripResponseInstruction(v).length >= 10, "Template deve ter no mínimo 10 caracteres"),
     avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo"),
   })
   .refine(

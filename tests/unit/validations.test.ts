@@ -230,6 +230,29 @@ describe("Settings validations", () => {
       expect(result.success).toBe(false);
     });
 
+    it("fails when confirmationMessage is only the response instruction (strips to empty)", () => {
+      // min(10) vale para o CORPO livre; uma mensagem só-instrução vira "" após
+      // o strip e não pode ser persistida vazia.
+      const invalidData = {
+        confirmationMessage: "Responda 1 para CONFIRMAR ou 2 para CANCELAR.",
+      };
+
+      const result = updateSettingsSchema.safeParse(invalidData);
+
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts a body that carries the response instruction (body alone ≥ 10)", () => {
+      const validData = {
+        reminderMessage:
+          "Olá {nome}, consulta em {data}. Responda 1 para CONFIRMAR ou 2 para CANCELAR.",
+      };
+
+      const result = updateSettingsSchema.safeParse(validData);
+
+      expect(result.success).toBe(true);
+    });
+
     it("fails when reminderHoursBefore exceeds max", () => {
       const invalidData = {
         reminderHoursBefore: 169,

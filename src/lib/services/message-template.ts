@@ -38,16 +38,14 @@ const EMBEDDED_INSTRUCTION_RE =
   /\s*(?:responda|responder|digite|envie|mande)\s+\S+\s+para\s+confirmar\s+(?:ou|e|,)\s+\S+\s+para\s+cancelar\b\.?/gi;
 
 /**
- * Remove a instrução de resposta embutida e normaliza espaços/quebras.
- * Idempotente: em texto sem instrução, devolve o texto (só trim).
+ * Remove a instrução de resposta embutida. O `\s*` no início da regex já
+ * consome o espaço/quebra ANTES da instrução, então a remoção não deixa espaço
+ * duplo — não precisamos de normalização global de whitespace (que reescreveria
+ * a formatação deliberada do usuário: espaços duplos, linhas em branco). Só
+ * `trim` nas pontas. Idempotente: sem instrução, devolve o texto (só trim).
  */
 export function stripResponseInstruction(text: string): string {
-  return text
-    .replace(EMBEDDED_INSTRUCTION_RE, "")
-    .replace(/[ \t]{2,}/g, " ") // colapsa espaços deixados pela remoção
-    .replace(/[ \t]+(\n|$)/g, "$1") // remove espaço antes de quebra/fim
-    .replace(/\n{3,}/g, "\n\n") // no máx. uma linha em branco
-    .trim();
+  return text.replace(EMBEDDED_INSTRUCTION_RE, "").trim();
 }
 
 /**

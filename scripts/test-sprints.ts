@@ -2517,12 +2517,17 @@ async function main() {
     },
   });
   const msgSettings = await prisma.settings.findUnique({ where: { userId: msgUser.id } });
+  // Conta ocorrências da instrução no envio: tem que ser EXATAMENTE 1 (endsWith
+  // sozinho seria tautológico — withResponseInstruction sempre termina com ela).
+  const msgBuilt = msgSettings ? withResponseInstruction(msgSettings.reminderMessage) : "";
+  const msgInstrCount = msgBuilt.split(RESPONSE_INSTRUCTION).length - 1;
   check(
-    "MSG.4 settings guarda só o corpo (sem instrução embutida) e o envio anexa 1×",
+    "MSG.4 settings guarda só o corpo (sem instrução embutida) e o envio anexa a instrução EXATAMENTE 1×",
     10,
     !!msgSettings &&
       !/responda[^]*confirmar[^]*cancelar/i.test(msgSettings.reminderMessage) &&
-      withResponseInstruction(msgSettings.reminderMessage).endsWith(RESPONSE_INSTRUCTION),
+      msgInstrCount === 1 &&
+      msgBuilt.endsWith(RESPONSE_INSTRUCTION),
   );
   await prisma.user.delete({ where: { id: msgUser.id } });
 

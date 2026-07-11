@@ -79,6 +79,18 @@ A sócia relatou que, mesmo com a barra "Alterações não salvas" visível, dav
 - **Não requer instrução mínima no corpo**: o Zod `min(10)` roda no input bruto; se o usuário digitar só a instrução, o strip pode zerar o corpo (envio sai só com a canônica). Edge aceito — o aviso fixo torna óbvio que não é preciso digitar a linha.
 - **Regressão**: `tests/unit/response-instruction.test.ts` (strip/append/idempotência/cenário 2-5) + `test:sprints` MSG.1–5 (inclui o cenário do bug end-to-end: template errado → envio canônico + resposta confirma, não cancela).
 
+### Ajustes pós code-review (2026-07-11, xhigh)
+
+Code-review adversarial (6 finders + verify) sobre o commit do bloco fixo. Corrigidos:
+
+- **`stripResponseInstruction` não reescreve mais a formatação** do usuário. A normalização global de whitespace (`[ \t]{2,}→" "`, `\n{3,}→\n\n`) rodava em TODO save, mesmo sem instrução a remover, apagando espaços duplos / linhas em branco deliberadas — e divergia da pré-visualização (colapso antes vs. depois da substituição de placeholders). Como o `\s*` inicial da regex já consome o espaço antes da instrução, a remoção não deixa espaço duplo; agora o helper é só `replace(RE,"").trim()`.
+- **`min(10)` passou a valer para o CORPO já sem a instrução** (client `settingsSchema` + server `updateSettingsSchema` via `stripResponseInstruction`). Antes o min rodava no texto bruto: uma mensagem **só-instrução** ("Responda 1 para CONFIRMAR ou 2 para CANCELAR.") passava e era persistida **vazia** → envio sem nome/data. Agora ela strip-a para `""` e é bloqueada com "Template deve ter no mínimo 10 caracteres". (Também evita travar o save de um corpo curto legado.)
+- **Teste MSG.4** deixou de usar `endsWith` (tautológico — `withResponseInstruction` sempre termina com a instrução) e passou a contar ocorrências == 1 (pega dupla-anexação).
+
+**Limitações aceitas** (documentadas, não corrigidas — a **rede de segurança é o append canônico**, que garante que o paciente sempre tenha um código válido para responder):
+- A regex `EMBEDDED_INSTRUCTION_RE` casa a forma "verbo + token + para confirmar + (ou|e|,) + token + para cancelar". Fraseados exóticos ("Para confirmar digite 9, para desmarcar 0") **não** são removidos → o texto do usuário fica junto do canônico anexado (redundante/duplo, mas o canônico correto sempre está presente). O caso real reportado ("Responda 2 para CONFIRMAR ou 5 para CANCELAR") É coberto.
+- Remoção no meio de frase pode deixar um fragmento gramaticalmente pobre (best-effort de limpeza; a correção do NÚMERO — o bug de fato — está garantida).
+
 ## Validação manual no browser (2026-07-11 — bloco fixo de resposta)
 
 Confirmado via Chrome MCP (seed `rhonner.matheus@gmail.com`, dev :3001):
@@ -88,6 +100,7 @@ Confirmado via Chrome MCP (seed `rhonner.matheus@gmail.com`, dev :3001):
 3. ✅ Pré-visualização mostra corpo (com dados de exemplo) + linha em branco + a instrução canônica = mensagem real.
 4. ✅ **Cenário do bug**: digitei "Responda 2 para CONFIRMAR ou 5 para CANCELAR." no editor → a pré-visualização mostrou a canônica **corrigida** ("1 ... ou 2 ..."), sem duplicar nem os números errados.
 5. ✅ Save + reload: o editor voltou a só-corpo (74/1000) — a instrução errada foi removida no servidor (strip no PUT). Sem erros de console.
+6. ✅ (pós code-review) Corpo = só a instrução → ao salvar, erro "Template deve ter no mínimo 10 caracteres" (borda vermelha), save bloqueado; DB intacto; `UnsavedChangesGuard` interceptou o reload como esperado.
 
 ## Validação manual no browser (2026-06-27)
 
