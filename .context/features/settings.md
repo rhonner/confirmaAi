@@ -65,6 +65,30 @@ A sócia relatou que, mesmo com a barra "Alterações não salvas" visível, dav
 - ⚠️ **Limitação conhecida (code-review xhigh 2026-06-29)**: **Voltar/Avançar do browser** (popstate SPA) não é coberto — não dispara `beforeunload` nem clique de `<a>`, então sair por Voltar com o form sujo descarta sem aviso. Logout cai no prompt nativo do `beforeunload` (o `signOut` faz navegação de documento). O guard completo de back-button exigiria manipular history (sentinela, frágil) — fica como follow-up se virar dor real.
 - Genérico: dá pra reusar em qualquer página com form dirty.
 
+## Instrução de resposta como bloco fixo do sistema (2026-07-11 — bug reportado)
+
+**Bug**: os templates eram texto 100% livre e o usuário podia digitar a própria instrução de resposta (ex: a Claudia Estética escreveu **"Responda 2 para CONFIRMAR ou 5 para CANCELAR"**). Mas os códigos aceitos são fixos no parser (`webhook-parser.ts`: confirmar=`1`, cancelar=`2`). Resultado: o paciente que seguia a instrução e mandava `2` para confirmar era **CANCELADO** (o parser lê `2` como cancelar), e `5` era **ignorado**. Ver `flows/confirmation-flow.md` e `features/webhook-evolution.md`.
+
+**Fix (decisão do dono: "bloco fixo automático")**: a linha de resposta deixou de ser texto livre e passou a ser **dona do sistema**. O template guardado no banco contém **só o corpo livre**; a instrução canônica é **anexada no envio** e mostrada na pré-visualização.
+
+- **Fonte única da verdade**: `webhook-parser.ts` exporta `CONFIRM_KEYWORDS`/`CANCEL_KEYWORDS` e os códigos primários `CONFIRM_CODE`/`CANCEL_CODE` (1º item de cada). `message-template.ts` deriva `RESPONSE_INSTRUCTION = "Responda {CONFIRM_CODE} para CONFIRMAR ou {CANCEL_CODE} para CANCELAR."` daí. Se um dia os códigos mudarem, template + parser andam juntos. É **impossível** o template instruir um número que o parser não aceita.
+- **Anexo no envio**: `scheduler.ts` usa `withResponseInstruction(template)` antes do `formatMessage`. Helper = `stripResponseInstruction(body)` + `"\n\n"` + `RESPONSE_INSTRUCTION`. **Idempotente** (aplicar 2× não duplica) e **auto-corrige** um corpo que ainda carregue a instrução (possivelmente errada).
+- **Strip no save**: `PUT /api/settings` aplica `stripResponseInstruction` em `confirmationMessage`/`reminderMessage` antes de persistir → o banco guarda só o corpo. Regex tolerante a verbo (responda/digite/envie/mande), conector (ou/e/,) e QUALQUER token no lugar dos códigos; **não é ganancioso após "cancelar"** (não engole o resto da frase quando a instrução está no meio do texto).
+- **Migração `20260711190023_strip_response_instruction_from_templates`**: (1) novos `@default` do schema SEM a instrução; (2) `UPDATE ... regexp_replace` (Postgres ARE, `\y` como boundary) limpando a instrução embutida das linhas existentes. Best-effort — o strip no envio é a rede de segurança final.
+- **UI** (`configuracoes/page.tsx`): editor continua só com o corpo; abaixo de cada editor um **aviso fixo não-editável** (`ResponseInstructionNote`, ícone de cadeado) mostra `RESPONSE_INSTRUCTION` + "os números não podem ser alterados"; a **pré-visualização** (`formatTemplatePreview` → `withResponseInstruction`) mostra corpo + instrução canônica = a mensagem real enviada. Placeholders dos editores não trazem mais "Responda SIM ou NÃO."
+- **Não requer instrução mínima no corpo**: o Zod `min(10)` roda no input bruto; se o usuário digitar só a instrução, o strip pode zerar o corpo (envio sai só com a canônica). Edge aceito — o aviso fixo torna óbvio que não é preciso digitar a linha.
+- **Regressão**: `tests/unit/response-instruction.test.ts` (strip/append/idempotência/cenário 2-5) + `test:sprints` MSG.1–5 (inclui o cenário do bug end-to-end: template errado → envio canônico + resposta confirma, não cancela).
+
+## Validação manual no browser (2026-07-11 — bloco fixo de resposta)
+
+Confirmado via Chrome MCP (seed `rhonner.matheus@gmail.com`, dev :3001):
+
+1. ✅ Após a migração, ambos os editores mostram só o corpo (confirmação 74/1000, lembrete 82/1000) — a instrução some do texto editável.
+2. ✅ Aviso fixo "Adicionado automaticamente ao final (não editável): Responda 1 para CONFIRMAR ou 2 para CANCELAR." com cadeado + explicação, sob cada editor.
+3. ✅ Pré-visualização mostra corpo (com dados de exemplo) + linha em branco + a instrução canônica = mensagem real.
+4. ✅ **Cenário do bug**: digitei "Responda 2 para CONFIRMAR ou 5 para CANCELAR." no editor → a pré-visualização mostrou a canônica **corrigida** ("1 ... ou 2 ..."), sem duplicar nem os números errados.
+5. ✅ Save + reload: o editor voltou a só-corpo (74/1000) — a instrução errada foi removida no servidor (strip no PUT). Sem erros de console.
+
 ## Validação manual no browser (2026-06-27)
 
 Confirmado via Chrome MCP (seed `rhonner.matheus@gmail.com`):

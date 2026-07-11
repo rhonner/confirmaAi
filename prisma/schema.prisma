@@ -309,8 +309,11 @@ model Settings {
   userId                  String   @unique
   confirmationHoursBefore Int      @default(24)
   reminderHoursBefore     Int      @default(6)
-  confirmationMessage     String   @default("Olá {nome}, sua consulta na {clinica} está agendada para {data} às {hora}. Responda 1 para CONFIRMAR ou 2 para CANCELAR.")
-  reminderMessage         String   @default("Oi {nome}, ainda não recebemos sua confirmação para {data} às {hora} na {clinica}. Responda 1 para CONFIRMAR ou 2 para CANCELAR.")
+  // NÃO inclua a instrução de resposta ("Responda 1 para CONFIRMAR ou 2 para
+  // CANCELAR.") aqui: ela é anexada no envio por message-template.ts
+  // (withResponseInstruction). O template guarda só o corpo livre.
+  confirmationMessage     String   @default("Olá {nome}, sua consulta na {clinica} está agendada para {data} às {hora}.")
+  reminderMessage         String   @default("Oi {nome}, ainda não recebemos sua confirmação para a consulta de {data} às {hora} na {clinica}.")
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 

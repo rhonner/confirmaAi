@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { updateSettingsSchema } from "@/lib/validations/settings"
+import { stripResponseInstruction } from "@/lib/services/message-template"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
 import { auditWrap } from "@/lib/audit"
 import type { ApiResponse, SettingsResponse } from "@/lib/types/api"
@@ -71,6 +72,17 @@ export const PUT = auditWrap(async (request: NextRequest) => {
     }
 
     const { avgAppointmentValue, clinicName, ...settingsData } = validation.data
+
+    // A instrução de resposta ("Responda 1 para CONFIRMAR ou 2 para CANCELAR.")
+    // é dona do sistema e anexada no envio — o banco guarda só o corpo livre.
+    // Removemos qualquer instrução embutida que o usuário tenha digitado para
+    // não duplicar/contradizer a canônica. Ver message-template.ts.
+    if (settingsData.confirmationMessage !== undefined) {
+      settingsData.confirmationMessage = stripResponseInstruction(settingsData.confirmationMessage)
+    }
+    if (settingsData.reminderMessage !== undefined) {
+      settingsData.reminderMessage = stripResponseInstruction(settingsData.reminderMessage)
+    }
 
     const settings = await prisma.settings.update({
       where: { userId: session.user.id },

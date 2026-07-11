@@ -12,13 +12,17 @@ import {
   TEMPLATE_VARS,
   usesAnyVariable,
 } from "@/components/settings/template-editor";
+import {
+  RESPONSE_INSTRUCTION,
+  withResponseInstruction,
+} from "@/lib/services/message-template";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { DollarSign, Save, History, ChevronRight } from "lucide-react";
+import { DollarSign, Save, History, ChevronRight, Lock } from "lucide-react";
 import Link from "next/link";
 import { WhatsappConnection } from "@/components/settings/whatsapp-connection";
 import { GoogleCalendarConnection } from "@/components/settings/google-calendar-connection";
@@ -55,11 +59,39 @@ type SettingsForm = z.infer<typeof settingsSchema>;
 
 function formatTemplatePreview(template: string, clinicName?: string): string {
   const sampleDate = addDays(new Date(), 1);
-  return template
+  const body = template
     .replace(/\{nome\}/g, "Maria Silva")
     .replace(/\{data\}/g, format(sampleDate, "EEEE, dd 'de' MMMM", { locale: ptBR }))
     .replace(/\{hora\}/g, "14:30")
     .replace(/\{clinica\}/g, clinicName || "Sua Clínica");
+  // Espelha o envio real: o corpo livre + a instrução de resposta canônica
+  // anexada pelo sistema (withResponseInstruction). Ver message-template.ts.
+  return withResponseInstruction(body);
+}
+
+/**
+ * Aviso fixo (não editável) mostrando a linha de resposta que o sistema anexa
+ * automaticamente ao final de toda mensagem. Nasceu do bug em que o usuário
+ * editava "Responda 2 para CONFIRMAR ou 5 para CANCELAR" — números que o parser
+ * lê ao contrário/ignora. Agora o código sai sempre certo (fonte única: o
+ * parser). Ver .context/features/settings.md.
+ */
+function ResponseInstructionNote() {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-dashed border-input bg-muted/40 px-3 py-2">
+      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="space-y-0.5">
+        <p className="text-xs text-muted-foreground">
+          Adicionado automaticamente ao final (não editável):
+        </p>
+        <p className="text-sm font-medium">{RESPONSE_INSTRUCTION}</p>
+        <p className="text-xs text-muted-foreground">
+          Garante que o paciente responda com o código que o sistema reconhece —
+          por isso os números não podem ser alterados.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -330,7 +362,9 @@ export default function ConfiguracoesPage() {
               <p className="text-xs text-muted-foreground mb-3">
                 Utilize as tags abaixo para montar sua mensagem automática. Clique
                 para inserir no template ativo (último focado) — elas são
-                substituídas pelos dados de cada paciente no envio.
+                substituídas pelos dados de cada paciente no envio. A instrução de
+                resposta ({RESPONSE_INSTRUCTION.replace(/\.$/, "")}) é adicionada
+                automaticamente ao final — você não precisa digitá-la.
               </p>
               <div className="flex flex-wrap gap-2">
                 {TEMPLATE_VARS.map((name) => (
@@ -376,7 +410,7 @@ export default function ConfiguracoesPage() {
                     onFocus={() => {
                       activeMessageRef.current = "confirmationMessage";
                     }}
-                    placeholder="Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença? Responda SIM ou NÃO."
+                    placeholder="Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença?"
                     invalid={!!errors.confirmationMessage}
                   />
                 )}
@@ -386,6 +420,7 @@ export default function ConfiguracoesPage() {
                   {errors.confirmationMessage.message}
                 </p>
               )}
+              <ResponseInstructionNote />
               {confirmationMessage && confirmationMessage.length >= 10 && (
                 <TemplatePreview value={confirmationMessage} clinicName={settings?.clinicName} />
               )}
@@ -419,7 +454,7 @@ export default function ConfiguracoesPage() {
                     onFocus={() => {
                       activeMessageRef.current = "reminderMessage";
                     }}
-                    placeholder="Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença? Responda SIM ou NÃO."
+                    placeholder="Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença?"
                     invalid={!!errors.reminderMessage}
                   />
                 )}
@@ -429,6 +464,7 @@ export default function ConfiguracoesPage() {
                   {errors.reminderMessage.message}
                 </p>
               )}
+              <ResponseInstructionNote />
               {reminderMessage && reminderMessage.length >= 10 && (
                 <TemplatePreview value={reminderMessage} clinicName={settings?.clinicName} />
               )}

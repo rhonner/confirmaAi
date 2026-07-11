@@ -57,7 +57,7 @@ tions envia     envia (se       agendamento   markNoShows →
 → ver `features/scheduler.md`.
 
 ### 3. Envio WhatsApp (`sendWhatsAppMessage`)
-- Renderiza template (`message-template.ts`).
+- Renderiza template (`message-template.ts`) e **anexa a instrução de resposta canônica** (`withResponseInstruction` → "Responda 1 para CONFIRMAR ou 2 para CANCELAR."). O template guardado é só o corpo; a instrução é dona do sistema e deriva dos códigos do parser (impossível instruir um número que o webhook não aceita). Ver `features/settings.md`.
 - Chama `sendText(instanceName, phone, message)` da Evolution.
 - Em sucesso: marca `confirmationSentAt`/`reminderSentAt` + cria `MessageLog`.
 → ver `features/whatsapp.md`.

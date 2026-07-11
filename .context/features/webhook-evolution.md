@@ -33,10 +33,11 @@
 2. Extrai texto: `data.message.conversation` ou `data.message.extendedTextMessage.text`.
 3. Extrai telefone: `data.key.remoteJid` (`"55XXX@s.whatsapp.net"`) → `"+55XXX"`.
 4. **Parse via `parseResponse(text)`**:
-   - `CONFIRMED`: `["1","sim","confirmo","ok","yes","s"]`
-   - `CANCELED`: `["2","não","nao","cancelo","cancelar","cancel","n"]`
+   - `CONFIRMED`: `CONFIRM_KEYWORDS = ["1","sim","confirmo","ok","yes","s"]`
+   - `CANCELED`: `CANCEL_KEYWORDS = ["2","não","nao","cancelo","cancelar","cancel","n"]`
    - Comparação: `text.toLowerCase().trim()` exato (não `includes`).
    - Outros valores → ignora silenciosamente.
+   - **Fonte única dos códigos (2026-07-11)**: esses arrays são exportados e `CONFIRM_CODE`/`CANCEL_CODE` (1º item de cada = `1`/`2`) alimentam a instrução de resposta que o `message-template.ts` anexa às mensagens enviadas (`RESPONSE_INSTRUCTION`). Assim o template nunca instrui um número que o parser não aceita — corrige o bug "Responda 2 para CONFIRMAR ou 5 para CANCELAR" (paciente confirmava e era cancelado). Ver `features/settings.md`.
 5. **Match do agendamento** (`findPendingAppointmentForResponse` em `webhook-confirmation.ts`): scoped por `userId` (multi-tenancy crítico — o mesmo telefone pode estar em pacientes de tenants diferentes):
    ```
    userId: user.id

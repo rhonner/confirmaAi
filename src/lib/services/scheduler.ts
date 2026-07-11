@@ -4,6 +4,7 @@ import {
   formatMessage,
   formatAppointmentDate,
   formatAppointmentTime,
+  withResponseInstruction,
 } from "./message-template";
 import { audit } from "@/lib/audit";
 import { getCurrentUsage, incrementMessagesSent } from "@/lib/billing/usage";
@@ -166,7 +167,11 @@ async function processSends(
         continue;
       }
 
-      const message = formatMessage(kind.messageOf(settings), {
+      // withResponseInstruction: o template guardado é só o corpo livre; a
+      // linha "Responda 1 para CONFIRMAR ou 2 para CANCELAR." é anexada aqui
+      // (dono do sistema). O strip embutido no helper protege templates legados
+      // que ainda tenham a instrução (possivelmente errada) no corpo.
+      const message = formatMessage(withResponseInstruction(kind.messageOf(settings)), {
         nome: appointment.patient.name,
         data: formatAppointmentDate(appointment.dateTime),
         hora: formatAppointmentTime(appointment.dateTime),

@@ -31,6 +31,13 @@ import { dunningStageDue, usageThresholdDue } from "../src/lib/services/billing-
 import { computePixExpiresAt, PIX_QR_TTL_SECONDS } from "../src/lib/billing/pix-ttl";
 import { isPatientPurgeDue, runAccountPurge } from "../src/lib/account/account-purge";
 import { findPendingAppointmentForResponse } from "../src/lib/services/webhook-confirmation";
+import {
+  formatMessage,
+  RESPONSE_INSTRUCTION,
+  stripResponseInstruction,
+  withResponseInstruction,
+} from "../src/lib/services/message-template";
+import { CONFIRM_CODE, CANCEL_CODE, parseResponse } from "../src/lib/services/webhook-parser";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -2442,6 +2449,101 @@ async function main() {
       gcalMirrorSrc.includes("externalEvent") &&
       gcalMirrorSrc.includes("hasWriteScope") &&
       gcalMirrorSrc.includes("createGoogleEvent"),
+  );
+
+  // ====================================================================
+  // MSG — instrução de resposta como bloco fixo (dono do sistema)
+  // Bug reportado: usuário editava "Responda 2 para CONFIRMAR ou 5 para
+  // CANCELAR" — números que o parser lê ao contrário/ignora. Fix: a instrução
+  // deixou de ser texto livre e passou a ser anexada no envio, derivada do
+  // parser (fonte única). Ver .context/features/settings.md.
+  // ====================================================================
+  // MSG.1 — a instrução canônica deriva dos códigos do parser e o parser casa
+  // esses mesmos códigos (loop fechado: o número instruído SEMPRE é aceito).
+  check(
+    "MSG.1 RESPONSE_INSTRUCTION deriva do parser e parseResponse casa os códigos",
+    10,
+    RESPONSE_INSTRUCTION === `Responda ${CONFIRM_CODE} para CONFIRMAR ou ${CANCEL_CODE} para CANCELAR.` &&
+      parseResponse(CONFIRM_CODE) === "CONFIRMED" &&
+      parseResponse(CANCEL_CODE) === "CANCELED",
+  );
+
+  // MSG.2 — withResponseInstruction anexa a canônica e é idempotente.
+  const msgBody = "Olá {nome}, consulta em {data} às {hora}.";
+  check(
+    "MSG.2 withResponseInstruction anexa canônica + idempotente",
+    10,
+    withResponseInstruction(msgBody) === `${msgBody}\n\n${RESPONSE_INSTRUCTION}` &&
+      withResponseInstruction(withResponseInstruction(msgBody)) === withResponseInstruction(msgBody),
+  );
+
+  // MSG.3 — CENÁRIO DO BUG end-to-end: template com números errados embutidos.
+  // A mensagem enviada sai com a instrução CANÔNICA (não os números errados), e
+  // o paciente que responde o código de confirmar é CONFIRMADO (não cancelado).
+  const wrongTemplate =
+    "Olá {nome}. Responda 2 para CONFIRMAR ou 5 para CANCELAR.";
+  const sentMessage = formatMessage(withResponseInstruction(wrongTemplate), {
+    nome: "Maria",
+    data: "quinta-feira, 9 de julho",
+    hora: "14:30",
+    clinica: "Claudia Estética",
+  });
+  check(
+    "MSG.3 template com número errado → envio sai canônico + resposta confirma (não cancela)",
+    10,
+    sentMessage.endsWith(RESPONSE_INSTRUCTION) &&
+      !sentMessage.includes("5 para CANCELAR") &&
+      !sentMessage.includes("Responda 2 para CONFIRMAR") &&
+      parseResponse(CONFIRM_CODE) === "CONFIRMED",
+  );
+
+  // MSG.4 — DB round-trip: salvar (via strip, como faz a rota PUT) um template
+  // com instrução embutida guarda só o corpo; o banco nunca duplica a instrução.
+  const msgUser = await prisma.user.create({
+    data: {
+      name: "MSG Test",
+      email: `msg-${randomBytes(4).toString("hex")}@test.local`,
+      password: "x",
+      clinicName: "MSG Clinic",
+    },
+  });
+  await prisma.settings.create({
+    data: {
+      userId: msgUser.id,
+      // Simula o que a rota PUT persiste: aplica stripResponseInstruction antes.
+      reminderMessage: stripResponseInstruction(
+        "Oi {nome}. Responda 2 para CONFIRMAR ou 5 para CANCELAR agora.",
+      ),
+    },
+  });
+  const msgSettings = await prisma.settings.findUnique({ where: { userId: msgUser.id } });
+  check(
+    "MSG.4 settings guarda só o corpo (sem instrução embutida) e o envio anexa 1×",
+    10,
+    !!msgSettings &&
+      !/responda[^]*confirmar[^]*cancelar/i.test(msgSettings.reminderMessage) &&
+      withResponseInstruction(msgSettings.reminderMessage).endsWith(RESPONSE_INSTRUCTION),
+  );
+  await prisma.user.delete({ where: { id: msgUser.id } });
+
+  // MSG.5 — wiring: schema default sem "Responda"; scheduler anexa; rota faz
+  // strip no save; página mostra o aviso fixo com a instrução canônica.
+  const schemaSrcMsg = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
+  const schedulerSrcMsg = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+  const settingsRouteSrcMsg = readFileSync(join(root, "src/app/api/settings/route.ts"), "utf8");
+  const configPageSrcMsg = readFileSync(join(root, "src/app/(dashboard)/configuracoes/page.tsx"), "utf8");
+  const defaultsBlock = schemaSrcMsg.slice(
+    schemaSrcMsg.indexOf("confirmationMessage     String"),
+    schemaSrcMsg.indexOf("reminderMessage         String") + 200,
+  );
+  check(
+    "MSG.5 wiring: schema defaults sem instrução + scheduler anexa + rota faz strip + página mostra aviso",
+    10,
+    !/@default\("[^"]*Responda[^"]*CONFIRMAR[^"]*CANCELAR/.test(defaultsBlock) &&
+      schedulerSrcMsg.includes("withResponseInstruction") &&
+      settingsRouteSrcMsg.includes("stripResponseInstruction") &&
+      configPageSrcMsg.includes("ResponseInstructionNote") &&
+      configPageSrcMsg.includes("RESPONSE_INSTRUCTION"),
   );
 
   // cleanup GCal (cascade apaga a conexão)

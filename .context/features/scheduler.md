@@ -62,6 +62,7 @@ Envia mensagem de confirmação para agendamentos que ainda não foram notificad
 - Para cada appointment, lê `settings.confirmationHoursBefore` e calcula `sendTime = dateTime - hoursBefore`.
 - **Pula** se `now < sendTime` (cedo demais) ou `now > dateTime` (já passou).
 - Renderiza `settings.confirmationMessage` com `{nome, data, hora, clinica}`.
+- **Anexa a instrução de resposta (2026-07-11)**: envolve o template em `withResponseInstruction(...)` (`message-template.ts`) antes do `formatMessage`, adicionando ao final a linha canônica `Responda 1 para CONFIRMAR ou 2 para CANCELAR.` (derivada do `webhook-parser.ts`). O template guardado é só o corpo; a instrução é dona do sistema. Corrige o bug do usuário instruir número errado. Ver `features/settings.md`.
 - Envia via `sendWhatsAppMessage(user.evolutionInstanceName, patient.phone, message)`.
 - Em sucesso: `appointment.update({ confirmationSentAt: now })` + cria `MessageLog { type: CONFIRMATION, status: SENT }`.
 
