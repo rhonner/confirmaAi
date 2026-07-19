@@ -52,4 +52,5 @@ export type DashboardStats = {
 export type SettingsResponse = Settings & {
   avgAppointmentValue: number
   clinicName: string
+  businessType: string | null
 }

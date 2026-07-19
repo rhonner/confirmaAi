@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { avgAppointmentValue: true, clinicName: true },
+      select: { avgAppointmentValue: true, clinicName: true, businessType: true },
     })
 
     let settings = await prisma.settings.findUnique({
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         ...settings,
         avgAppointmentValue: Number(user?.avgAppointmentValue ?? 0),
         clinicName: user?.clinicName ?? "",
+        businessType: user?.businessType ?? null,
       },
     })
   } catch (error) {
@@ -71,7 +72,7 @@ export const PUT = auditWrap(async (request: NextRequest) => {
       })
     }
 
-    const { avgAppointmentValue, clinicName, ...settingsData } = validation.data
+    const { avgAppointmentValue, clinicName, businessType, ...settingsData } = validation.data
 
     // A instrução de resposta ("Responda 1 para CONFIRMAR ou 2 para CANCELAR.")
     // é dona do sistema e anexada no envio — o banco guarda só o corpo livre.
@@ -90,19 +91,24 @@ export const PUT = auditWrap(async (request: NextRequest) => {
     })
 
     // Update User-level fields if provided.
-    if (avgAppointmentValue !== undefined || clinicName !== undefined) {
+    if (
+      avgAppointmentValue !== undefined ||
+      clinicName !== undefined ||
+      businessType !== undefined
+    ) {
       await prisma.user.update({
         where: { id: session.user.id },
         data: {
           ...(avgAppointmentValue !== undefined ? { avgAppointmentValue } : {}),
           ...(clinicName !== undefined ? { clinicName } : {}),
+          ...(businessType !== undefined ? { businessType } : {}),
         },
       })
     }
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { avgAppointmentValue: true, clinicName: true },
+      select: { avgAppointmentValue: true, clinicName: true, businessType: true },
     })
 
     return NextResponse.json<ApiResponse<SettingsResponse>>({
@@ -110,6 +116,7 @@ export const PUT = auditWrap(async (request: NextRequest) => {
         ...settings,
         avgAppointmentValue: Number(user?.avgAppointmentValue ?? 0),
         clinicName: user?.clinicName ?? "",
+        businessType: user?.businessType ?? null,
       },
       message: "Configurações atualizadas com sucesso",
     })

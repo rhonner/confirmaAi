@@ -16,6 +16,7 @@ import {
   stripResponseInstruction,
   withConfirmationLink,
 } from "@/lib/services/message-template";
+import { BUSINESS_TYPE_LABELS } from "@/lib/terminology";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,8 @@ const MESSAGE_MAX_LENGTH = 1000;
 const settingsSchema = z
   .object({
     clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200),
+    // "" = ainda não definido (não é enviado no submit). Ver onSubmit.
+    businessType: z.enum(["HEALTH", "AESTHETICS", "BEAUTY", "FINANCE", "OTHER"]).or(z.literal("")),
     confirmationHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
     reminderHoursBefore: z.number().min(1, "Mínimo de 1 hora").max(168, "Máximo de 7 dias (168 horas)"),
     // min(10) no CORPO (sem a instrução de resposta, anexada automaticamente):
@@ -171,6 +174,7 @@ export default function ConfiguracoesPage() {
 
   const defaultValues: SettingsForm = {
     clinicName: "",
+    businessType: "",
     confirmationHoursBefore: 24,
     reminderHoursBefore: 6,
     confirmationMessage: "",
@@ -190,6 +194,7 @@ export default function ConfiguracoesPage() {
     defaultValues,
     values: settings ? {
       clinicName: settings.clinicName,
+      businessType: (settings.businessType ?? "") as SettingsForm["businessType"],
       confirmationHoursBefore: settings.confirmationHoursBefore,
       reminderHoursBefore: settings.reminderHoursBefore,
       confirmationMessage: settings.confirmationMessage,
@@ -200,10 +205,12 @@ export default function ConfiguracoesPage() {
   const confirmationMessage = watch("confirmationMessage");
 
   const onSubmit = async (data: SettingsForm) => {
-    await updateMutation.mutateAsync(data);
+    // businessType "" = ainda não definido → não envia (o enum do backend
+    // rejeitaria ""). Só vai no payload quando o usuário escolhe um ramo.
+    const { businessType, ...rest } = data;
+    await updateMutation.mutateAsync(businessType ? data : rest);
     // Atualiza o JWT/sessão na hora (trigger "update" força o callback jwt a
-    // reler o banco) p/ o nome da clínica no header refletir já — sem esperar
-    // o refetch periódico da sessão.
+    // reler o banco) p/ o nome da clínica E o ramo (terminologia) refletirem já.
     await updateSession();
   };
 
@@ -246,6 +253,29 @@ export default function ConfiguracoesPage() {
                   {errors.clinicName.message}
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="businessType">Ramo do negócio</Label>
+              <select
+                id="businessType"
+                {...register("businessType")}
+                className="h-10 w-full rounded-lg border border-input/20 bg-input/10 px-3 text-sm shadow-xs transition-all duration-200 outline-none focus-visible:border-primary/50 focus-visible:bg-input/20 focus-visible:ring-2 focus-visible:ring-primary/20"
+              >
+                <option value="" disabled>
+                  Selecione…
+                </option>
+                {(Object.keys(BUSINESS_TYPE_LABELS) as (keyof typeof BUSINESS_TYPE_LABELS)[]).map(
+                  (bt) => (
+                    <option key={bt} value={bt}>
+                      {BUSINESS_TYPE_LABELS[bt]}
+                    </option>
+                  ),
+                )}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Define como o sistema chama seus cadastrados (paciente ou cliente).
+              </p>
             </div>
           </CardContent>
         </Card>

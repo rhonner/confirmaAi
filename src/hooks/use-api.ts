@@ -68,6 +68,7 @@ type Settings = {
   reminderMessage: string;
   avgAppointmentValue: number;
   clinicName: string;
+  businessType: string | null;
 };
 
 /**

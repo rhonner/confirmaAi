@@ -58,12 +58,18 @@
 - **Exaustividade:** `OPTION_ICONS` é `Record<BusinessType, icon>` (novo ramo no enum → erro de compilação).
 - Removido campo morto `article` de `Terminology`.
 
+## Trocar o ramo em Configurações (FEITO 2026-07-19)
+- Card "Dados da clínica" ganhou um `<select>` **"Ramo do negócio"** (`businessType`) integrado ao form de
+  settings (um só "Salvar"). `businessType` foi adicionado ao `updateSettingsSchema` (enum opcional), à rota
+  `GET/PUT /api/settings` (lido/gravado no `User`), ao `SettingsResponse` e ao `type Settings` do `use-api`.
+  `""` = não definido → **não é enviado** no submit (o enum do backend rejeitaria ""). Após salvar, o
+  `onSubmit` já chama `useSession().update()` → a terminologia reflete na hora. **Validado E2E no Chrome:**
+  trocar p/ "Saúde" → sidebar "Clientes"→"Pacientes" na hora + toast. Gate: tsc·vitest 386·build·sprints 153/153.
+
 ## ⚠️ Deferido (polish — NÃO é bug, decisão do dono quando quiser)
 - Rótulos "Paciente" que ficaram: mensagens de toast do **server** (`/api/patients/*`), `plan-meta.ts`,
   `paywall-modal` (const de módulo), `plan-card`, páginas públicas (`precos`, `verificar-email`), e o fallback
   `?? "Paciente"` do `month-view`. São strings server-side / const de módulo / páginas sem sessão.
-- **Trocar o ramo em Configurações** (hoje só o wizard seta; quem dispensar fica no default "Paciente" até
-  reabrir o wizard). Reusa `POST /api/onboarding` + `useSession().update()`.
 - Dedup dos `.toLowerCase()` (adicionar `singularLower`/`pluralLower` a `Terminology`) — 8 consumidores.
 - Passos extra do wizard (nome/WhatsApp/1º cadastro).
 

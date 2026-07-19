@@ -14,6 +14,7 @@ const messageBody = (label: string) =>
 export const updateSettingsSchema = z
   .object({
     clinicName: z.string().min(3, "Nome da clínica deve ter pelo menos 3 caracteres").max(200).optional(),
+    businessType: z.enum(["HEALTH", "AESTHETICS", "BEAUTY", "FINANCE", "OTHER"]).optional(),
     confirmationHoursBefore: z.number().int().min(1).max(168).optional(),
     reminderHoursBefore: z.number().int().min(1).max(168).optional(),
     confirmationMessage: messageBody("Mensagem deve ter pelo menos 10 caracteres").optional(),
