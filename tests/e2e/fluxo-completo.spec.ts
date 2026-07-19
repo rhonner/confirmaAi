@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, fillPhoneInput, selectPatient } from "./helpers";
+import { login, fillPhoneInput, selectPatient, selectTime } from "./helpers";
 
 /**
  * Fluxo completo conforme solicitado:
@@ -111,7 +111,7 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
       await selectPatient(page, PAC_A);
 
       await page.fill('input[id="date"]', apptDate);
-      await page.fill('input[id="time"]', TIMES[i]);
+      await selectTime(page, TIMES[i]);
       await page.click('button[type="submit"]:has-text("Criar")');
 
       // Verify SUCCESS toast specifically (not error toast)
@@ -135,7 +135,7 @@ test.describe("Fluxo Completo - 2 pacientes, 8 agendamentos, dashboard, cancelar
       await selectPatient(page, PAC_B);
 
       await page.fill('input[id="date"]', apptDate);
-      await page.fill('input[id="time"]', TIMES[i]);
+      await selectTime(page, TIMES[i]);
       await page.click('button[type="submit"]:has-text("Criar")');
 
       // Verify SUCCESS toast specifically (not error toast)

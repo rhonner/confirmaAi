@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, fillPhoneInput, displayPhone, selectPatient } from "./helpers";
+import { login, fillPhoneInput, displayPhone, selectPatient, selectTime, expectTime } from "./helpers";
 
 /**
  * Comprehensive CRUD lifecycle tests.
@@ -187,7 +187,7 @@ test.describe("Full CRUD Lifecycle", () => {
 
     // Fill date (tomorrow) and time
     await page.fill('input[id="date"]', APPT_DATE);
-    await page.fill('input[id="time"]', APPT_TIME);
+    await selectTime(page, APPT_TIME);
     await page.fill('textarea[id="notes"]', "Consulta criada via E2E");
 
     // Submit and wait for the API to confirm 201
@@ -263,10 +263,10 @@ test.describe("Full CRUD Lifecycle", () => {
     });
 
     // Verify pre-filled values
-    await expect(page.locator('input[id="time"]')).toHaveValue(APPT_TIME);
+    await expectTime(page, APPT_TIME);
 
-    // Update time using fill (time inputs work better with fill than pressSequentially)
-    await page.fill('input[id="time"]', APPT_TIME_UPDATED);
+    // Update time via the Hora/Minuto selects
+    await selectTime(page, APPT_TIME_UPDATED);
 
     // Update notes
     const notesInput = page.locator('textarea[id="notes"]');

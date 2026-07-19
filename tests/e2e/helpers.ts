@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test";
+import { Page, expect } from "@playwright/test";
 
 export async function login(page: Page) {
   await page.goto("/login");
@@ -36,6 +36,29 @@ export function displayPhone(canonical: string): string {
   const d = canonical.replace(/\D/g, "").replace(/^55/, "").slice(0, 11);
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+}
+
+/**
+ * Set the appointment time in the New/Edit dialog. The time field is now two
+ * <select>s (Hora / Minuto) instead of <input type="time"> — see TimeSelect.
+ * Selecting the hour first (emits "" until both are set) then the minute yields
+ * a complete "HH:mm" the form accepts.
+ */
+export async function selectTime(page: Page, time: string) {
+  const [hh, mm] = time.split(":");
+  const dialog = page.locator('[role="dialog"]');
+  await dialog.locator('select[aria-label="Hora"]').selectOption(hh);
+  await dialog.locator('select[aria-label="Minuto"]').selectOption(mm);
+}
+
+/**
+ * Assert the time selects reflect the given "HH:mm" (edit dialog pre-fill).
+ */
+export async function expectTime(page: Page, time: string) {
+  const [hh, mm] = time.split(":");
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog.locator('select[aria-label="Hora"]')).toHaveValue(hh);
+  await expect(dialog.locator('select[aria-label="Minuto"]')).toHaveValue(mm);
 }
 
 /**

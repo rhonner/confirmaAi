@@ -73,8 +73,9 @@ export default function DashboardLayout({
         </SheetContent>
       </Sheet>
 
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col z-10 relative">
+      {/* Main Content — min-w-0 permite a coluna encolher até a largura da
+          viewport (sem isso, um filho largo empurra a coluna além da tela). */}
+      <div className="flex flex-1 flex-col z-10 relative min-w-0">
         <AppHeader
           clinicName={clinicName}
           onMenuClick={() => setOpen(true)}
@@ -84,8 +85,12 @@ export default function DashboardLayout({
 
         {/* Page Content — scrollbar-gutter:stable reserva o espaço da barra de
             rolagem sempre, evitando o "pulo" horizontal ao alternar entre uma
-            página que rola (dia com agendamentos) e uma que não rola (dia vazio). */}
-        <main className="flex-1 p-4 lg:p-8 overflow-y-auto [scrollbar-gutter:stable]">
+            página que rola (dia com agendamentos) e uma que não rola (dia vazio).
+            overflow-x-hidden: no mobile, qualquer estouro horizontal de poucos px
+            deixava a página "pannable", causando o balanço/"tilt" durante o scroll
+            vertical (relato do dono). Clipar o eixo X mata o balanço de vez; tabelas
+            largas têm o próprio wrapper overflow-x-auto (não são clipadas). */}
+        <main className="flex-1 p-4 lg:p-8 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
           <div className="max-w-7xl mx-auto animate-fade-in-up">
             <WhatsappDisconnectedBanner />
             {children}

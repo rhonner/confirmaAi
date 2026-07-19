@@ -44,6 +44,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PatientCombobox } from "@/components/forms/patient-combobox";
 import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
+import { TimeSelect } from "@/components/forms/time-select";
 import { MonthCalendar, getMonthGridRange } from "@/components/agenda/month-calendar";
 import { MonthView } from "@/components/agenda/month-view";
 import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus } from "lucide-react";
@@ -601,7 +602,7 @@ export default function AgendaPage() {
         title="Agenda"
         description="Gerencie seus agendamentos"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <ExportCsvButton url="/api/appointments/export" />
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="mr-2 h-4 w-4" />
@@ -676,13 +677,21 @@ export default function AgendaPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="time">Horário</Label>
-                  <Input
-                    id="time"
-                    type="time"
-                    {...register("time")}
+                  <Controller
+                    name="time"
+                    control={control}
+                    render={({ field }) => (
+                      <TimeSelect
+                        id="time"
+                        ref={field.ref}
+                        value={field.value}
+                        onChange={field.onChange}
+                        invalid={!!errors.time}
+                      />
+                    )}
                   />
                   {errors.time && (
                     <p className="text-sm text-destructive">
@@ -1033,7 +1042,7 @@ export default function AgendaPage() {
 
             return (
               <Card key={dayKey} className={`transition-shadow duration-200 hover:shadow-md ${isToday ? "border-primary" : ""}`}>
-                <CardHeader className="pb-3">
+                <CardHeader className="px-4 pb-3 sm:px-6">
                   <CardTitle className="text-base flex items-center gap-2">
                     {format(day, DAY_HEADER_FORMAT, { locale: ptBR })}
                     {isToday && (
@@ -1043,7 +1052,7 @@ export default function AgendaPage() {
                     )}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-4 sm:px-6">
                   {dayAppointments.length === 0 && dayGoogleEvents.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Nenhum agendamento
