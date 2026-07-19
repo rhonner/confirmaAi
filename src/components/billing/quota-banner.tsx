@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useUsage } from "@/hooks/use-api";
+import { useTerminology } from "@/hooks/use-terminology";
 import { AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ const STORAGE_KEY = "quota-soft-nudge-shown";
  */
 export function QuotaBanner() {
   const usage = useUsage();
+  const patients = useTerminology().patient.plural.toLowerCase(); // "pacientes" | "clientes"
   const [paywallOpen, setPaywallOpen] = React.useState(false);
   const [softNudgeOpen, setSoftNudgeOpen] = React.useState(false);
 
@@ -79,7 +81,7 @@ export function QuotaBanner() {
           <div>
             <p className="text-sm font-semibold">
               {isBlocked
-                ? "Você atingiu o limite de pacientes do plano Free"
+                ? `Você atingiu o limite de ${patients} do plano Free`
                 : `Faltam ${Math.max(0, (usage.limit ?? 0) - usage.count)} vaga(s) no plano Free`}
             </p>
             <p className="text-xs opacity-80">

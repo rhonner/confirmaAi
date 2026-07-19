@@ -14,6 +14,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useTerminology } from "@/hooks/use-terminology"
 
 type Patient = { id: string; name: string; phone: string }
 
@@ -34,10 +35,12 @@ export function PatientCombobox({
   onCreateNew,
   invalid,
   disabled,
-  placeholder = "Selecione um paciente",
+  placeholder,
 }: PatientComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const selected = patients?.find((p) => p.id === value)
+  const patient = useTerminology().patient.singular.toLowerCase() // "paciente" | "cliente"
+  const ph = placeholder ?? `Selecione um ${patient}`
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -55,7 +58,7 @@ export function PatientCombobox({
             invalid && "border-destructive ring-destructive/20",
           )}
         >
-          {selected ? selected.name : placeholder}
+          {selected ? selected.name : ph}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -64,9 +67,9 @@ export function PatientCombobox({
         align="start"
       >
         <Command>
-          <CommandInput placeholder="Buscar paciente..." />
+          <CommandInput placeholder={`Buscar ${patient}...`} />
           <CommandList>
-            <CommandEmpty>Nenhum paciente encontrado.</CommandEmpty>
+            <CommandEmpty>Nenhum {patient} encontrado.</CommandEmpty>
             <CommandGroup>
               {patients?.map((p) => (
                 <CommandItem
@@ -103,7 +106,7 @@ export function PatientCombobox({
                   >
                     <Plus className="mr-2 h-4 w-4 text-primary" />
                     <span className="text-primary font-medium">
-                      Cadastrar novo paciente
+                      Cadastrar novo {patient}
                     </span>
                   </CommandItem>
                 </CommandGroup>

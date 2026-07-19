@@ -13,13 +13,11 @@ import {
   usesAnyVariable,
 } from "@/components/settings/template-editor";
 import {
-  RESPONSE_INSTRUCTION,
-  withResponseInstruction,
   stripResponseInstruction,
+  withConfirmationLink,
 } from "@/lib/services/message-template";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyInput } from "@/components/ui/currency-input";
@@ -48,13 +46,14 @@ const settingsSchema = z
     // uma mensagem só-instrução vira "" após o strip → bloqueada; e um corpo
     // curto legado não trava o save. Espelha o schema do backend.
     confirmationMessage: z.string().max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`).refine((v) => stripResponseInstruction(v).length >= 10, "Template deve ter no mínimo 10 caracteres"),
-    reminderMessage: z.string().max(MESSAGE_MAX_LENGTH, `Máximo de ${MESSAGE_MAX_LENGTH} caracteres`).refine((v) => stripResponseInstruction(v).length >= 10, "Template deve ter no mínimo 10 caracteres"),
+    // reminderMessage saiu do form: o lembrete-nudge virou auto-cancelamento no
+    // deadline (Confirmação por link). O campo segue no banco (não editado aqui).
     avgAppointmentValue: z.number().min(0, "Valor não pode ser negativo"),
   })
   .refine(
     (d) => d.reminderHoursBefore < d.confirmationHoursBefore,
     {
-      message: "O lembrete deve ser enviado depois da confirmação (use uma antecedência menor)",
+      message: "O prazo de cancelamento deve ser menor que a antecedência da confirmação",
       path: ["reminderHoursBefore"],
     },
   );
@@ -68,19 +67,24 @@ function formatTemplatePreview(template: string, clinicName?: string): string {
     .replace(/\{data\}/g, format(sampleDate, "EEEE, dd 'de' MMMM", { locale: ptBR }))
     .replace(/\{hora\}/g, "14:30")
     .replace(/\{clinica\}/g, clinicName || "Sua Clínica");
-  // Espelha o envio real: o corpo livre + a instrução de resposta canônica
-  // anexada pelo sistema (withResponseInstruction). Ver message-template.ts.
-  return withResponseInstruction(body);
+  // Espelha o envio real: o corpo livre + o bloco do LINK de confirmação
+  // anexado pelo sistema (withConfirmationLink). O link e o prazo abaixo são
+  // ilustrativos. Ver message-template.ts.
+  const deadlineLabel = `${format(sampleDate, "EEEE, dd 'de' MMMM", { locale: ptBR })} às 08:30`;
+  return withConfirmationLink(body, {
+    url: "clinicaorganizada.com/confirmar/…",
+    deadlineLabel,
+  });
 }
 
 /**
- * Aviso fixo (não editável) mostrando a linha de resposta que o sistema anexa
- * automaticamente ao final de toda mensagem. Nasceu do bug em que o usuário
- * editava "Responda 2 para CONFIRMAR ou 5 para CANCELAR" — números que o parser
- * lê ao contrário/ignora. Agora o código sai sempre certo (fonte única: o
- * parser). Ver .context/features/settings.md.
+ * Aviso fixo (não editável): o sistema anexa ao final da mensagem um LINK de
+ * confirmação. O paciente clica, abre uma página e confirma/cancela ali — mais
+ * claro que responder "1/2" (feedback do dono). Quem não confirmar até o prazo
+ * (definido pela antecedência do lembrete) é cancelado automaticamente.
+ * Ver .context/features/settings.md e features/appointments.md.
  */
-function ResponseInstructionNote() {
+function ConfirmationLinkNote() {
   return (
     <div className="flex items-start gap-2 rounded-md border border-dashed border-input bg-muted/40 px-3 py-2">
       <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -88,10 +92,12 @@ function ResponseInstructionNote() {
         <p className="text-xs text-muted-foreground">
           Adicionado automaticamente ao final (não editável):
         </p>
-        <p className="text-sm font-medium">{RESPONSE_INSTRUCTION}</p>
+        <p className="text-sm font-medium">
+          Um link para o paciente confirmar ou cancelar + o prazo.
+        </p>
         <p className="text-xs text-muted-foreground">
-          Garante que o paciente responda com o código que o sistema reconhece —
-          por isso os números não podem ser alterados.
+          O paciente confirma numa página (não precisa responder com número). Se
+          não confirmar até o prazo, o agendamento é cancelado automaticamente.
         </p>
       </div>
     </div>
@@ -168,15 +174,10 @@ export default function ConfiguracoesPage() {
     confirmationHoursBefore: 24,
     reminderHoursBefore: 6,
     confirmationMessage: "",
-    reminderMessage: "",
     avgAppointmentValue: 0,
   };
 
   const confirmationEditorRef = useRef<TemplateEditorHandle | null>(null);
-  const reminderEditorRef = useRef<TemplateEditorHandle | null>(null);
-  const activeMessageRef = useRef<"confirmationMessage" | "reminderMessage">(
-    "confirmationMessage",
-  );
 
   const {
     register,
@@ -192,13 +193,11 @@ export default function ConfiguracoesPage() {
       confirmationHoursBefore: settings.confirmationHoursBefore,
       reminderHoursBefore: settings.reminderHoursBefore,
       confirmationMessage: settings.confirmationMessage,
-      reminderMessage: settings.reminderMessage,
       avgAppointmentValue: settings.avgAppointmentValue,
     } : undefined,
   });
 
   const confirmationMessage = watch("confirmationMessage");
-  const reminderMessage = watch("reminderMessage");
 
   const onSubmit = async (data: SettingsForm) => {
     await updateMutation.mutateAsync(data);
@@ -209,12 +208,7 @@ export default function ConfiguracoesPage() {
   };
 
   const insertVariable = (name: string) => {
-    const target = activeMessageRef.current ?? "confirmationMessage";
-    const handle =
-      target === "confirmationMessage"
-        ? confirmationEditorRef.current
-        : reminderEditorRef.current;
-    handle?.insertVariable(name);
+    confirmationEditorRef.current?.insertVariable(name);
   };
 
   if (isLoading) {
@@ -298,9 +292,9 @@ export default function ConfiguracoesPage() {
         {/* Horários de Notificação */}
         <Card>
           <CardHeader>
-            <CardTitle>Horários de Notificação</CardTitle>
+            <CardTitle>Confirmação e prazo</CardTitle>
             <CardDescription>
-              Configure quando as notificações devem ser enviadas
+              Quando enviar a confirmação e até quando o paciente pode confirmar
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -328,7 +322,7 @@ export default function ConfiguracoesPage() {
 
             <div className="space-y-2">
               <Label htmlFor="reminderHoursBefore">
-                Antecedência para lembrete (horas)
+                Cancelar automaticamente se não confirmar (horas antes)
               </Label>
               <Input
                 id="reminderHoursBefore"
@@ -344,18 +338,20 @@ export default function ConfiguracoesPage() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Exemplo: 6 horas = enviar lembrete se não confirmou após 6h
+                Ex: 6 = se o paciente não confirmar até 6h antes da consulta, ela
+                é <strong>cancelada automaticamente</strong> (e ele é avisado do
+                prazo na mensagem). Envios de última hora ganham 2h de prazo mínimo.
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Templates de Mensagem */}
+        {/* Mensagem de confirmação */}
         <Card>
           <CardHeader>
-            <CardTitle>Templates de Mensagem</CardTitle>
+            <CardTitle>Mensagem de confirmação</CardTitle>
             <CardDescription>
-              Personalize as mensagens enviadas aos pacientes
+              Personalize a mensagem de confirmação enviada aos pacientes
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -366,9 +362,9 @@ export default function ConfiguracoesPage() {
               <p className="text-xs text-muted-foreground mb-3">
                 Utilize as tags abaixo para montar sua mensagem automática. Clique
                 para inserir no template ativo (último focado) — elas são
-                substituídas pelos dados de cada paciente no envio. A instrução de
-                resposta ({RESPONSE_INSTRUCTION.replace(/\.$/, "")}) é adicionada
-                automaticamente ao final — você não precisa digitá-la.
+                substituídas pelos dados de cada paciente no envio. Um link de
+                confirmação (e o prazo) é adicionado automaticamente ao final —
+                você não precisa digitá-lo.
               </p>
               <div className="flex flex-wrap gap-2">
                 {TEMPLATE_VARS.map((name) => (
@@ -411,9 +407,6 @@ export default function ConfiguracoesPage() {
                     ref={confirmationEditorRef}
                     value={field.value ?? ""}
                     onChange={field.onChange}
-                    onFocus={() => {
-                      activeMessageRef.current = "confirmationMessage";
-                    }}
                     placeholder="Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença?"
                     invalid={!!errors.confirmationMessage}
                   />
@@ -424,53 +417,9 @@ export default function ConfiguracoesPage() {
                   {errors.confirmationMessage.message}
                 </p>
               )}
-              <ResponseInstructionNote />
+              <ConfirmationLinkNote />
               {confirmationMessage && confirmationMessage.length >= 10 && (
                 <TemplatePreview value={confirmationMessage} clinicName={settings?.clinicName} />
-              )}
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label
-                  id="reminderMessage-label"
-                  htmlFor="reminderMessage"
-                  onClick={() => reminderEditorRef.current?.focus()}
-                >
-                  Template de lembrete
-                </Label>
-                <span className={`text-xs ${(reminderMessage?.length || 0) > MESSAGE_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}>
-                  {reminderMessage?.length || 0}/{MESSAGE_MAX_LENGTH}
-                </span>
-              </div>
-              <Controller
-                name="reminderMessage"
-                control={control}
-                render={({ field }) => (
-                  <TemplateEditor
-                    id="reminderMessage"
-                    ariaLabelledby="reminderMessage-label"
-                    ref={reminderEditorRef}
-                    value={field.value ?? ""}
-                    onChange={field.onChange}
-                    onFocus={() => {
-                      activeMessageRef.current = "reminderMessage";
-                    }}
-                    placeholder="Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença?"
-                    invalid={!!errors.reminderMessage}
-                  />
-                )}
-              />
-              {errors.reminderMessage && (
-                <p className="text-sm text-destructive">
-                  {errors.reminderMessage.message}
-                </p>
-              )}
-              <ResponseInstructionNote />
-              {reminderMessage && reminderMessage.length >= 10 && (
-                <TemplatePreview value={reminderMessage} clinicName={settings?.clinicName} />
               )}
             </div>
           </CardContent>

@@ -1,6 +1,13 @@
 # Flow: Confirmação Automática (E2E)
 
 > Fluxo principal do sistema. Cruza Appointments, Settings, Scheduler, WhatsApp/Evolution e Webhook.
+>
+> ⚠️ **ATUALIZAÇÃO 2026-07-19 — [Confirmação por Link](../features/confirmation-link.md):** o fluxo mudou de
+> "responda 1/2 no WhatsApp" para **um LINK** que abre uma página com botões Confirmar/Cancelar (a mutação é
+> um POST — GET é read-only, anti-prefetch). E o antigo lembrete de T‑6h virou **auto-cancelamento** no
+> deadline (`dateTime - reminderHoursBefore`): quem não confirmou é CANCELADO. O parser "1/2" do webhook
+> (passos 4 abaixo) **continua funcionando como fallback silencioso**, mas a mensagem não o anuncia mais.
+> Os passos 3–4 abaixo descrevem o mecanismo LEGADO/fallback; o mecanismo primário agora é o link.
 
 ## Diagrama de estados do `Appointment.status`
 

@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
+import { useTerminology } from "@/hooks/use-terminology";
 
 // Types matching the actual API responses
 
@@ -171,6 +172,8 @@ export function usePatientsPaginated({
 export function useCreatePatient() {
   const queryClient = useQueryClient();
 
+  const label = useTerminology().patient.singular;
+
   return useMutation({
     mutationFn: (patient: { name: string; phone: string; email?: string; notes?: string }) =>
       fetchApi<Patient>("/api/patients", {
@@ -180,7 +183,7 @@ export function useCreatePatient() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
-      toast.success("Paciente criado com sucesso");
+      toast.success(`${label} criado com sucesso`);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -191,6 +194,8 @@ export function useCreatePatient() {
 export function useUpdatePatient() {
   const queryClient = useQueryClient();
 
+  const label = useTerminology().patient.singular;
+
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; name?: string; phone?: string; email?: string | null; notes?: string | null }) =>
       fetchApi<Patient>(`/api/patients/${id}`, {
@@ -200,7 +205,7 @@ export function useUpdatePatient() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
-      toast.success("Paciente atualizado com sucesso");
+      toast.success(`${label} atualizado com sucesso`);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -211,13 +216,15 @@ export function useUpdatePatient() {
 export function useDeletePatient() {
   const queryClient = useQueryClient();
 
+  const label = useTerminology().patient.singular;
+
   return useMutation({
     mutationFn: (id: string) =>
       fetchApi<void>(`/api/patients/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
-      toast.success("Paciente excluído com sucesso");
+      toast.success(`${label} excluído com sucesso`);
     },
     onError: (error: Error) => {
       toast.error(error.message);

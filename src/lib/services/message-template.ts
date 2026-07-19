@@ -58,6 +58,25 @@ export function withResponseInstruction(body: string): string {
   return clean ? `${clean}\n\n${RESPONSE_INSTRUCTION}` : RESPONSE_INSTRUCTION;
 }
 
+/**
+ * Corpo livre → corpo + bloco do LINK de confirmação (Feature "Confirmação por
+ * link"). Substitui o antigo `withResponseInstruction` no ENVIO: em vez de
+ * "Responda 1/2", o paciente recebe um link que abre uma página de confirmação.
+ * Faz o strip de qualquer instrução 1/2 legada embutida no corpo antes de
+ * anexar. O parser 1/2 continua funcionando como fallback silencioso (webhook),
+ * mas não é mais anunciado.
+ */
+export function withConfirmationLink(
+  body: string,
+  opts: { url: string; deadlineLabel: string },
+): string {
+  const clean = stripResponseInstruction(body).trim();
+  const block =
+    `Para confirmar ou cancelar, acesse:\n${opts.url}\n\n` +
+    `Confirme até ${opts.deadlineLabel}, senão o agendamento será cancelado.`;
+  return clean ? `${clean}\n\n${block}` : block;
+}
+
 export function formatAppointmentDate(dateTime: Date): string {
   return formatInTimeZone(dateTime, APP_TIMEZONE, "EEEE, d 'de' MMMM", {
     locale: ptBR,

@@ -4,15 +4,58 @@ import {
   formatMessage,
   formatAppointmentDate,
   formatAppointmentTime,
-  withResponseInstruction,
+  withConfirmationLink,
 } from "./message-template";
+import { makeConfirmationToken } from "./confirmation-token";
 import { audit } from "@/lib/audit";
 import { getCurrentUsage, incrementMessagesSent } from "@/lib/billing/usage";
 import type { MessageType, Prisma } from "@/generated/prisma/client";
 
+/** Base URL pública p/ montar o link de confirmação. */
+function appBaseUrl(): string {
+  const url = process.env.NEXT_PUBLIC_APP_URL ?? process.env.EVOLUTION_WEBHOOK_BASE_URL;
+  if (!url) {
+    // Em produção, montar o link com `localhost` quebraria a confirmação de
+    // TODOS os pacientes — e como não-confirmados são auto-cancelados no
+    // deadline, viraria cancelamento em massa. Falha alto e cedo: o envio é
+    // abortado pelo try/catch do `processSends`, `confirmationSentAt` NÃO é
+    // setado, então nada entra no filtro do auto-cancelamento. (code-review.)
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXT_PUBLIC_APP_URL ausente — não dá pra montar o link de confirmação");
+    }
+    return "http://localhost:3000";
+  }
+  return url;
+}
+
+// Janela mínima de confirmação: se a confirmação for enviada TARDE (agendamento
+// de última hora, backlog do cron, reconexão tardia do WhatsApp), o paciente
+// ainda ganha esse tempo p/ confirmar — senão o link nasceria já expirado e o
+// agendamento seria auto-cancelado no mesmo run. (Achado crítico do code-review.)
+const CONFIRM_GRACE_MS = 2 * 3_600_000; // 2h
+
+/**
+ * Deadline efetivo (ms epoch) do link/auto-cancelamento: o nominal
+ * (`dateTime - reminderHoursBefore`), mas **nunca antes** de `sentAt + GRACE`
+ * (piso p/ envio tardio) e **nunca depois** de `dateTime` (teto). `sentAt` = o
+ * instante do envio (no `sendConfirmations` é `now`; no auto-cancel é o
+ * `confirmationSentAt` gravado) — assim o `exp` do token e o deadline do
+ * auto-cancel derivam da MESMA fórmula e batem.
+ */
+export function effectiveDeadlineMs(
+  dateTime: Date,
+  reminderHoursBefore: number,
+  sentAtMs: number,
+): number {
+  const nominal = dateTime.getTime() - reminderHoursBefore * 3_600_000;
+  const floor = sentAtMs + CONFIRM_GRACE_MS;
+  return Math.min(dateTime.getTime(), Math.max(nominal, floor));
+}
+
 export type SchedulerStats = {
   confirmationsSent: number;
-  remindersSent: number;
+  /** Agendamentos auto-cancelados no deadline por falta de confirmação. */
+  autoCanceled: number;
   sendFailures: number;
   quotaBlocked: number;
   noShowsMarked: number;
@@ -86,29 +129,20 @@ type SendKind = {
   type: MessageType;
   where: Prisma.AppointmentWhereInput;
   hoursBeforeOf: (s: { confirmationHoursBefore: number; reminderHoursBefore: number }) => number;
-  messageOf: (s: { confirmationMessage: string; reminderMessage: string }) => string;
+  templateOf: (s: { confirmationMessage: string; reminderMessage: string }) => string;
   sentAtField: "confirmationSentAt" | "reminderSentAt";
 };
 
+// Único "send" restante: a mensagem de confirmação, que agora leva o LINK
+// (não mais "responda 1/2"). O lembrete deixou de ser um envio — no deadline
+// (dateTime - reminderHoursBefore) quem não confirmou é auto-cancelado
+// (ver `autoCancelUnconfirmed`).
 const CONFIRMATION: SendKind = {
   type: "CONFIRMATION",
   where: { confirmationSentAt: null, status: "PENDING", user: { whatsappStatus: "CONNECTED" } },
   hoursBeforeOf: (s) => s.confirmationHoursBefore,
-  messageOf: (s) => s.confirmationMessage,
+  templateOf: (s) => s.confirmationMessage,
   sentAtField: "confirmationSentAt",
-};
-
-const REMINDER: SendKind = {
-  type: "REMINDER",
-  where: {
-    confirmationSentAt: { not: null },
-    reminderSentAt: null,
-    status: "PENDING",
-    user: { whatsappStatus: "CONNECTED" },
-  },
-  hoursBeforeOf: (s) => s.reminderHoursBefore,
-  messageOf: (s) => s.reminderMessage,
-  sentAtField: "reminderSentAt",
 };
 
 /**
@@ -167,16 +201,27 @@ async function processSends(
         continue;
       }
 
-      // withResponseInstruction: o template guardado é só o corpo livre; a
-      // linha "Responda 1 para CONFIRMAR ou 2 para CANCELAR." é anexada aqui
-      // (dono do sistema). O strip embutido no helper protege templates legados
-      // que ainda tenham a instrução (possivelmente errada) no corpo.
-      const message = formatMessage(withResponseInstruction(kind.messageOf(settings)), {
-        nome: appointment.patient.name,
-        data: formatAppointmentDate(appointment.dateTime),
-        hora: formatAppointmentTime(appointment.dateTime),
-        clinica: appointment.user.clinicName,
-      });
+      // Mensagem de confirmação com o LINK (Feature "Confirmação por link"). O
+      // template guardado é só o corpo; o bloco do link + prazo é anexado aqui.
+      // Token assinado com exp = deadline EFETIVO (com piso de GRACE p/ envio
+      // tardio) — o MESMO cálculo que `autoCancelUnconfirmed` usa p/ cancelar.
+      const deadlineMs = effectiveDeadlineMs(
+        appointment.dateTime,
+        settings.reminderHoursBefore,
+        now.getTime(),
+      );
+      const deadlineDate = new Date(deadlineMs);
+      const url = `${appBaseUrl()}/confirmar/${makeConfirmationToken(appointment.id, deadlineMs)}`;
+      const deadlineLabel = `${formatAppointmentDate(deadlineDate)} às ${formatAppointmentTime(deadlineDate)}`;
+      const message = formatMessage(
+        withConfirmationLink(kind.templateOf(settings), { url, deadlineLabel }),
+        {
+          nome: appointment.patient.name,
+          data: formatAppointmentDate(appointment.dateTime),
+          hora: formatAppointmentTime(appointment.dateTime),
+          clinica: appointment.user.clinicName,
+        },
+      );
 
       const success = await sendWhatsAppMessage(
         appointment.user.evolutionInstanceName,
@@ -194,8 +239,7 @@ async function processSends(
         });
         await incrementMessagesSent(appointment.userId);
         quotaCache.set(appointment.userId, remaining - 1);
-        if (kind.type === "CONFIRMATION") stats.confirmationsSent++;
-        else stats.remindersSent++;
+        stats.confirmationsSent++;
 
         await audit({
           action: "message.sent",
@@ -234,13 +278,93 @@ async function markNoShows(stats: SchedulerStats): Promise<void> {
   }
 }
 
+/**
+ * Auto-cancelamento no deadline (Feature "Confirmação por link"). Quem recebeu
+ * o link (`confirmationSentAt != null`), ainda está `PENDING` e já passou do
+ * **deadline efetivo** (`effectiveDeadlineMs`, o mesmo do `exp` do token) é
+ * **cancelado**. Substitui o antigo `sendReminders`: não há mais lembrete-nudge;
+ * o prazo comunicado na mensagem de confirmação passa a ser real.
+ *
+ * NÃO envia mensagem de cortesia (decisão pós-code-review): (1) o paciente já
+ * foi avisado do prazo na própria mensagem de confirmação; (2) um envio aqui
+ * furava a cota e não gerava `MessageLog` (ao contrário de todo outbound); (3)
+ * `await` serial de 8s por item estrangulava a vazão do cron. Sem envio, o
+ * cancelamento é só update + audit (rápido). Cancelados saem do filtro.
+ *
+ * Deadline é por-tenant (`reminderHoursBefore`) + piso de GRACE por-appointment
+ * (do `confirmationSentAt`), então varremos em lotes e checamos por-item.
+ */
+async function autoCancelUnconfirmed(deadline: number, stats: SchedulerStats): Promise<void> {
+  const skippedIds: string[] = [];
+
+  while (Date.now() < deadline) {
+    const now = new Date();
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        confirmationSentAt: { not: null },
+        status: "PENDING",
+        dateTime: { gt: now },
+        ...(skippedIds.length ? { id: { notIn: skippedIds } } : {}),
+      },
+      // Sem envio de mensagem → só precisa de reminderHoursBefore (settings) +
+      // os scalars confirmationSentAt/dateTime (não precisa de patient).
+      include: { user: { include: { settings: true } } },
+      orderBy: { dateTime: "asc" },
+      take: BATCH_SIZE,
+    });
+    if (appointments.length === 0) return;
+
+    for (const appointment of appointments) {
+      if (Date.now() >= deadline) {
+        stats.truncated = true;
+        return;
+      }
+
+      const settings = appointment.user.settings;
+      if (!settings || !appointment.confirmationSentAt) {
+        skippedIds.push(appointment.id);
+        continue;
+      }
+
+      // Deadline efetivo a partir do confirmationSentAt gravado (MESMA fórmula
+      // do envio → bate com o exp do token). Ainda no prazo → próximo run.
+      const effectiveDeadline = effectiveDeadlineMs(
+        appointment.dateTime,
+        settings.reminderHoursBefore,
+        appointment.confirmationSentAt.getTime(),
+      );
+      if (Date.now() < effectiveDeadline) {
+        skippedIds.push(appointment.id);
+        continue;
+      }
+
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: { status: "CANCELED" },
+      });
+      stats.autoCanceled++;
+
+      await audit({
+        action: "appointment.auto_canceled",
+        entityType: "Appointment",
+        entityId: appointment.id,
+        tenantUserId: appointment.userId,
+        metadata: { reason: "no_confirmation" },
+      });
+    }
+
+    if (appointments.length < BATCH_SIZE) return;
+  }
+  stats.truncated = true;
+}
+
 export async function runSchedulerJobs(): Promise<SchedulerStats> {
   const startedAt = Date.now();
   const deadline = startedAt + TIME_BUDGET_MS;
   const quotaCache: QuotaCache = new Map();
   const stats: SchedulerStats = {
     confirmationsSent: 0,
-    remindersSent: 0,
+    autoCanceled: 0,
     sendFailures: 0,
     quotaBlocked: 0,
     noShowsMarked: 0,
@@ -261,9 +385,9 @@ export async function runSchedulerJobs(): Promise<SchedulerStats> {
     console.error("Error in sendConfirmations:", error);
   }
   try {
-    await processSends(REMINDER, deadline, quotaCache, stats);
+    await autoCancelUnconfirmed(deadline, stats);
   } catch (error) {
-    console.error("Error in sendReminders:", error);
+    console.error("Error in autoCancelUnconfirmed:", error);
   }
   await markNoShows(stats);
 

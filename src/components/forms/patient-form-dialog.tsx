@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { PHONE_REGEX } from "@/lib/phone"
 import { useCreatePatient, useUpdatePatient, useSubscription, PaywallError } from "@/hooks/use-api"
+import { useTerminology } from "@/hooks/use-terminology"
 import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
 import { PaywallModal, type PaywallReason } from "@/components/billing/paywall-modal"
 
@@ -74,6 +75,9 @@ export function PatientFormDialog({
   const updateMutation = useUpdatePatient()
   const subscriptionQuery = useSubscription()
   const isFreeplan = subscriptionQuery.data?.plan === "FREE"
+  const term = useTerminology()
+  const patientLabel = term.patient.singular // "Paciente" | "Cliente"
+  const patientLower = patientLabel.toLowerCase()
   const [paywall, setPaywall] = React.useState<{
     open: boolean
     reason: PaywallReason
@@ -159,11 +163,11 @@ export function PatientFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{patient ? "Editar" : "Novo"} Paciente</DialogTitle>
+          <DialogTitle>{patient ? "Editar" : "Novo"} {patientLabel}</DialogTitle>
           <DialogDescription>
             {patient
-              ? "Atualize as informações do paciente"
-              : "Preencha os dados para cadastrar um novo paciente"}
+              ? `Atualize as informações do ${patientLower}`
+              : `Preencha os dados para cadastrar um novo ${patientLower}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -260,7 +264,7 @@ export function PatientFormDialog({
             <Label htmlFor="patient-notes">Observações (opcional)</Label>
             <Textarea
               id="patient-notes"
-              placeholder="Informações adicionais sobre o paciente..."
+              placeholder={`Informações adicionais sobre o ${patientLower}...`}
               rows={3}
               {...register("notes")}
             />

@@ -139,6 +139,8 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             name: user.name,
             clinicName: user.clinicName,
+            businessType: user.businessType,
+            onboardingCompletedAt: user.onboardingCompletedAt,
           }
         } catch (error) {
           // Propaga o caso de e-mail não verificado pro client (NextAuth expõe
@@ -160,6 +162,8 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email
         token.name = user.name
         token.clinicName = (user as any).clinicName
+        token.businessType = (user as any).businessType ?? null
+        token.onboardingCompletedAt = (user as any).onboardingCompletedAt ?? null
         delete token.revoked
         return token
       }
@@ -175,7 +179,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { id: true, email: true, name: true, clinicName: true, deletedAt: true },
+            select: { id: true, email: true, name: true, clinicName: true, businessType: true, onboardingCompletedAt: true, deletedAt: true },
           })
           if (!dbUser || dbUser.deletedAt) {
             token.revoked = true
@@ -183,10 +187,35 @@ export const authOptions: NextAuthOptions = {
             token.email = dbUser.email
             token.name = dbUser.name
             token.clinicName = dbUser.clinicName
+            token.businessType = dbUser.businessType ?? null
+            token.onboardingCompletedAt = dbUser.onboardingCompletedAt
+              ? dbUser.onboardingCompletedAt.toISOString()
+              : null
             delete token.revoked
           }
         } catch {
           // Blip transitório do banco: mantém os claims atuais (sem revogar).
+        }
+      }
+
+      // Migração F2 (onboarding): tokens emitidos ANTES desta feature não têm o
+      // claim `onboardingCompletedAt`. Sem tratar, o `?? null` do session callback
+      // forçaria o wizard (não-dispensável) em TODA a base já logada, mesmo já
+      // backfillada na migration. Se o claim estiver AUSENTE (undefined, ≠ null),
+      // lemos o banco UMA vez pra popular o token (persiste no próximo fetch do
+      // client). `null` explícito (usuário novo não-onboardado) NÃO relê.
+      if (token.onboardingCompletedAt === undefined && token?.id) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { businessType: true, onboardingCompletedAt: true },
+          })
+          token.businessType = dbUser?.businessType ?? null
+          token.onboardingCompletedAt = dbUser?.onboardingCompletedAt
+            ? dbUser.onboardingCompletedAt.toISOString()
+            : null
+        } catch {
+          // Blip do banco: deixa como está; o próximo fetch tenta de novo.
         }
       }
       return token
@@ -201,6 +230,9 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string
         session.user.name = token.name as string
         ;(session.user as any).clinicName = token.clinicName as string
+        ;(session.user as any).businessType = (token.businessType as string | null) ?? null
+        ;(session.user as any).onboardingCompletedAt =
+          (token.onboardingCompletedAt as string | null) ?? null
       }
       return session
     },

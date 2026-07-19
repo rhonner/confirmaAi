@@ -24,7 +24,8 @@ test.describe("Configuracoes", () => {
 
   test("should display notification hours inputs", async ({ page }) => {
     await expect(page.locator('label:has-text("Antecedência para confirmação")')).toBeVisible();
-    await expect(page.locator('label:has-text("Antecedência para lembrete")')).toBeVisible();
+    // O "lembrete" virou o prazo de auto-cancelamento (Confirmação por link).
+    await expect(page.locator('label:has-text("Cancelar automaticamente")')).toBeVisible();
 
     // Verify inputs have values
     const confirmationInput = page.locator('input[id="confirmationHoursBefore"]');
@@ -34,17 +35,15 @@ test.describe("Configuracoes", () => {
     await expect(reminderInput).toBeVisible();
   });
 
-  test("should display message template editors", async ({ page }) => {
+  test("should display message template editor", async ({ page }) => {
+    // Só a mensagem de confirmação — o editor de lembrete foi removido (o
+    // lembrete virou auto-cancelamento no deadline).
     await expect(page.locator('label:has-text("Template de confirmação")')).toBeVisible();
-    await expect(page.locator('label:has-text("Template de lembrete")')).toBeVisible();
 
-    // Os templates usam o editor de chips (TipTap, <div contenteditable>), não
-    // mais <textarea>. O id é aplicado via editorProps.attributes.id.
+    // O template usa o editor de chips (TipTap, <div contenteditable>). O id é
+    // aplicado via editorProps.attributes.id.
     const confirmationEditor = page.locator('[id="confirmationMessage"][contenteditable="true"]');
-    const reminderEditor = page.locator('[id="reminderMessage"][contenteditable="true"]');
-
     await expect(confirmationEditor).toBeVisible();
-    await expect(reminderEditor).toBeVisible();
   });
 
   test("should display available variables", async ({ page }) => {

@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState } from "react"
 import { useSettings, usePatients } from "@/hooks/use-api"
+import { useTerminology } from "@/hooks/use-terminology"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Check, Circle, Sparkles, X } from "lucide-react"
@@ -12,6 +13,7 @@ const DISMISS_KEY = "clinica-organizada:onboarding-dismissed"
 export function OnboardingBanner() {
   const { data: settings } = useSettings()
   const { data: patients } = usePatients()
+  const patientLower = useTerminology().patient.singular.toLowerCase()
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false
     return window.localStorage.getItem(DISMISS_KEY) === "1"
@@ -79,7 +81,7 @@ export function OnboardingBanner() {
                 <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
               )}
               <span className={hasPatients ? "text-muted-foreground line-through" : ""}>
-                Cadastre seu primeiro paciente
+                Cadastre seu primeiro {patientLower}
               </span>
               {!hasPatients && (
                 <Link

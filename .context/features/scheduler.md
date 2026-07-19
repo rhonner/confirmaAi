@@ -66,9 +66,19 @@ Envia mensagem de confirmação para agendamentos que ainda não foram notificad
 - Envia via `sendWhatsAppMessage(user.evolutionInstanceName, patient.phone, message)`.
 - Em sucesso: `appointment.update({ confirmationSentAt: now })` + cria `MessageLog { type: CONFIRMATION, status: SENT }`.
 
-## `sendReminders`
+## `autoCancelUnconfirmed` (antigo `sendReminders`) — 2026-07-19
 
-Envia mensagem de lembrete para quem já recebeu confirmação mas ainda não respondeu.
+> ⚠️ **MUDOU com a feature [Confirmação por Link](confirmation-link.md).** O `sendReminders` (lembrete-nudge)
+> foi **substituído** por `autoCancelUnconfirmed`: no deadline (`dateTime - reminderHoursBefore`), quem
+> recebeu o link (`confirmationSentAt != null`) e ainda está `PENDING` é **CANCELADO** automaticamente
+> (+ audit `appointment.auto_canceled` + aviso de cortesia best-effort). Deadline é por-tenant, então varre
+> em lotes e checa por-appointment. `SchedulerStats.remindersSent` → `autoCanceled`. A mensagem de
+> confirmação agora leva o **link** (`withConfirmationLink`, token com `exp = deadline`), não mais "responda
+> 1/2" (o parser 1/2 segue como fallback silencioso). Ver `confirmation-link.md`.
+
+### `sendReminders` (histórico — REMOVIDO)
+
+Antes enviava lembrete para quem já recebeu confirmação mas ainda não respondeu.
 
 - Filtro:
   ```

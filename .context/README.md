@@ -58,7 +58,9 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | Configurações        | [features/settings.md](features/settings.md)         | Mensagens, antecedência, valor médio, nome da clínica              |
 | WhatsApp (Evolution) | [features/whatsapp.md](features/whatsapp.md)         | Conexão, QR code, status, desconexão por usuário                   |
 | Webhook Evolution    | [features/webhook-evolution.md](features/webhook-evolution.md) | Recebe estados de conexão e respostas dos pacientes      |
-| Scheduler / Cron     | [features/scheduler.md](features/scheduler.md)       | Envio de confirmações, lembretes e marcação de no-show             |
+| Scheduler / Cron     | [features/scheduler.md](features/scheduler.md)       | Envio de confirmações, auto-cancelamento no deadline e marcação de no-show |
+| Confirmação por Link | [features/confirmation-link.md](features/confirmation-link.md) | Paciente confirma/cancela por LINK (página + botão, POST) em vez de "1/2"; auto-cancela no deadline. Token HMAC stateless; GET read-only (anti-prefetch) |
+| Onboarding + Terminologia | [features/onboarding.md](features/onboarding.md) | Wizard escolhe o ramo (BusinessType) no 1º login → terminologia da UI (Paciente vs Cliente). `businessType`/`onboardingCompletedAt` no User + sessão. ⚠️ refac de rótulos PARCIAL |
 | Auditoria            | [features/audit.md](features/audit.md)               | Trilha de mutações (Prisma extension) + eventos de domínio (login, msg, webhook) |
 | Billing               | [features/billing.md](features/billing.md)        | Cobrança via provider (Asaas/Mock), checkout Pix/cartão, webhook idempotente com HMAC, lifecycle cron, portal + cancelar |
 | Plan Quota           | [features/plan-quota.md](features/plan-quota.md)     | Vagas vitalícias de paciente (Free=5), CPF como identifier primário, anti-fraude por slot ledger |

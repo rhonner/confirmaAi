@@ -42,8 +42,9 @@ const LABELS: Record<string, string> = {
   "cron.run": "Execução do agendador (cron)",
   "message.sent": "Mensagem enviada",
   "message.send_failed": "Falha no envio de mensagem",
-  "appointment.confirmed_by_patient": "Paciente confirmou pelo WhatsApp",
-  "appointment.canceled_by_patient": "Paciente cancelou pelo WhatsApp",
+  "appointment.confirmed_by_patient": "Paciente confirmou o agendamento",
+  "appointment.canceled_by_patient": "Paciente cancelou o agendamento",
+  "appointment.auto_canceled": "Cancelado automaticamente (sem confirmação até o prazo)",
 
   // Billing
   "subscription.created": "Assinatura criada",

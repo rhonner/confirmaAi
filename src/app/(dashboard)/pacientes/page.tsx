@@ -34,8 +34,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { PatientFormDialog, type ExistingPatient } from "@/components/forms/patient-form-dialog";
 import { QuotaBanner } from "@/components/billing/quota-banner";
+import { useTerminology } from "@/hooks/use-terminology";
 
 export default function PacientesPage() {
+  const t = useTerminology();
+  const patientWord = t.patient.singular.toLowerCase(); // "paciente" | "cliente"
+  const patientsWord = t.patient.plural.toLowerCase(); // "pacientes" | "clientes"
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<ExistingPatient | null>(null);
@@ -76,14 +80,14 @@ export default function PacientesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pacientes"
-        description="Gerencie seus pacientes/clientes"
+        title={t.patient.plural}
+        description={`Gerencie seus ${patientsWord}`}
         action={
           <div className="flex gap-2">
             <ExportCsvButton url="/api/patients/export" />
             <Button onClick={() => handleOpenDialog()} data-testid="patients-create-trigger">
               <Plus className="mr-2 h-4 w-4" />
-              Novo Paciente
+              Novo {t.patient.singular}
             </Button>
           </div>
         }
@@ -198,18 +202,18 @@ export default function PacientesPage() {
                     <Users className="h-12 w-12 text-muted-foreground/50" />
                     <div>
                       <p className="font-medium">
-                        {search ? "Nenhum paciente encontrado" : "Nenhum paciente cadastrado"}
+                        {search ? `Nenhum ${patientWord} encontrado` : `Nenhum ${patientWord} cadastrado`}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {search
                           ? "Tente buscar com outros termos"
-                          : "Cadastre seu primeiro paciente para começar"}
+                          : `Cadastre seu primeiro ${patientWord} para começar`}
                       </p>
                     </div>
                     {!search && (
                       <Button size="sm" onClick={() => handleOpenDialog()}>
                         <Plus className="mr-2 h-4 w-4" />
-                        Cadastrar Paciente
+                        Cadastrar {t.patient.singular}
                       </Button>
                     )}
                   </div>
@@ -224,8 +228,8 @@ export default function PacientesPage() {
       {meta && meta.totalPages > 1 && (
         <div className="flex items-center justify-between gap-2 text-sm">
           <p className="text-muted-foreground">
-            Página {meta.page} de {meta.totalPages} · {meta.total} paciente
-            {meta.total !== 1 ? "s" : ""}
+            Página {meta.page} de {meta.totalPages} · {meta.total}{" "}
+            {meta.total !== 1 ? patientsWord : patientWord}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -254,7 +258,7 @@ export default function PacientesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir paciente</AlertDialogTitle>
+            <AlertDialogTitle>Excluir {patientWord}</AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja excluir <strong>{deleteTarget?.name}</strong>?
               {deleteTarget && deleteTarget.appointmentsCount > 0 && (

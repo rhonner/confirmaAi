@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PLAN_LABELS } from "./plan-meta";
+import { useTerminology } from "@/hooks/use-terminology";
 
 const LEVEL_STYLES: Record<string, { bar: string; ring: string; text: string }> = {
   ok: {
@@ -37,6 +38,9 @@ const LEVEL_STYLES: Record<string, { bar: string; ring: string; text: string }> 
 
 export function UsageBadge() {
   const usage = useUsage();
+  const term = useTerminology();
+  const patients = term.patient.plural.toLowerCase(); // "pacientes" | "clientes"
+  const patient = term.patient.singular.toLowerCase();
 
   if (usage.isLoading) {
     return (
@@ -77,7 +81,7 @@ export function UsageBadge() {
             "group inline-flex items-center gap-2 rounded-full bg-background px-3 py-1.5 text-xs font-medium ring-1 transition-all",
             styles.ring,
           )}
-          aria-label={`Uso do plano: ${usage.count} de ${usage.limit} pacientes`}
+          aria-label={`Uso do plano: ${usage.count} de ${usage.limit} ${patients}`}
           data-testid="usage-badge"
           data-usage-level={usage.level}
         >
@@ -85,7 +89,7 @@ export function UsageBadge() {
           <span className={cn("tabular-nums font-semibold", styles.text)}>
             {usage.count}/{usage.limit}
           </span>
-          <span className="hidden sm:inline text-muted-foreground">pacientes</span>
+          <span className="hidden sm:inline text-muted-foreground">{patients}</span>
           <div
             className="hidden sm:block h-1.5 w-12 overflow-hidden rounded-full bg-muted"
             role="progressbar"
@@ -105,7 +109,7 @@ export function UsageBadge() {
           <p className="text-sm font-semibold">Plano {PLAN_LABELS[usage.plan]}</p>
           <p className="text-xs text-muted-foreground">
             Você usou <strong>{usage.count}</strong> das{" "}
-            <strong>{usage.limit}</strong> vagas vitalícias de paciente.
+            <strong>{usage.limit}</strong> vagas vitalícias de {patient}.
           </p>
           {usage.level === "warning" && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -119,7 +123,7 @@ export function UsageBadge() {
           )}
           {usage.level === "blocked" && (
             <p className="text-xs text-red-600 dark:text-red-400">
-              Limite atingido — não é possível cadastrar novos pacientes.
+              Limite atingido — não é possível cadastrar novos {patients}.
             </p>
           )}
           <p className="text-xs text-muted-foreground">

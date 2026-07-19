@@ -80,6 +80,16 @@ enum GoogleConnectionStatus {
   REVOKED
 }
 
+// Ramo do negócio (onboarding) — dirige a TERMINOLOGIA da UI (ex.: HEALTH usa
+// "Paciente"; os demais usam "Cliente"). Ver src/lib/terminology.ts.
+enum BusinessType {
+  HEALTH // saúde: clínica, psicólogo, dentista → "Paciente"
+  AESTHETICS // estética → "Cliente"
+  BEAUTY // salão / beleza → "Cliente"
+  FINANCE // financeiro / consultoria → "Cliente"
+  OTHER // outro → "Cliente"
+}
+
 // Models
 model User {
   id                         String         @id @default(cuid())
@@ -107,6 +117,13 @@ model User {
   updatedAt                  DateTime       @updatedAt
 
   patientSlotCount Int @default(0)
+
+  // Onboarding + terminologia por ramo. `businessType` NULL = ainda não
+  // escolhido (terminologia cai no default "Paciente"). `onboardingCompletedAt`
+  // NULL = mostra o wizard. Usuários EXISTENTES são backfillados (completo) na
+  // migration p/ não verem o wizard retroativamente.
+  businessType         BusinessType?
+  onboardingCompletedAt DateTime?
 
   // Sprint 11 — LGPD soft-delete + purga (deletedAt != null = conta excluída;
   // patientsPurgedAt = quando a purga 30d apagou os dados de pacientes).

@@ -36,7 +36,12 @@ import {
   RESPONSE_INSTRUCTION,
   stripResponseInstruction,
   withResponseInstruction,
+  withConfirmationLink,
 } from "../src/lib/services/message-template";
+import {
+  makeConfirmationToken,
+  verifyConfirmationToken,
+} from "../src/lib/services/confirmation-token";
 import { CONFIRM_CODE, CANCEL_CODE, parseResponse } from "../src/lib/services/webhook-parser";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -2542,13 +2547,77 @@ async function main() {
     schemaSrcMsg.indexOf("reminderMessage         String") + 200,
   );
   check(
-    "MSG.5 wiring: schema defaults sem instrução + scheduler anexa + rota faz strip + página mostra aviso",
+    "MSG.5 wiring: schema defaults sem instrução + scheduler usa LINK + rota faz strip (fallback) + página descreve o link",
     10,
     !/@default\("[^"]*Responda[^"]*CONFIRMAR[^"]*CANCELAR/.test(defaultsBlock) &&
-      schedulerSrcMsg.includes("withResponseInstruction") &&
+      schedulerSrcMsg.includes("withConfirmationLink") &&
+      schedulerSrcMsg.includes("makeConfirmationToken") &&
+      !schedulerSrcMsg.includes("withResponseInstruction") &&
       settingsRouteSrcMsg.includes("stripResponseInstruction") &&
-      configPageSrcMsg.includes("ResponseInstructionNote") &&
-      configPageSrcMsg.includes("RESPONSE_INSTRUCTION"),
+      configPageSrcMsg.includes("ConfirmationLinkNote"),
+  );
+
+  // ── CONFIRMAÇÃO POR LINK (Feature 2026-07-19) ──────────────────────────
+  // CONF.1 — token assinado: round-trip + expiração + adulteração (puro).
+  const confNow = 1_700_000_000_000;
+  const confExp = confNow + 6 * 3_600_000;
+  const confTok = makeConfirmationToken("appt_test_conf", confExp);
+  const confOk = verifyConfirmationToken(confTok, confNow);
+  const confExpired = verifyConfirmationToken(confTok, confExp + 1);
+  const confTampered = verifyConfirmationToken(`${confTok.split(".")[0]}.xxx`, confNow);
+  check(
+    "CONF.1 token de confirmação: round-trip + EXPIRED + adulteração",
+    10,
+    confOk.ok &&
+      confOk.appointmentId === "appt_test_conf" &&
+      !confExpired.ok &&
+      confExpired.reason === "EXPIRED" &&
+      !confTampered.ok,
+  );
+
+  // CONF.2 — arquivos da feature existem (página GET + rota POST + client).
+  check(
+    "CONF.2 rotas/página da confirmação por link existem",
+    10,
+    existsSync(join(root, "src/app/confirmar/[token]/page.tsx")) &&
+      existsSync(join(root, "src/app/api/confirmar/[token]/route.ts")) &&
+      existsSync(join(root, "src/components/confirmation/confirm-actions.tsx")),
+  );
+
+  // CONF.3 — segurança: mutação SÓ no POST; trava por status PENDING; GET (a
+  // página server component) não muta nada.
+  const confRouteSrc = readFileSync(join(root, "src/app/api/confirmar/[token]/route.ts"), "utf8");
+  const confPageSrc = readFileSync(join(root, "src/app/confirmar/[token]/page.tsx"), "utf8");
+  check(
+    "CONF.3 mutação só no POST + trava por status PENDING + GET não muta",
+    10,
+    /export async function POST/.test(confRouteSrc) &&
+      confRouteSrc.includes('status !== "PENDING"') &&
+      confRouteSrc.includes("verifyConfirmationToken") &&
+      !/export async function (GET|POST)/.test(confPageSrc) &&
+      !/\.update\(|\.updateMany\(/.test(confPageSrc),
+  );
+
+  // CONF.4 — scheduler auto-cancela no deadline (não manda mais lembrete-nudge).
+  check(
+    "CONF.4 scheduler auto-cancela no deadline (autoCancelUnconfirmed) + stats.autoCanceled",
+    10,
+    schedulerSrcMsg.includes("autoCancelUnconfirmed") &&
+      schedulerSrcMsg.includes("appointment.auto_canceled") &&
+      schedulerSrcMsg.includes("autoCanceled:"),
+  );
+
+  // CONF.5 — withConfirmationLink remove instrução 1/2 legada e anexa link+prazo.
+  const linkMsg = withConfirmationLink(
+    "Oi {nome}. Responda 1 para CONFIRMAR ou 2 para CANCELAR.",
+    { url: "https://x/confirmar/abc", deadlineLabel: "sexta às 08:00" },
+  );
+  check(
+    "CONF.5 withConfirmationLink remove instrução 1/2 legada e anexa link+prazo",
+    10,
+    linkMsg.includes("https://x/confirmar/abc") &&
+      linkMsg.includes("sexta às 08:00") &&
+      !/responda\s+1\s+para\s+confirmar/i.test(linkMsg),
   );
 
   // cleanup GCal (cascade apaga a conexão)

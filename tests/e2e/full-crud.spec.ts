@@ -421,12 +421,6 @@ test.describe("Full CRUD Lifecycle", () => {
       "Olá {nome}! Confirme sua consulta em {clinica} no dia {data} às {hora}. Responda SIM ou NÃO."
     );
 
-    // Update reminder template
-    await page.fill(
-      'textarea[id="reminderMessage"]',
-      "Lembrete {nome}: sua consulta em {clinica} é amanhã ({data} às {hora}). Confirme!"
-    );
-
     // Scroll to save button
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(500);
@@ -459,12 +453,6 @@ test.describe("Full CRUD Lifecycle", () => {
     expect(confirmMsg).toContain("Olá {nome}");
     expect(confirmMsg).toContain("{clinica}");
     expect(confirmMsg).toContain("Responda SIM ou NÃO");
-
-    const reminderMsg = await page
-      .locator('textarea[id="reminderMessage"]')
-      .inputValue();
-    expect(reminderMsg).toContain("Lembrete {nome}");
-    expect(reminderMsg).toContain("{clinica}");
   });
 
   // ═══════════════════════════════════════════
@@ -482,10 +470,6 @@ test.describe("Full CRUD Lifecycle", () => {
     await page.fill(
       'textarea[id="confirmationMessage"]',
       "Olá {nome}! Você tem consulta agendada em {clinica} no dia {data} às {hora}. Confirma sua presença? Responda SIM ou NÃO."
-    );
-    await page.fill(
-      'textarea[id="reminderMessage"]',
-      "Oi {nome}! Ainda não recebemos sua confirmação para a consulta de amanhã ({data} às {hora}). Confirma sua presença? Responda SIM ou NÃO."
     );
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

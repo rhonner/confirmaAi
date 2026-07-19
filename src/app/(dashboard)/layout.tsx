@@ -9,6 +9,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SessionGuard } from "@/components/layout/session-guard";
 import { WhatsappDisconnectedBanner } from "@/components/whatsapp/whatsapp-disconnected-banner";
+import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 
 export default function DashboardLayout({
   children,
@@ -44,6 +45,10 @@ export default function DashboardLayout({
     <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
       {/* Desloga automaticamente se a conta foi removida/desativada no servidor. */}
       <SessionGuard />
+
+      {/* Wizard de onboarding (escolha do ramo → terminologia). Só aparece
+          quando onboardingCompletedAt da sessão é null. */}
+      <OnboardingWizard />
 
       {/* Decorative Background Blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">

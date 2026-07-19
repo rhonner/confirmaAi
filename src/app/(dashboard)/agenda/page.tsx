@@ -55,6 +55,8 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { PageHeader } from "@/components/layout/page-header";
+import { getStatusColor, getStatusLabel } from "@/lib/appointment-status";
+import { useTerminology } from "@/hooks/use-terminology";
 
 const appointmentSchema = z.object({
   patientId: z.string().min(1, "Selecione um paciente"),
@@ -80,40 +82,6 @@ const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90, 120];
 const DAY_HEADER_FORMAT = "EEEE, dd 'de' MMMM";
 
 type AppointmentForm = z.infer<typeof appointmentSchema>;
-
-function getStatusColor(status: string) {
-  switch (status.toUpperCase()) {
-    case "CONFIRMED":
-      return "bg-green-500/10 text-green-700 dark:text-green-400";
-    case "PENDING":
-      return "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400";
-    case "NO_SHOW":
-      return "bg-red-500/10 text-red-700 dark:text-red-400";
-    case "CANCELED":
-      return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
-    default:
-      return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
-  }
-}
-
-function getStatusLabel(status: string) {
-  switch (status.toUpperCase()) {
-    case "CONFIRMED":
-      return "Confirmado";
-    case "PENDING":
-      return "Pendente";
-    case "NOT_CONFIRMED":
-      return "Não confirmado";
-    case "NO_SHOW":
-      return "Faltou";
-    case "CANCELED":
-      return "Cancelado";
-    case "COMPLETED":
-      return "Concluído";
-    default:
-      return status;
-  }
-}
 
 const statusOptions = [
   { value: "PENDING", label: "Pendente" },
@@ -194,6 +162,9 @@ function GoogleEventBlock({
 }
 
 export default function AgendaPage() {
+  const term = useTerminology();
+  const patientWord = term.patient.singular.toLowerCase(); // "paciente" | "cliente"
+  const patientsWord = term.patient.plural.toLowerCase();
   const [viewMode, setViewMode] = useState<"week" | "day" | "month">("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -633,7 +604,7 @@ export default function AgendaPage() {
               </DialogTitle>
               <DialogDescription>
                 {promoteEvent
-                  ? `Vincule "${promoteEvent.title}" a um paciente para gerenciar por aqui (confirmação por WhatsApp, faltas). O evento sai do overlay.`
+                  ? `Vincule "${promoteEvent.title}" a um ${patientWord} para gerenciar por aqui (confirmação por WhatsApp, faltas). O evento sai do overlay.`
                   : selectedAppointment
                     ? "Atualize as informações do agendamento"
                     : "Preencha os dados para criar um novo agendamento"}
@@ -642,7 +613,7 @@ export default function AgendaPage() {
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="patientId">Paciente</Label>
+                <Label htmlFor="patientId">{term.patient.singular}</Label>
                 <Controller
                   name="patientId"
                   control={control}
@@ -822,10 +793,10 @@ export default function AgendaPage() {
         <select
           value={patientFilter}
           onChange={(e) => setPatientFilter(e.target.value)}
-          aria-label="Filtrar por paciente"
+          aria-label={`Filtrar por ${patientWord}`}
           className="h-9 rounded-lg border border-input/20 bg-input/10 px-3 text-sm shadow-xs outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 max-w-[220px]"
         >
-          <option value="ALL">Todos os pacientes</option>
+          <option value="ALL">Todos os {patientsWord}</option>
           {patients?.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}

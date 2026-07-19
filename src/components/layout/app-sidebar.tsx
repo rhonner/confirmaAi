@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LogoMark } from "@/components/brand/logo-mark";
+import { useTerminology } from "@/hooks/use-terminology";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -28,6 +29,10 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSidebarProps) {
+  const t = useTerminology();
+  // Rótulo por ramo: "Pacientes" vira "Clientes" p/ estética/financeiro/etc.
+  const labelFor = (item: (typeof navigation)[number]) =>
+    item.href === "/pacientes" ? t.patient.plural : item.name;
   return (
     <div className="flex h-full flex-col glass-sidebar">
       {/* Logo */}
@@ -75,7 +80,7 @@ export function AppSidebar({ pathname, onNavigate, collapsed = false }: AppSideb
                   isActive && "text-primary",
                 )}
               />
-              {!collapsed && <span className="flex-1">{item.name}</span>}
+              {!collapsed && <span className="flex-1">{labelFor(item)}</span>}
               {!collapsed && isActive && (
                 <ChevronRight className="h-4 w-4 animate-fade-in text-primary/60" />
               )}
