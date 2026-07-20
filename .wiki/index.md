@@ -68,7 +68,10 @@ Padrões abstratos, princípios, gotchas reusáveis.
 | [revive-cancelled-event-on-id-reuse](pages/concepts/revive-cancelled-event-on-id-reuse.md) | Id determinístico + delete real: reinserir bate no **tombstone** cancelado (409) sem restaurar. `409` de insert idempotente é ambíguo → ressuscitar via `patch status:"confirmed"`, não tratar como sucesso cego | 2026-07-10 |
 | [patch-merge-clear-requires-explicit-empty](pages/concepts/patch-merge-clear-requires-explicit-empty.md) | `events.patch` (merge semantics): omitir um campo NÃO o limpa. Reusar builder de create como corpo de patch mantém valor antigo ao esvaziar → enviar `""`/`null`. "Editar preenchendo ok, apagando não reflete" | 2026-07-10 |
 | [edit-form-clobbers-concurrent-field](pages/concepts/edit-form-clobbers-concurrent-field.md) | Form de edição que reenvia SEMPRE um campo capturado ao abrir sobrescreve mudança concorrente do servidor (webhook/cron) → só enviar o campo se mudou vs. o valor carregado; PUT com `updateData` explícito é pré-requisito | 2026-07-10 |
-| [chrome-mcp-drive-and-assert-via-js](pages/concepts/chrome-mcp-drive-and-assert-via-js.md) | Técnicas de teste no Chrome MCP: setar select/input nativo via setter do prototype + `dispatch('change')` p/ RHF captar; interceptar `window.fetch` p/ asseverar payload e injetar latência p/ ver loading | 2026-07-10 |
+| [chrome-mcp-drive-and-assert-via-js](pages/concepts/chrome-mcp-drive-and-assert-via-js.md) | Técnicas de teste no Chrome MCP: setar select/input nativo via setter do prototype + `dispatch('change')` p/ RHF captar; interceptar `window.fetch` p/ asseverar payload e injetar latência p/ ver loading. **§5:** `resize_window` é no-op → não emula mobile (geometria forçada + aparelho real) | 2026-07-19 |
+| [link-action-must-not-mutate-on-get](pages/concepts/link-action-must-not-mutate-on-get.md) | Link de ação (confirmar/cancelar) que o paciente abre no WhatsApp NÃO pode mutar no GET — preview/scanner pré-carrega e dispararia sozinho → página GET read-only + botão POST; uso único é do ESTADO (`status!==PENDING`), não do token | 2026-07-19 |
+| [baked-deadline-needs-grace-floor](pages/concepts/baked-deadline-needs-grace-floor.md) | Deadline assado no envio (`dateTime−offset`) precisa de piso `sentAt+GRACE`; senão envio de última hora nasce expirado → link morto + auto-cancel imediato. Mesma fórmula (`effectiveDeadlineMs`) no envio e no auto-cancel = batem | 2026-07-19 |
+| [jwt-new-claim-defaults-stale-tokens](pages/concepts/jwt-new-claim-defaults-stale-tokens.md) | Claim novo no JWT → tokens antigos não têm → session coage p/ default (`?? null`) → gate errado (wizard travando a base logada, apesar do backfill). Fix: `jwt` relê o banco quando o claim é `undefined` (≠ null), leitura única de migração | 2026-07-19 |
 
 ## Synthesis (`pages/synthesis/`)
 
@@ -85,7 +88,7 @@ Sumários cruzados, comparações, teses evolutivas.
 
 | Bucket | Arquivos | Descrição |
 | ------ | -------- | --------- |
-| `raw/sessions/` | 21 | Sumários de sessões de trabalho. |
+| `raw/sessions/` | 22 | Sumários de sessões de trabalho. |
 | `raw/articles/` | 0 | Web clips, papers, links externos. |
 | `raw/decisions/` | 0 | ADRs e decisões arquiteturais brutas. |
 

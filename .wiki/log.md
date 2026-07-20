@@ -236,3 +236,29 @@ O `/code-review high` (workflow, 16 agentes) pegou **1 regressão de perda de da
 Técnicas de teste que viraram concept [[chrome-mcp-drive-and-assert-via-js]]: setar select/input nativo via setter do prototype + `dispatch('change')` p/ o RHF captar (setas do select nativo do macOS são flaky pela extensão); interceptar `window.fetch` p/ asseverar o corpo do PUT (provou o fix do clobber: sem mudança → PUT sem `status`; com mudança → com `status`) e p/ injetar latência e capturar o overlay de loading. Adicionado à [[radix-popover-and-dialog]] o gotcha do **1º clique após fechar Dialog ser engolido** (recorreu o tempo todo no walk-through).
 
 Gate: tsc · vitest **357** · build · sprints **143/143**. Operacional em `.context/features/appointments.md` (§ visão Mês, § ações unificadas). Não commitado (dono via `gh`; mensagem de commit entregue no chat). index.md: raw 20→21.
+
+## [2026-07-19 20:55] ingest | Confirmação por link + Onboarding/terminologia + fixes mobile — +3 concepts, 3 atualizadas, +1 raw
+
+Ingerida a sessão longa autônoma de 2026-07-19 (2 features grandes ENTREGUES, não commitadas; gate tsc · vitest **386** · sprints **153/153**; ambas por `/code-review` xhigh + E2E Chrome). Operacional já vive em `.context/features/confirmation-link.md` e `onboarding.md` — a wiki só capturou o **reusável fora dessas features** (referencia o resto, não duplica).
+
+**3 concepts NOVAS:**
+- [[link-action-must-not-mutate-on-get]] — link que o paciente abre no WhatsApp não pode mutar no GET (preview/scanner pré-carrega e dispararia sozinho) → página GET read-only + botão POST; uso único é do ESTADO (`status!==PENDING`), não do token.
+- [[baked-deadline-needs-grace-floor]] — 🔴 achado crítico do code-review da F1: deadline assado no envio (`dateTime−reminderHoursBefore`) nasce no passado se o envio atrasa → link expirado + auto-cancel imediato. Fix: piso `sentAt+GRACE` (2h) em `effectiveDeadlineMs`, MESMA fórmula no envio (sentAt=now) e no auto-cancel (sentAt=confirmationSentAt) → batem.
+- [[jwt-new-claim-defaults-stale-tokens]] — 🔴 achado crítico do code-review da F2: claim novo no JWT (`onboardingCompletedAt`) não existe nos tokens antigos → `?? null` do session callback abria o wizard não-dispensável em TODA a base logada (apesar do backfill). Fix: `jwt` relê o banco quando o claim é `undefined` (≠ null), leitura única de migração; wizard virou dispensável (defesa em profundidade).
+
+**3 ATUALIZADAS:**
+- [[migrations-not-auto-applied]] — addendum: não rodar SQL cru no Neon (cria coluna sem registrar em `_prisma_migrations` → próximo `migrate deploy` falha e, encadeado no `vercel-build`, quebra o build inteiro); "No pending migrations" no log é normal; backfill de banco não alcança sessões JWT (cross-ref pro concept novo do JWT).
+- [[chrome-mcp-drive-and-assert-via-js]] — §5: `resize_window` é no-op neste setup → NÃO emula viewport mobile; os bugs do S24+ não reproduzem no MCP. Aproximar por geometria forçada (`main.style.width='360px'` + medir `scrollWidth`) + inspeção de CSS, mas o veredito de "feito mobile" é o **dono no aparelho**.
+- [[horizontal-scroll-from-offscreen-elements]] — Culpado 3: cards com padding > largura estouram poucos px → no **touch** a página fica "pannável" (o **tilt** ao rolar na vertical), invisível no desktop. Fix `overflow-x-hidden` no `<main>` (seguro: Radix usa portal, tabelas têm wrapper) + `px-4 sm:px-6` nos cards; contrasta com o Culpado 1 (reCAPTCHA `fixed`, onde clipar o container NÃO resolve).
+
+Cross-refs novos costurando o cluster (link↔deadline↔jwt↔migrations; chrome-mcp↔horizontal-scroll). +1 raw: raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md (status ingested). index.md: +3 concepts, raw 21→22. ~~Pendências do dono: commit + migration em prod~~ → **já resolvidas** quando esta sessão começou (ver entry seguinte 21:08).
+
+## [2026-07-19 21:08] meta | Verificação em prod: migration de onboarding já aplicada + F1/F2 deployadas (notas stale corrigidas)
+
+Follow-up da ingestão anterior (o dono pediu pra executar a migration `20260719155729` "se ainda não estiver em prod" e atualizar as notas desatualizadas). **Resultado: nada a executar — já estava tudo feito.** Verificado por consulta direta ao banco de prod (Neon, via `vercel env pull --environment=production` → `DIRECT_URL` → `pg`, credencial nunca ecoada):
+
+- `_prisma_migrations`: `20260719155729_add_business_type_onboarding` com `finished_at` **2026-07-19 17:04 UTC**, `applied_steps_count=1`, `rolled_back_at=null` → aplicada limpa (pelo `vercel-build` no deploy, [[migrations-not-auto-applied]]).
+- Colunas `businessType` (enum) + `onboardingCompletedAt` (timestamp) presentes em `User`; **backfill 19/19 onboarded** (0 NULL) → base existente não é jogada no wizard (o cenário do [[jwt-new-claim-defaults-stale-tokens]] fica coberto na camada de banco; o lazy-load do JWT cobre as sessões vivas).
+- Git: `HEAD==origin/main==147a4e7`. F1+F2 foram no commit `7ccb22d` (juntos, não separados como a memória previa) e o "trocar ramo em Configurações" no `147a4e7`.
+
+**Notas stale corrigidas** (o material da wiki 2026-07-19 foi escrito com o estado "não commitado / migration pendente", que era verdade na sessão autônoma mas já tinha sido superado pelo deploy do dono): memória do projeto (`MEMORY.md` índice + `project-confirmation-onboarding-2026-07-19.md` §AÇÕES/§polish), a linha de "pendências" do entry 20:55 acima, e addendum no raw da sessão. Aprendizado reforçado: **backfill de banco resolve as linhas, mas não as sessões JWT já emitidas** — por isso a F2 precisou do lazy-load do claim ausente, não só da migration. Nenhuma página de conceito nova (o achado é de estado, não de padrão).

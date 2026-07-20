@@ -2,13 +2,15 @@
 title: Scroll horizontal no mobile vindo de elementos fora da viewport
 type: concept
 created: 2026-06-24
-updated: 2026-06-24
-tags: [css, mobile, recaptcha, ux, gotcha]
+updated: 2026-07-19
+tags: [css, mobile, recaptcha, ux, touch, gotcha]
 sources:
   - raw/sessions/2026-06-24-bugfix-cadastro-login.md
+  - raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
 related:
   - .context/features/auth.md
   - .context/features/lgpd-account.md
+  - pages/concepts/chrome-mcp-drive-and-assert-via-js.md
 status: draft
 ---
 
@@ -55,14 +57,28 @@ document.documentElement.scrollWidth > document.documentElement.clientWidth // t
 
 Cheque **com os erros de validação na tela** (o relato original era ao aparecer mensagem de campo obrigatório — o reflow só tornou o badge mais perceptível).
 
+## Culpado 3 — cards com padding lateral > largura (addendum 2026-07-19)
+
+Bugs mobile do dono no S24+ ("cards cortados" + a página "entortando"/**tilt** ao rolar). Aqui a fonte não era um elemento fora da tela, e sim conteúdo que estoura **poucos pixels** a largura da viewport (card sem `px` responsivo, tabela larga). No **touch** isso é bem mais visível que no desktop: alguns px de overflow horizontal deixam a página inteira **"pannável"** — ao rolar na vertical, ela desliza de leve na horizontal (o "tilt"). No trackpad/mouse isso quase não aparece; no dedo, aparece sempre.
+
+**Fix aplicado**: `overflow-x-hidden` no **scroll container** (o `<main>`) — mata o pan lateral na raiz —, mais `px-4 sm:px-6` nos cards pra não estourarem. Por que `overflow-x-hidden` no `<main>` é **seguro** aqui (não engole scroll legítimo):
+
+- **Radix usa portal**: Popover/Dialog/Select montam fora do `<main>` → o clip do container não os corta.
+- **Tabelas largas têm o próprio wrapper** com `overflow-x-auto` → continuam roláveis dentro da sua caixa; o clip do `<main>` só mata o overflow **da página**.
+- Difere do reCAPTCHA (Culpado 1): lá o `overflow-x-hidden` **não** resolveria (o badge é `fixed`, relativo à viewport, não ao container) — por isso o fix de lá é esconder a fonte. Aqui a fonte é conteúdo **dentro** do fluxo, então clipar o container é o remédio certo.
+
+⚠️ **Não confie no Chrome MCP pra validar isto**: `resize_window` é no-op neste setup → a viewport fica desktop e o tilt (que é fenômeno de **touch**) não reproduz. Aproxime por geometria forçada e **confirme no aparelho** — ver [[chrome-mcp-drive-and-assert-via-js]] §5.
+
 ## Pontos-chave
 
-- `overflow-x: hidden` no `<body>` mascara o sintoma mas não resolve elementos `fixed` (relativos à viewport) — prefira eliminar a fonte.
-- Em dev sem `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` o badge nem carrega → o bug só aparece em prod; reproduzir exige a chave (ou raciocinar pelo CSS do badge).
+- `overflow-x: hidden` no `<body>` mascara o sintoma mas não resolve elementos `fixed` (relativos à viewport) — prefira eliminar a fonte. **Mas** no scroll container (`<main>`), pra overflow vindo de conteúdo **no fluxo**, ele é o fix correto e seguro (portais do Radix + wrappers de tabela sobrevivem).
+- No **touch**, poucos px de overflow já bastam pra página ficar "pannável" (o tilt) — sintoma que quase não aparece no desktop. Teste pensando no dedo, não no mouse.
+- Em dev sem `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` o badge nem carrega → o bug do Culpado 1 só aparece em prod; reproduzir exige a chave (ou raciocinar pelo CSS do badge).
 
 ## Cross-refs
 
 - `.context/features/auth.md` — validação manual no browser (sem scroll lateral com erros na tela).
 - [[dev-fallback-without-secrets]] — por que o reCAPTCHA não roda em dev.
+- [[chrome-mcp-drive-and-assert-via-js]] §5 — por que o MCP não valida bug de layout mobile (resize_window no-op).
 
-> Fonte: `src/app/globals.css`, `src/app/(auth)/registro/page.tsx`, `raw/sessions/2026-06-24-bugfix-cadastro-login.md`.
+> Fontes: `src/app/globals.css`, `src/app/(auth)/registro/page.tsx`, o `<main>` do `(dashboard)/layout.tsx` + cards com `px-4 sm:px-6`; `raw/sessions/2026-06-24-bugfix-cadastro-login.md`, `raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md`.

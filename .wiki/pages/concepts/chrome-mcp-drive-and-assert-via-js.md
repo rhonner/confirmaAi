@@ -2,13 +2,15 @@
 title: Dirigir e asseverar a app via JS no Chrome MCP
 type: concept
 created: 2026-07-10
-updated: 2026-07-10
-tags: [chrome-mcp, testing, react-hook-form, fetch, gotcha]
+updated: 2026-07-19
+tags: [chrome-mcp, testing, react-hook-form, fetch, mobile, gotcha]
 sources:
   - raw/sessions/2026-07-10-2200-agenda-month-view.md
+  - raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
 related:
   - pages/entities/radix-popover-and-dialog.md
   - pages/concepts/rhf-radix-gotcha.md
+  - pages/concepts/horizontal-scroll-from-offscreen-elements.md
 status: stable
 ---
 
@@ -65,13 +67,34 @@ Depois navegue para um estado **não-cacheado** (React Query só fica `isLoading
 
 Ao fechar um `Dialog`/`AlertDialog`, o teardown de pointer-events do Radix **absorve o clique seguinte**. Em roteiro de teste, espere clicar 2× (ou intercalar um screenshot/espera). Detalhe em [[radix-popover-and-dialog]].
 
+## 5. `resize_window` é no-op aqui → **não** emula viewport mobile
+
+Neste setup (extensão Claude-in-Chrome dirigindo o Chrome do usuário), `resize_window` **não redimensiona de fato** — a janela/viewport fica no tamanho do desktop. Então **não dá pra "provar" um bug de layout mobile só pelo Chrome MCP**; o `window.innerWidth` continua desktop e a media query `@media (max-width: …)` nunca ativa. Foi o caso dos 3 bugs mobile do dono (S24+, 2026-07-18/19: overflow/tilt + relógio nativo).
+
+O que dá pra fazer no MCP (aproximações, não substituem o aparelho):
+
+- **Forçar a geometria** do container e medir por JS — provar que o conteúdo cabe numa largura de celular sem depender de o browser encolher:
+
+```js
+// constrange o wrapper a uma largura de telefone e checa overflow horizontal real
+const root = document.querySelector('main');
+root.style.width = '360px';
+root.style.overflowX = 'hidden'; // simula o fix
+({ scrollW: root.scrollWidth, clientW: root.clientWidth, overflow: root.scrollWidth > root.clientWidth });
+```
+
+- **Inspecionar o CSS aplicado** (`getComputedStyle`) pra confirmar que a regra responsiva certa existe, em vez de confiar num screenshot que saiu em desktop.
+- Para overflow lateral especificamente, o predicado de [[horizontal-scroll-from-offscreen-elements]] (`documentElement.scrollWidth > clientWidth`) continua válido.
+
+⚠️ **Conclusão de "feito" para bug mobile**: geometria forçada + inspeção de CSS **reduzem o risco**, mas o veredito final é o **dono confirmando no aparelho real** (registrado na memória do projeto). Não declare "resolvido no mobile" só com base no MCP.
+
 ## Higiene
 
 - **Reverta o estado** ao fim (status/notes que você mudou; dados criados). Um PUT direto (`fetch('/api/...', {method:'PUT', body})`) é o jeito rápido de restaurar — mas ele **não invalida o cache do React Query**, então a UI pode mostrar o valor antigo até o reload (o banco está certo).
-- Recarregar a aba limpa qualquer monkey-patch de `fetch` (vive no contexto da página).
+- Recarregar a aba limpa qualquer monkey-patch de `fetch` (vive no contexto da página) **e** qualquer style inline que você injetou pra simular mobile.
 
 ## Wikilinks
 
-- [[radix-popover-and-dialog]] · [[rhf-radix-gotcha]] · [[edit-form-clobbers-concurrent-field]]
+- [[radix-popover-and-dialog]] · [[rhf-radix-gotcha]] · [[edit-form-clobbers-concurrent-field]] · [[horizontal-scroll-from-offscreen-elements]]
 
-> Fonte: raw/sessions/2026-07-10-2200-agenda-month-view.md
+> Fontes: raw/sessions/2026-07-10-2200-agenda-month-view.md · raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md

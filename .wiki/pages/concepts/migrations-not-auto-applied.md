@@ -2,14 +2,16 @@
 title: Vercel não aplica migrations no deploy (drift silencioso)
 type: concept
 created: 2026-06-14
-updated: 2026-06-14
-tags: [incident, prisma, migrations, vercel, deploy, observability]
+updated: 2026-07-19
+tags: [incident, prisma, migrations, vercel, deploy, observability, neon]
 sources:
   - raw/sessions/2026-06-14-migration-incident-sprint10.md
+  - raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
   - .context/plans/deployment-status.md
 related:
   - pages/concepts/neon-pooled-vs-direct-url.md
   - pages/concepts/optional-dependency-via-dynamic-import.md
+  - pages/concepts/jwt-new-claim-defaults-stale-tokens.md
 status: stable
 ---
 
@@ -45,9 +47,18 @@ Logs de runtime da Vercel (filtro "Register error") mostraram o `PrismaClientKno
 - **`findUnique` sem `select` é frágil a drift.** Quando o client está à frente do banco, qualquer select-all quebra; caminhos com `select` específico sobrevivem (e mascaram o problema).
 - **Catch que engole erro = incidente invisível.** Todo catch de rota crítica deve `captureError`. Ver [[optional-dependency-via-dynamic-import]] (Sentry) — só vale se os erros chegarem nele.
 
+## Nuances operacionais (addendum 2026-07-19)
+
+Duas coisas que confundem ao acompanhar um deploy com migration nova (feature de onboarding, migration `20260719155729_add_business_type_onboarding`):
+
+- **Não rode SQL cru no banco pra "adiantar" a coluna.** Aplicar o DDL na mão (ex.: SQL editor do Neon) cria a coluna **sem** registrar a linha em `_prisma_migrations`. No deploy seguinte, o `prisma migrate deploy` tenta aplicar a mesma migration, bate em "coluna já existe" e **falha** — e como o fix permanente encadeia `migrate deploy && next build`, a migration quebrada **bloqueia o build inteiro**. Deixe o `vercel-build` aplicar; se precisar aplicar fora de banda, use `prisma migrate deploy` (que registra), nunca `ALTER TABLE` avulso.
+- **"No pending migrations to apply" no log do deploy é o caso normal**, não um erro — significa que aquele deploy não trouxe migration nova (o banco já está na frente ou igual). Só se preocupe quando o deploy **tem** migration nova e você **não** vê o `Applying migration ...` correspondente.
+- Migration **aditiva + com backfill** (como a de onboarding: novas colunas nulas + `UPDATE` de backfill) é segura de aplicar antes do código novo assumir o controle — mas lembre que **backfill de banco não alcança sessões JWT já emitidas** ([[jwt-new-claim-defaults-stale-tokens]]): é o mesmo tema "estado deployado ≠ estado aplicado", uma camada acima.
+
 ## Cross-refs
 
 - [[neon-pooled-vs-direct-url]] — por que migrate usa a URL direct.
+- [[jwt-new-claim-defaults-stale-tokens]] — o análogo na camada de sessão: backfill no banco não conserta tokens vivos.
 - `.context/plans/deployment-status.md` — incidente + runbook (`scripts/migrate-prod.sh`).
 
 > Fonte: incidente 2026-06-14; `package.json`, `prisma.config.ts`, `scripts/migrate-prod.sh`.
