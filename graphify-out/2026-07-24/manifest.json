@@ -240,8 +240,8 @@
     "semantic_hash": "90dc57aee1446bfafce312fa4db88310"
   },
   "scripts/test-sprints.ts": {
-    "mtime": 1784920196.7405007,
-    "ast_hash": "804b2dc95f01a7b6cf2523bccc16ad82",
+    "mtime": 1784925181.4136775,
+    "ast_hash": "8aacbdc6253b73a859bc83f05ddd0ab0",
     "semantic_hash": ""
   },
   "scripts/toggle-admin-plan.ts": {
@@ -370,8 +370,8 @@
     "semantic_hash": "3cb522862869f7a45e5fa7f0dea1340d"
   },
   "src/app/api/appointments/[id]/route.ts": {
-    "mtime": 1784924689.9684799,
-    "ast_hash": "144a11251e71a48ea5afcfc2f4b504bc",
+    "mtime": 1784925007.37517,
+    "ast_hash": "72460edc9afffc080d074ebf37da08e7",
     "semantic_hash": ""
   },
   "src/app/api/appointments/export/route.ts": {
@@ -380,8 +380,8 @@
     "semantic_hash": "673e31f76682a6eb782d8680a2ed88d0"
   },
   "src/app/api/appointments/route.ts": {
-    "mtime": 1784924669.8470547,
-    "ast_hash": "b5c592529fb54999cf444b9b00e3ce31",
+    "mtime": 1784924998.132531,
+    "ast_hash": "b90c7f7c655d1634a82cc0e9ae28cfcf",
     "semantic_hash": ""
   },
   "src/app/api/auth/[...nextauth]/route.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": "512d823c2848c1884ca8b63647b98b34"
   },
   "src/app/api/integrations/google-calendar/convert/route.ts": {
-    "mtime": 1784924747.4421294,
-    "ast_hash": "3bdda5fbd53e38ee382a4e90d6627847",
+    "mtime": 1784925007.375551,
+    "ast_hash": "458a766bb8261d7375aa5f842eb35fd2",
     "semantic_hash": ""
   },
   "src/app/api/integrations/google-calendar/disconnect/route.ts": {
@@ -595,8 +595,8 @@
     "semantic_hash": "f4b8897268250dd4e14ea9f2132e1cdf"
   },
   "src/components/agenda/month-view.tsx": {
-    "mtime": 1784924912.9222274,
-    "ast_hash": "8cf74d8cdba404f628db4a80f4a07218",
+    "mtime": 1784924946.3644562,
+    "ast_hash": "2d789c99723d7244c0b79939dd17dd45",
     "semantic_hash": ""
   },
   "src/components/billing/export-csv-button.tsx": {
@@ -1550,8 +1550,8 @@
     "semantic_hash": "e092c3924799d4fc4194f994d8394cc3"
   },
   ".context/README.md": {
-    "mtime": 1784919706.05628,
-    "ast_hash": "896a78b1665e4baedad512012de6ad1c",
+    "mtime": 1784925134.7155457,
+    "ast_hash": "8d81dfacbd8a9eb3ffae1c7f80b0708c",
     "semantic_hash": ""
   },
   ".context/features/_TEMPLATE.md": {
@@ -1570,8 +1570,8 @@
     "semantic_hash": "1b79d48d15b469b4f249eb5c1e34fb3d"
   },
   ".context/features/appointments.md": {
-    "mtime": 1784920497.4704921,
-    "ast_hash": "f102b4083ca17eb43a52bb32da6de19d",
+    "mtime": 1784925126.3829353,
+    "ast_hash": "64595dbb8c055cc4f4e27bdaee3d5ff5",
     "semantic_hash": ""
   },
   ".context/features/audit.md": {
@@ -1600,8 +1600,8 @@
     "semantic_hash": "f65cb6e5975e527869fb7de04b30ddc9"
   },
   ".context/features/google-calendar.md": {
-    "mtime": 1784920489.1565745,
-    "ast_hash": "1903682c816491ad2b948492e61cbac6",
+    "mtime": 1784925144.1447995,
+    "ast_hash": "439ff7aa7960515ecfb34d701858f49e",
     "semantic_hash": ""
   },
   ".context/features/lgpd-account.md": {
@@ -1650,9 +1650,9 @@
     "semantic_hash": "75557511552ec8071df67ac4a1207e8d"
   },
   ".context/flows/confirmation-flow.md": {
-    "mtime": 1784474756.48497,
-    "ast_hash": "5de8724bd8be871a2b61547750ead838",
-    "semantic_hash": "5de8724bd8be871a2b61547750ead838"
+    "mtime": 1784925141.3905613,
+    "ast_hash": "9a03b68f48750b2d0051fef57668bf93",
+    "semantic_hash": ""
   },
   ".context/flows/multi-tenancy.md": {
     "mtime": 1777729628.7402902,
@@ -1740,8 +1740,8 @@
     "semantic_hash": ""
   },
   ".wiki/log.md": {
-    "mtime": 1784924872.968586,
-    "ast_hash": "a68b3e5ad74f05305099f461feaba60b",
+    "mtime": 1784925197.16109,
+    "ast_hash": "f77683fd9f5c08f41a616f97eb2273c0",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/append-only-via-pg-trigger.md": {
@@ -1805,8 +1805,8 @@
     "semantic_hash": "d3a203f260a6c948948c4fae558237c9"
   },
   ".wiki/pages/concepts/external-event-firewall.md": {
-    "mtime": 1784924765.1707013,
-    "ast_hash": "3eb3fbb71619c563e3f0ba35ee6b34e2",
+    "mtime": 1784925165.0739603,
+    "ast_hash": "d2b812656fb4f1aa276c363d441669b1",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/google-oauth-verification-sensitive-scope.md": {
@@ -1820,9 +1820,9 @@
     "semantic_hash": "8e67f567b7cd90e6177a089e713f4ebc"
   },
   ".wiki/pages/concepts/idempotent-link-under-race.md": {
-    "mtime": 1783707461.107429,
-    "ast_hash": "cb88c6f2a24697381d2243ecca14a534",
-    "semantic_hash": "cb88c6f2a24697381d2243ecca14a534"
+    "mtime": 1784925160.4160833,
+    "ast_hash": "a1f644fc869c250916e7813ccd6dad2d",
+    "semantic_hash": ""
   },
   ".wiki/pages/concepts/identifier-hash-namespacing.md": {
     "mtime": 1778181921.5444012,
@@ -2270,8 +2270,8 @@
     "semantic_hash": ""
   },
   "tests/unit/month-view-drag.test.tsx": {
-    "mtime": 1784920177.6114693,
-    "ast_hash": "817a9a2fbd7559d5dc1ebd2c4936609b",
+    "mtime": 1784925054.4896288,
+    "ast_hash": "131e0e6e60a2c273cc09a85084520ada",
     "semantic_hash": ""
   },
   ".claude/agents/ux-writer.md": {
@@ -2307,6 +2307,16 @@
   ".wiki/raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md": {
     "mtime": 1784924631.4734,
     "ast_hash": "76f944225c4693d6d35dd861d4e66c9e",
+    "semantic_hash": ""
+  },
+  "src/lib/retroactive.ts": {
+    "mtime": 1784924982.7529345,
+    "ast_hash": "76c0c38ed319e1004b8848094bca8948",
+    "semantic_hash": ""
+  },
+  "tests/unit/retroactive.test.ts": {
+    "mtime": 1784925021.2378516,
+    "ast_hash": "144f6dca448a01a610b495a54489bf3f",
     "semantic_hash": ""
   }
 }

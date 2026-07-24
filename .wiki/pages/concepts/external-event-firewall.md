@@ -6,6 +6,7 @@ updated: 2026-07-24
 tags: [pattern, data-model, multi-tenancy, integrations, scheduler]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
+  - raw/sessions/2026-07-24-2050-agenda-retroactive-and-month-click.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
   - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
@@ -13,6 +14,7 @@ sources:
   - .context/features/time-blocks.md
 related:
   - .context/features/scheduler.md
+  - pages/concepts/persist-intent-not-elapsed-time.md
   - pages/concepts/quota-ledger-immortal-slot.md
   - pages/concepts/idempotent-link-under-race.md
   - pages/concepts/revive-cancelled-event-on-id-reuse.md
@@ -68,6 +70,7 @@ Detalhe operacional em `.context/features/agenda-day-grid.md` § "Clique num eve
 
 - **Aplique** quando dados de uma fonte externa compartilham tabela com dados de domínio que alimentam jobs automáticos com efeito colateral real (mensagens, cobrança, métricas de negócio).
 - **Defense-in-depth alternativa** (se a tabela separada não for viável): um booleano **positivo** `autoConfirmEnabled @default(false)` para importados, aplicado nos filtros de envio **E** no `markNoShows` juntos, com a coluna incorporada aos índices compostos. Preferir a tabela separada — o booleano ainda depende de lembrar de filtrar em N lugares.
+  - **A alternativa deixou de ser hipótese (2026-07-24)**: `Appointment.retroactive` é exatamente esse booleano, e foi a escolha **certa** porque a linha **é de domínio** — o agendamento lançado no passado aparece na agenda junto dos outros, é editável e conta nas métricas pelo status. Tabela separada obrigaria a duplicar leitura, edição e métricas. Ou seja: **tabela separada quando a linha não pertence ao domínio; flag quando pertence, mas não deve alimentar jobs.** O custo previsto aqui (lembrar de filtrar em N lugares) foi pago com check de regressão sobre o predicado dos jobs (`RT.1`/`RT.2`). Ver [[persist-intent-not-elapsed-time]].
 - **NÃO** transforme em regra cega para toda tabela; o custo (duas representações + lógica de vínculo/cancelamento) só compensa quando as queries amplas têm efeito colateral perigoso.
 
 ## Cross-refs

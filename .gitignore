@@ -56,3 +56,7 @@ next-env.d.ts
 prisma/*.db
 
 /src/generated/prisma
+
+# Obsidian: estado local do vault da wiki (layout de janela, tema, plugins-core).
+# A .wiki é markdown puro versionado; o .obsidian/ é preferência de máquina.
+.wiki/.obsidian/

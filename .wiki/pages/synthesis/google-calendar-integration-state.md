@@ -2,7 +2,7 @@
 title: Estado da integração Google Calendar (2026-07)
 type: synthesis
 created: 2026-07-05
-updated: 2026-07-10
+updated: 2026-07-24
 tags: [google-calendar, integrations, roadmap, premium, oauth]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
@@ -42,6 +42,7 @@ Entrega faseada, cada fase independentemente entregável:
 - **Evento → paciente = promoção manual com matching por telefone** (não auto-criar sem telefone, não deduplicar por e-mail): telefone é a identidade de mensagem; e-mail não manda WhatsApp e raramente existe (profissional escreve o nome no título). Resposta ao "ponto 1" do dono.
 - **Teardown LGPD** obrigatório e não-óbvio por causa do soft-delete. Ver [[soft-delete-skips-cascade-cleanup]].
 - **Gate de plano**: `gcal.connect/sync/convert` → PREMIUM; `gcal.convert` também no gate `EMAIL_NOT_VERIFIED` (cria paciente/agendamento).
+- **`/convert` afrouxou duas rejeições (2026-07-24)**, acompanhando as regras novas da agenda: (1) **evento no passado** agora promove — nasce com `Appointment.retroactive = true`, e o motivo do antigo `400` (`markNoShows` marcaria falta falsa) passou a ser resolvido pelo flag, ver [[persist-intent-not-elapsed-time]]; (2) **sobreposição** não é mais rejeitada (o guard de conflito foi removido do app inteiro e `conflict.ts` deletado) — com isso a limitação documentada de corrida entre dois `/convert` simultâneos deixou de ser bug, ver [[idempotent-link-under-race]]. O clique num evento do overlay passou a **abrir a promoção** nas grades Dia/Mês (antes só a lista da Semana tinha botão) — ver [[external-event-firewall]] § "só-leitura ≠ inerte".
 
 ## Estado atual (2026-07-10) — 🚀 EM PRODUÇÃO (dark)
 

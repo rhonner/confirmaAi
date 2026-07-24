@@ -171,5 +171,7 @@
   "169": "ux-writer.md",
   "170": "seed.ts",
   "171": "recaptcha.ts",
-  "172": "eslint"
+  "172": "eslint",
+  "173": "bcryptjs",
+  "174": "@testing-library/jest-dom"
 }

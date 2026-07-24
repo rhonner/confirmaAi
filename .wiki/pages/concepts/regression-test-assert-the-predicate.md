@@ -6,10 +6,12 @@ updated: 2026-07-24
 tags: [testing, gotcha, regression, source-grep, flake, determinism]
 sources:
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
+  - raw/sessions/2026-07-24-2050-agenda-retroactive-and-month-click.md
   - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
   - .context/features/google-calendar.md
 related:
   - pages/concepts/append-only-via-pg-trigger.md
+  - pages/concepts/persist-intent-not-elapsed-time.md
 status: stable
 ---
 
@@ -47,6 +49,23 @@ Mesma família de defeito, do outro lado — o check não mente sobre o comporta
 - **Regra**: em teste, todo `findFirst`/`take: 1` que alimenta uma ação destrutiva ou uma asserção leva **`orderBy` explícito** (`{ createdAt: "asc" }`, `{ id: "asc" }`) — ou, melhor, filtra pela fixture que o próprio check criou.
 - **Cheiro**: um check falha "às vezes" e passa ao rodar sozinho. Antes de culpar concorrência, procure seleção de linha sem ordem.
 - Vale para o mesmo `test:sprints` que já precisa rodar **isolado** do vitest (contenção no Postgres local) — duas fontes distintas de não-determinismo que se confundem no sintoma.
+
+## Corolário 2: check NEGATIVO por grep tem que ignorar comentários
+
+Quando o check afirma uma **ausência** ("nenhuma rota volta a rejeitar conflito"), o grep no
+fonte encontra a string proibida **na documentação que explica a remoção** — e o check
+falha (ou, pior, some numa refatoração de comentário e passa a mentir).
+
+Aconteceu com o `RT.3` (2026-07-24): a asserção era
+`!src.includes("Conflito com agendamento")`, mas os comentários das três rotas registram
+justamente *"o antigo 400 'Conflito com agendamento de X' foi removido"* — contexto que vale
+manter. Fix: `stripComments()` (tira `/* */` e `// …`) antes das asserções negativas.
+
+- **Regra**: asserção **positiva** pode ler o fonte cru; asserção **negativa** lê o fonte
+  **sem comentários** — senão você está proibindo o time de documentar o que foi removido.
+- **Cheiro**: um check começa a falhar depois de alguém *comentar melhor* o código.
+- Complemento mais forte quando dá: prove a ausência pelo **comportamento** (criar dois
+  registros sobrepostos e ver os dois nascerem, como o `RT.3` também faz), não só pelo texto.
 
 ## Cross-refs
 

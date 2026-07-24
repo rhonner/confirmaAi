@@ -70,6 +70,11 @@ Appointment (agendamento)
 ├── confirmationSentAt: DateTime?
 ├── reminderSentAt: DateTime?
 ├── confirmedAt: DateTime?
+├── durationMinutes: Int (default 30)
+├── retroactive: Boolean (default false) ← lançado com horário JÁ PASSADO (registro
+│                                           de organização): FICA FORA da automação
+│                                           (sem WhatsApp, sem NO_SHOW automático)
+├── googleEventId / googleCalendarId: String? (espelho no Google Calendar, Fase C)
 ├── notes: String?
 ├── createdAt: DateTime
 ├── updatedAt: DateTime
@@ -107,14 +112,20 @@ Settings (configurações por usuário)
    │   └─→ Envia mensagem via Evolution API
    │       └─→ Marca confirmationSentAt + cria MessageLog
    │
-   ├─→ Busca agendamentos nas próximas 6h SEM confirmação + COM confirmação enviada
-   │   └─→ Envia lembrete via Evolution API
-   │       └─→ Marca reminderSentAt + cria MessageLog
+   ├─→ Deadline (dateTime − reminderHoursBefore, piso sentAt+GRACE): quem recebeu o
+   │   link e NÃO respondeu é AUTO-CANCELADO
+   │   └─→ (não há mais envio de lembrete — mudança de 2026-07-19; o prazo comunicado
+   │        na mensagem de confirmação passou a ser real)
    │
-   └─→ Busca agendamentos passados com status PENDING
+   └─→ Busca agendamentos passados com status PENDING **e retroactive = false**
        └─→ Marca como NO_SHOW
+           └─→ registro retroativo NUNCA entra aqui (senão viraria falta falsa e
+                corromperia a taxa de faltas)
 
-2. Webhook recebe resposta do WhatsApp (POST /api/webhook/whatsapp)
+2. Paciente confirma/cancela pelo LINK da mensagem (página + botão POST) — caminho
+   principal desde 2026-07-19. As palavras-chave no chat CONTINUAM aceitas:
+
+   Webhook recebe resposta do WhatsApp (POST /api/webhook/whatsapp)
    │
    ├─→ "1" / "sim" / "confirmo" / "ok" → status = CONFIRMED
    └─→ "2" / "não" / "cancelo" / "cancelar" → status = CANCELED

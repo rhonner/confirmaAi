@@ -1550,8 +1550,8 @@
     "semantic_hash": "e092c3924799d4fc4194f994d8394cc3"
   },
   ".context/README.md": {
-    "mtime": 1784925134.7155457,
-    "ast_hash": "8d81dfacbd8a9eb3ffae1c7f80b0708c",
+    "mtime": 1784925864.0463402,
+    "ast_hash": "a14f5bc37b5f7132ef75bd82b518944c",
     "semantic_hash": ""
   },
   ".context/features/_TEMPLATE.md": {
@@ -1570,8 +1570,8 @@
     "semantic_hash": "1b79d48d15b469b4f249eb5c1e34fb3d"
   },
   ".context/features/appointments.md": {
-    "mtime": 1784925126.3829353,
-    "ast_hash": "64595dbb8c055cc4f4e27bdaee3d5ff5",
+    "mtime": 1784925270.1383429,
+    "ast_hash": "2677339a18d166e9265d23dfc52b4c77",
     "semantic_hash": ""
   },
   ".context/features/audit.md": {
@@ -1600,8 +1600,8 @@
     "semantic_hash": "f65cb6e5975e527869fb7de04b30ddc9"
   },
   ".context/features/google-calendar.md": {
-    "mtime": 1784925144.1447995,
-    "ast_hash": "439ff7aa7960515ecfb34d701858f49e",
+    "mtime": 1784925832.7254956,
+    "ast_hash": "45e8f10611c388650b06919dea9f33bf",
     "semantic_hash": ""
   },
   ".context/features/lgpd-account.md": {
@@ -1630,9 +1630,9 @@
     "semantic_hash": "0ff898566dd328ff1458145340f977df"
   },
   ".context/features/scheduler.md": {
-    "mtime": 1784474746.2750785,
-    "ast_hash": "65026e13474173e59ce5f98676dac128",
-    "semantic_hash": "65026e13474173e59ce5f98676dac128"
+    "mtime": 1784925823.2685437,
+    "ast_hash": "32c58b875a41f4f94ca9f266f1979c03",
+    "semantic_hash": ""
   },
   ".context/features/settings.md": {
     "mtime": 1784474807.8363883,
@@ -1735,13 +1735,13 @@
     "semantic_hash": "f32c5b7769adaa737757d3f3e5193e36"
   },
   ".wiki/index.md": {
-    "mtime": 1784924829.0465324,
-    "ast_hash": "9cb949c96b9d3104a50c3397ff93e4a0",
+    "mtime": 1784926555.3636794,
+    "ast_hash": "0d34dd338c080e751ea1272886af52e8",
     "semantic_hash": ""
   },
   ".wiki/log.md": {
-    "mtime": 1784925197.16109,
-    "ast_hash": "f77683fd9f5c08f41a616f97eb2273c0",
+    "mtime": 1784926579.3475432,
+    "ast_hash": "6e2cf9e62649cac7f249c25cb7c77646",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/append-only-via-pg-trigger.md": {
@@ -1805,8 +1805,8 @@
     "semantic_hash": "d3a203f260a6c948948c4fae558237c9"
   },
   ".wiki/pages/concepts/external-event-firewall.md": {
-    "mtime": 1784925165.0739603,
-    "ast_hash": "d2b812656fb4f1aa276c363d441669b1",
+    "mtime": 1784926513.125663,
+    "ast_hash": "74e8e88985269471b929462b6f1a4663",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/google-oauth-verification-sensitive-scope.md": {
@@ -1915,8 +1915,8 @@
     "semantic_hash": "d8e12468f7d3f1d970f889f3433d0177"
   },
   ".wiki/pages/concepts/regression-test-assert-the-predicate.md": {
-    "mtime": 1784924783.727913,
-    "ast_hash": "8c9373b1bd4d4630a5fe0edf31c60433",
+    "mtime": 1784926513.1261377,
+    "ast_hash": "a23d8d0243e952945e81981b41040a2f",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/revive-cancelled-event-on-id-reuse.md": {
@@ -2015,9 +2015,9 @@
     "semantic_hash": ""
   },
   ".wiki/pages/synthesis/google-calendar-integration-state.md": {
-    "mtime": 1783717845.5911298,
-    "ast_hash": "4dffa121e2d28505ea61a7cee77a7030",
-    "semantic_hash": "4dffa121e2d28505ea61a7cee77a7030"
+    "mtime": 1784926555.3630176,
+    "ast_hash": "e5a911cb4b01dc8e15a11a0f21aa62ad",
+    "semantic_hash": ""
   },
   ".wiki/pages/synthesis/monetization-v2-state.md": {
     "mtime": 1781481052.3217165,
@@ -2255,8 +2255,8 @@
     "semantic_hash": ""
   },
   "src/components/agenda/day-grid.tsx": {
-    "mtime": 1784924864.1009364,
-    "ast_hash": "295aa296e55608d7a881e4c864ae1137",
+    "mtime": 1784925620.249726,
+    "ast_hash": "3e9d86315fe3aaf105027f77005d4fda",
     "semantic_hash": ""
   },
   "src/lib/subscription-status.ts": {
@@ -2280,8 +2280,8 @@
     "semantic_hash": ""
   },
   ".context/features/agenda-day-grid.md": {
-    "mtime": 1784920450.6440382,
-    "ast_hash": "a5bd75649052b9a45e14a0863fc5cf55",
+    "mtime": 1784925793.9856277,
+    "ast_hash": "77adf25bbc84bedc08f1cb62001115f5",
     "semantic_hash": ""
   },
   ".context/features/time-blocks.md": {
@@ -2290,8 +2290,8 @@
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/drag-vs-click-decide-by-value-change.md": {
-    "mtime": 1784924718.0976882,
-    "ast_hash": "26018f1420f4ebf616e023936852b9d5",
+    "mtime": 1784926513.1265428,
+    "ast_hash": "5238ed2ba9bd09c49edc39210dee716f",
     "semantic_hash": ""
   },
   ".wiki/pages/concepts/move-across-days-via-local-components.md": {
@@ -2317,6 +2317,16 @@
   "tests/unit/retroactive.test.ts": {
     "mtime": 1784925021.2378516,
     "ast_hash": "144f6dca448a01a610b495a54489bf3f",
+    "semantic_hash": ""
+  },
+  ".wiki/pages/concepts/persist-intent-not-elapsed-time.md": {
+    "mtime": 1784926471.3145697,
+    "ast_hash": "8c9b5f603556b97b6a3df658c31bccfc",
+    "semantic_hash": ""
+  },
+  ".wiki/raw/sessions/2026-07-24-2050-agenda-retroactive-and-month-click.md": {
+    "mtime": 1784926437.7368512,
+    "ast_hash": "13fbbb43803c8bc7eb2fe3eecfc5ad37",
     "semantic_hash": ""
   }
 }

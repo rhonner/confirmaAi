@@ -165,13 +165,10 @@
   "163": "plans.ts",
   "164": "BillingProviderImpl",
   "165": "lib/auth.ts",
-  "166": "convert/route.ts",
   "167": "Mover entre dias: componentes locais, não aritmética de timestamp",
   "168": "disposable-emails.ts",
   "169": "ux-writer.md",
   "170": "seed.ts",
   "171": "recaptcha.ts",
-  "172": "eslint",
-  "173": "bcryptjs",
   "174": "@testing-library/jest-dom"
 }

@@ -299,3 +299,49 @@ Afinação dos sistemas de conhecimento (diagnóstico read-only → correções)
 Mas a decisão **não tinha chegado aos docs**: 5 pontos do `.context` (README §convenção 8 + índice, `features/appointments.md` ×5, `features/google-calendar.md`, `flows/confirmation-flow.md`) e 2 da `.wiki` ainda descreviam a detecção de conflito como viva, apontando para um arquivo que não existe. Todos corrigidos. Detalhe que valia preservar: em [[idempotent-link-under-race]] a corrida de duplo-agendamento **não foi consertada — foi desqualificada como bug** (o resultado virou válido); a página manteve a lição geral (*read fora da tx não é serializado pelo Serializable*) com nota datada, porque o princípio sobrevive ao exemplo.
 
 Também restaurado o `graphify-out/.graphify_root`, que o `graphify update .` reescreveu de caminho absoluto para `.` — o valor relativo quebraria a checagem de canonicalização que o kb-tune usa antes de autorizar um update.
+
+## [2026-07-24 20:55] ingest | Regras novas da agenda: passado permitido (`retroactive`) + célula do Mês agenda — +1 concept, 4 atualizadas, +1 raw
+
+Rodada 4 do mesmo dia (as três primeiras estão no ingest das 17:27; a decisão de **permitir sobreposição** já havia sido capturada no addendum das 17:50 — aqui entra só como contexto das consequências). Gate verde: `tsc` · vitest **401** · build · `test:sprints` **166/166** (`RT.1`–`RT.5` novos). Pedido do dono em 3 frases + imagem do Google Agenda; duas decisões devolvidas a ele antes de codar (sobreposição **sem** aviso; selo **"⟲ Retroativo"**).
+
+**Conceito novo:**
+- [[persist-intent-not-elapsed-time]] — o achado que estrutura a rodada. `dateTime < now` na leitura **colapsa dois casos opostos**: "lancei no passado de propósito" (registro histórico, não é falta) e "marquei para o futuro e o horário passou" (é a falta que o produto mede). Intenção grava-se na **escrita** (`Appointment.retroactive`, servidor decide, cliente não manda, reavaliado quando o horário é reescrito) e só vale se os **jobs filtrarem** por ela.
+
+**Atualizadas:**
+- [[external-event-firewall]] — a "alternativa defense-in-depth" (booleano em vez de tabela separada) **deixou de ser hipótese**: `retroactive` é ela, e é a escolha certa porque a linha **é de domínio** (aparece na agenda, é editável, conta métrica por status). Regra destilada: **tabela separada quando a linha não pertence ao domínio; flag quando pertence mas não deve alimentar jobs** — pagando o custo previsto (filtrar em N lugares) com check de regressão.
+- [[regression-test-assert-the-predicate]] — corolário 2: check **negativo** por grep no fonte precisa rodar sobre o código **sem comentários**. O `RT.3` falhou na 1ª execução porque os próprios comentários que explicam a remoção citam a mensagem antiga ("Conflito com agendamento"). Asserção positiva pode ler o fonte cru; negativa, não — senão proíbe o time de documentar o que saiu.
+- [[drag-vs-click-decide-by-value-change]] — o **custo do clique-fantasma depende do efeito do clique**: a célula do Mês passou a CRIAR (antes drilava), então o falso positivo virou "abre formulário" em vez de "troca de visão". Corolário de UX: mudar o significado de um clique exige **realocar o antigo** (o drill migrou para o número do dia).
+- [[google-calendar-integration-state]] — `/convert` afrouxou duas rejeições: passado agora promove (nasce `retroactive`) e sobreposição não é mais rejeitada; a corrida entre dois `/convert` deixou de ser bug.
+
+Não duplicado na wiki (fica em `.context/features/appointments.md` § Retroativo, `scheduler.md` § `markNoShows` e `agenda-day-grid.md`): campo/migration, UI do selo, card compacto do DayGrid e a matriz de validação E2E. Registrado como consequência de segunda ordem no raw: **relaxar uma regra de domínio realoca o orçamento de layout** — com sobreposição permitida, o card de 30 min em 3 colunas escondia o nome do paciente (linha 2 cortada) até o fix `compact`.
+
+index.md: +1 concept, 3 resumos atualizados, raw 23→**24**. Pendências do dono: não commitado; **duas** migrations só em DEV (`add_time_block`, `add_appointment_retroactive`); firewall do cron coberto por RT.1/RT.2 e **não** por execução real do cron (`runSchedulerJobs()` dispara e-mail de billing).
+
+## [2026-07-24 21:20] meta | Poda do nó semântico stale, drift do ARCHITECTURE.md e lint de wikilinks
+
+Manutenção pós-ingestão, autorizada pelo dono ("pode fazer tudo que achar válido").
+
+- **Grafo — poda manual de 1 nó**: `context_features_appointments_conflict_detection`
+  (`findConflictingAppointment (overlap [start,end))`, extraído de `.context/features/appointments.md`)
+  apontava para função e arquivo **deletados** hoje. `graphify update` re-extrai só a camada de
+  **código** — nós de doc/conceito sobrevivem até um rebuild completo com LLM, e o `update`
+  seguinte confirmou "No code-graph topology changes detected" (ou seja: não regenerava a viz).
+  Removidos à mão o nó, sua aresta `implements` e as 2 ocorrências nos dados **embutidos** em
+  `graph.html`, com as contagens do rodapé e do `GRAPH_REPORT.md` ajustadas (1962→**1961** nós,
+  4506→**4505** arestas). Backup do estado anterior no scratchpad da sessão. Escolhi **não** rodar
+  `cluster-only`: `.graphify_labels.json` é indexado por **número** de comunidade, então
+  re-clusterizar arriscava trocar os 172 nomes por placeholders — custo maior que o benefício.
+- **Varredura de resíduo das regras removidas**: todas as menções restantes a
+  `findConflictingAppointment` / `"Não é possível agendar no passado"` em `.context/` e `.wiki/`
+  são **históricas e anotadas** (marcadas como removidas em 2026-07-24) — nada a corrigir.
+- **`ARCHITECTURE.md` (3 pontos de drift)**: (1) o modelo `Appointment` não listava
+  `durationMinutes`, `retroactive` nem os campos de espelho do Google; (2) o fluxo do scheduler
+  ainda descrevia **envio de lembrete em T-6h** — que deixou de existir em **2026-07-19**
+  (virou auto-cancelamento no deadline; drift de 5 dias que o kb-tune das 17:35 não pegou) e o
+  `markNoShows` sem o filtro `retroactive = false`; (3) o fluxo de confirmação não mencionava que
+  o caminho principal hoje é o **link** (as palavras-chave no chat seguem aceitas).
+- **Lint de wikilinks**: 373 links reais, **5 quebrados**. 3 vivem dentro de entradas históricas
+  do próprio `log.md` (que *citam* os links que foram consertados) → mantidos, log é append-only.
+  2 estavam na memória do agente como caminho em forma de wikilink (`[[time-blocks]]`,
+  `[[.context/features/auth.md]]`) → viraram caminho em código. ⚠️ Nota de método: um checker que
+  não aceita a forma de **path** (`[[../concepts/x]]`) reporta ~45 falsos-positivos.

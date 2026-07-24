@@ -6,6 +6,7 @@ updated: 2026-07-24
 tags: [pointer-events, drag-and-drop, mobile, ux, gotcha, frontend]
 sources:
   - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
+  - raw/sessions/2026-07-24-2050-agenda-retroactive-and-month-click.md
   - .context/features/agenda-day-grid.md
 related:
   - pages/concepts/react-query-structural-sharing-defeats-prop-diff.md
@@ -46,6 +47,22 @@ Três detalhes que andam junto e não são óbvios:
 - **`pointercancel` aborta** — sem editar e sem reagendar. Sem esse handler, o scroll do touch termina virando um tap ou um reagendamento.
 - **Clique-fantasma pós-arraste**: o browser emite um `click` sintético no ancestral comum (o corpo da grade) ao fim do arraste, que abriria "Novo Agendamento". O guard `dragRef` já é nulo nesse momento — é preciso uma **flag dedicada** setada no `pointerup` e limpa por timeout curto (~50 ms), consumida pelo handler de clique no fundo.
 - **Teclado não regride**: o chip continua `<button>`; Enter/Espaço geram `click` com `detail === 0`, e é esse caso que abre a edição (cliques de ponteiro são resolvidos no `pointerup`, não no `onClick`).
+
+## O custo do clique-fantasma depende do que o clique faz (2026-07-24)
+
+O guard anti-clique-fantasma nasceu quando o clique no fundo abria "Novo Agendamento" no
+**Dia**. Na mesma semana o mapa de cliques mudou: por decisão do dono, a **área livre da
+célula do Mês** deixou de drilar para a visão Dia e passou a **abrir o diálogo de
+agendamento**. O mesmo falso positivo que antes era inofensivo (drilar) agora abre um
+formulário de criação por cima do arraste que o usuário acabou de fazer.
+
+- **Reavalie os guards quando o significado de um clique muda** — a criticidade deles é
+  função do efeito, não do gesto. O que era "ruído tolerável" pode virar "ação indesejada".
+- **Mudar o significado de um clique exige realocar o antigo**: quem abre a visão Dia agora
+  é o **número do dia** (e o "+N mais"). Trocar o destino sem dar outra porta ao destino
+  antigo é remover uma função, não movê-la.
+- No teste, isso vira uma asserção mais forte: depois de um arraste, o clique sintético não
+  pode chamar `onCreateOnDay` (antes: `onSelectDay`).
 
 ## Quando NÃO se aplica
 
