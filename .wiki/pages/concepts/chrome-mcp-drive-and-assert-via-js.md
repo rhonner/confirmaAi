@@ -2,11 +2,12 @@
 title: Dirigir e asseverar a app via JS no Chrome MCP
 type: concept
 created: 2026-07-10
-updated: 2026-07-19
+updated: 2026-07-24
 tags: [chrome-mcp, testing, react-hook-form, fetch, mobile, gotcha]
 sources:
   - raw/sessions/2026-07-10-2200-agenda-month-view.md
   - raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
+  - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
 related:
   - pages/entities/radix-popover-and-dialog.md
   - pages/concepts/rhf-radix-gotcha.md
@@ -88,6 +89,27 @@ root.style.overflowX = 'hidden'; // simula o fix
 
 ⚠️ **Conclusão de "feito" para bug mobile**: geometria forçada + inspeção de CSS **reduzem o risco**, mas o veredito final é o **dono confirmando no aparelho real** (registrado na memória do projeto). Não declare "resolvido no mobile" só com base no MCP.
 
+## 6. Injetar o fixture no cliente para testar caminho externo **sem sujar a conta real**
+
+Quando o caminho a validar depende de um dado que só existe numa conta de terceiro (a Google Agenda real do dono), a saída **não** é criar o dado lá. Injete a resposta no cliente e stube o efeito colateral:
+
+```js
+// evento de dia inteiro + "Ocupado" não existiam na agenda real → fabricados no fetch
+const orig = window.fetch;
+window.fetch = async (url, opts) => {
+  const res = await orig(url, opts);
+  if (!String(url).includes('/api/integrations/google-calendar/events')) return res;
+  const body = await res.clone().json();
+  body.data.push(fakeAllDayEvent, fakeBusyEvent);
+  return new Response(JSON.stringify(body), { status: 200, headers: res.headers });
+};
+window.open = (...a) => { window.__opened = a; };   // stub do efeito colateral
+```
+
+Assim se provou o ramo "não promovível → abre no Google": clique nos dois chips chamou `window.open("<htmlLink>", "_blank", "noopener,noreferrer")` e **nenhum diálogo** abriu — sem escrever nada na agenda do dono (2026-07-24, [[external-event-firewall]]).
+
+Vale a distinção: **injetar leitura** é seguro e reversível com um reload; **criar o dado na fonte externa** é mutação de terceiro, custa limpeza e pode disparar espelhamento de volta. Prefira sempre o primeiro para caminhos de exceção.
+
 ## Higiene
 
 - **Reverta o estado** ao fim (status/notes que você mudou; dados criados). Um PUT direto (`fetch('/api/...', {method:'PUT', body})`) é o jeito rápido de restaurar — mas ele **não invalida o cache do React Query**, então a UI pode mostrar o valor antigo até o reload (o banco está certo).
@@ -95,6 +117,6 @@ root.style.overflowX = 'hidden'; // simula o fix
 
 ## Wikilinks
 
-- [[radix-popover-and-dialog]] · [[rhf-radix-gotcha]] · [[edit-form-clobbers-concurrent-field]] · [[horizontal-scroll-from-offscreen-elements]]
+- [[radix-popover-and-dialog]] · [[rhf-radix-gotcha]] · [[edit-form-clobbers-concurrent-field]] · [[horizontal-scroll-from-offscreen-elements]] · [[external-event-firewall]] · [[drag-vs-click-decide-by-value-change]]
 
-> Fontes: raw/sessions/2026-07-10-2200-agenda-month-view.md · raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
+> Fontes: raw/sessions/2026-07-10-2200-agenda-month-view.md · raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md · raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md

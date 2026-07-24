@@ -32,6 +32,12 @@ type Appointment = {
   confirmationSentAt?: string | null;
   reminderSentAt?: string | null;
   confirmedAt?: string | null;
+  /**
+   * Lançado com data/hora que já passou (registro de organização). Decidido
+   * pelo servidor na escrita — o cliente NUNCA envia. Fica fora da automação
+   * (sem confirmação por WhatsApp, sem NO_SHOW automático).
+   */
+  retroactive?: boolean;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -40,6 +46,20 @@ type Appointment = {
     name: string;
     phone: string;
   };
+};
+
+// Horário bloqueado (sem paciente). Datas como string (JSON). Exportado para a
+// agenda. Ver .context/features/time-blocks.md.
+export type TimeBlock = {
+  id: string;
+  dateTime: string;
+  durationMinutes: number;
+  title: string;
+  googleEventId?: string | null;
+  googleCalendarId?: string | null;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type DashboardStats = {
@@ -324,6 +344,83 @@ export function useDeleteAppointment() {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Agendamento excluído com sucesso");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+// ── Horários bloqueados (TimeBlock) ─────────────────────────────────────────
+
+export function useTimeBlocks(
+  params?: { startDate?: string; endDate?: string },
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["time-blocks", params],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      if (params?.startDate) searchParams.set("startDate", params.startDate);
+      if (params?.endDate) searchParams.set("endDate", params.endDate);
+      const qs = searchParams.toString();
+      return fetchApi<TimeBlock[]>(`/api/time-blocks${qs ? `?${qs}` : ""}`);
+    },
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateTimeBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (block: { dateTime: string; durationMinutes?: number; title?: string }) =>
+      fetchApi<TimeBlock>("/api/time-blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(block),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["time-blocks"] });
+      toast.success("Horário bloqueado");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useUpdateTimeBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: {
+      id: string;
+      dateTime?: string;
+      durationMinutes?: number;
+      title?: string;
+    }) =>
+      fetchApi<TimeBlock>(`/api/time-blocks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["time-blocks"] });
+      toast.success("Bloqueio atualizado");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useDeleteTimeBlock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchApi<void>(`/api/time-blocks/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["time-blocks"] });
+      toast.success("Bloqueio removido");
     },
     onError: (error: Error) => {
       toast.error(error.message);

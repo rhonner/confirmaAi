@@ -112,7 +112,7 @@ function DashboardSkeleton() {
         ))}
       </div>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
+        <Card className="lg:col-span-4">
           <CardHeader>
             <Skeleton className="h-6 w-40" />
           </CardHeader>
@@ -120,7 +120,7 @@ function DashboardSkeleton() {
             <Skeleton className="h-[350px] w-full" />
           </CardContent>
         </Card>
-        <div className="col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1">
+        <div className="lg:col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1">
           <Card>
             <CardContent className="pt-6 flex flex-col items-center justify-center h-full">
               <Skeleton className="h-16 w-16 rounded-full mb-4" />
@@ -352,7 +352,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
         {/* Weekly Stats Chart */}
-        <Card className="col-span-4 opacity-0 animate-fade-in-up" style={{ animationDelay: "200ms", animationFillMode: "forwards" }}>
+        <Card className="lg:col-span-4 opacity-0 animate-fade-in-up" style={{ animationDelay: "200ms", animationFillMode: "forwards" }}>
           <CardHeader>
             <CardTitle>Estatísticas Semanais</CardTitle>
           </CardHeader>
@@ -413,7 +413,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Summary Cards */}
-        <div className="col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1 content-start">
+        <div className="lg:col-span-3 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-1 content-start">
           <Card
             className="h-full flex flex-col justify-center bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20 opacity-0 animate-fade-in-up transition-shadow duration-200 hover:shadow-lg"
             style={{ animationDelay: "275ms", animationFillMode: "forwards" }}

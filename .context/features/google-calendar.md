@@ -250,13 +250,34 @@ Implementa a decisão de design "como um evento vira paciente/agendamento" (§ a
 
 O `scheduler.ts` **nunca** menciona `ExternalEvent` (GCAL.10 falha se mencionar). Um evento do Google só vira alvo de WhatsApp/no-show **depois** de virar `Appointment` via promoção — que é justamente o comportamento desejado (o profissional escolheu gerenciá-lo). A tabela `ExternalEvent` em si é invisível ao scheduler.
 
+### Onde o usuário dispara a promoção (UI) — atualizado 2026-07-24
+
+| Visão  | Como promover                                                                 |
+| ------ | ----------------------------------------------------------------------------- |
+| Semana | botão **"Promover"** no bloco; clicar no CORPO do bloco abre o evento no Google |
+| Dia    | **clicar no evento** na grade (`day-grid.tsx`)                                  |
+| Mês    | **clicar no chip** do evento (`month-view.tsx`)                                 |
+
+Nas grades (Dia/Mês) não cabe um botão, então o **clique** é a ação: promove quando dá, e
+quando não dá **abre o evento no Google**. A decisão está só em `handleGoogleEventClick`
+(`agenda/page.tsx`) + a regra `canPromoteGoogleEvent` (dia inteiro e "Ocupado" não promovem —
+o primeiro porque a duração encaixaria em ≤ 8h; o segundo porque não há nada para
+pré-preencher). Antes dessa mudança o clique nas grades **não fazia nada** e o evento parecia
+morto (feedback do dono). Detalhes de interação em
+[`agenda-day-grid.md`](agenda-day-grid.md) § "Clique num evento do Google".
+
+⚠️ **Evento no passado**: o diálogo abre normalmente (com o aviso "este horário já passou") e
+o `POST /convert` recusa com "Não é possível promover um evento no passado" — o usuário pode
+ajustar a data/hora no próprio diálogo. Comportamento pré-existente do botão da Semana, não
+regressão do clique.
+
 ### `POST /convert` (`convert/route.ts`)
 
 Gate `gcal.convert` (PREMIUM+e-mail) → resolve paciente → cria `Appointment` PENDING → grava `ExternalEvent` linkado. Pontos sensíveis endereçados:
 - **Idempotência sequencial**: antes de tudo, se já existe `ExternalEvent` com `appointmentId`, devolve o agendamento existente (`alreadyPromoted:true`) sem criar nada.
 - **Resolução de paciente**: `patientId` explícito → senão match por **telefone** (`userId_phone` unique) → **CPF** (`userId_cpfHash`) → senão cria novo (exige `patient` com telefone válido; passa por `checkEntitlement("patient.create")` + `reserveSlotInTx` 1×, espelhando `POST /api/patients`).
 - **Rejeita passado** (`when < now`) → senão `markNoShows` marcaria NO_SHOW falso.
-- **Conflito de horário**: `findConflictingAppointment` — guard **suave, fora da tx** (mesma limitação do `POST /appointments`; ver achado de review abaixo).
+- ~~**Conflito de horário**~~: o guard `findConflictingAppointment` foi **removido em 2026-07-24** (sobreposição é permitida, mesma regra do `POST /appointments`). Com isso a limitação de corrida documentada abaixo — dois `/convert` simultâneos criando agendamentos sobrepostos — **deixa de ser risco**: esse resultado agora é válido.
 - **Tx Serializable**: cria paciente (se preciso) + `Appointment` + `ExternalEvent` atomicamente. Usa `create` (não `upsert`) no `ExternalEvent` para não orfanar sob corrida.
 - **Corrida (idempotência concorrente)**: no catch, para **qualquer P2002/P2034**, primeiro re-checa `alreadyPromotedResponse()` e devolve o agendamento do vencedor; só então cai nas mensagens de conflito de paciente. (Fix do review — antes, o perdedor que recriava o mesmo paciente via P2002 recebia "paciente já existe" para um evento que acabara de ser promovido.)
 - **Audit** `gcal.promoted` (metadata: googleEventId, patientId, created, reused).
@@ -366,9 +387,21 @@ Dois comportamentos CORRETOS que parecem bug (validados ao vivo com o dono em 20
 - Backfill em massa dos agendamentos antigos (só re-espelha o que for tocado; edição de um agendamento antigo faz backfill preguiçoso via create).
 - Reconciliação de edições feitas nos DOIS lados / watch channels.
 
+## Espelho de Horário Bloqueado (TimeBlock) — 2026-07-24
+
+A feature [Horário bloqueado](time-blocks.md) reusa as primitivas de escrita da Fase C:
+`mirror.ts` ganhou `syncTimeBlockCreate/Update/Delete` (+ `blockEventInput`), chamadas via
+`after()` nas rotas `/api/time-blocks`. Um bloqueio vira um evento no Google **sem convidados**
+(summary = `title` do bloqueio), com o mesmo id determinístico (`appOriginEventId(blockId)`) +
+tag `confirmaaiOrigin="app"` → **nunca reaparece no overlay** (`mapGoogleEvent` dropa origem-app).
+Mesmo gate `mirroringEnabled` (CONNECTED + `hasWriteScope` + `gcal.push`). Sem colisão de id com
+`Appointment` (cuids distintos → hashes distintos). ⚠️ **Não validado E2E com credencial Google
+real** (conta de teste não conectada); o código reusa caminhos já validados. Check TB.3.
+
 ## Fluxos relacionados
 
 - [features/scheduler.md](scheduler.md) — o firewall existe por causa dos filtros de `sendConfirmations`/`markNoShows`.
+- [features/time-blocks.md](time-blocks.md) — o espelho do bloqueio reusa `mirror.ts`/`calendar.ts`.
 - [features/appointments.md](appointments.md) — promoção cria um `Appointment` pelo caminho normal.
 - [features/plan-quota.md](plan-quota.md) — convert consome vaga via `reserveSlotInTx`.
 - [features/lgpd-account.md](lgpd-account.md) — teardown de token no delete/purga.

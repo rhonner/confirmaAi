@@ -262,3 +262,40 @@ Follow-up da ingestão anterior (o dono pediu pra executar a migration `20260719
 - Git: `HEAD==origin/main==147a4e7`. F1+F2 foram no commit `7ccb22d` (juntos, não separados como a memória previa) e o "trocar ramo em Configurações" no `147a4e7`.
 
 **Notas stale corrigidas** (o material da wiki 2026-07-19 foi escrito com o estado "não commitado / migration pendente", que era verdade na sessão autônoma mas já tinha sido superado pelo deploy do dono): memória do projeto (`MEMORY.md` índice + `project-confirmation-onboarding-2026-07-19.md` §AÇÕES/§polish), a linha de "pendências" do entry 20:55 acima, e addendum no raw da sessão. Aprendizado reforçado: **backfill de banco resolve as linhas, mas não as sessões JWT já emitidas** — por isso a F2 precisou do lazy-load do claim ausente, não só da migration. Nenhuma página de conceito nova (o achado é de estado, não de padrão).
+
+## [2026-07-24 17:27] ingest | Agenda arrastável (Dia + Mês entre dias), horário bloqueado e evento do Google clicável — +3 concepts, 3 atualizadas, +1 raw (3 stubs consolidados)
+
+Ingestão da sessão de 2026-07-24 (9 entregas; gate verde vitest **395** · sprints **161/161**; code-review adversarial 5 dims/15 agentes, 8 achados corrigidos; E2E Chrome MCP). O hook `SessionEnd` havia criado **3 `-PENDING` da MESMA sessão** (15:22/15:25/15:26 — cada stub listava o anterior como "arquivo modificado"); consolidados num único raw `2026-07-24-1526-agenda-drag-timeblocks.md`, os 3 stubs vazios removidos.
+
+Critério: o operacional já está denso em `.context/features/agenda-day-grid.md` e `time-blocks.md` — a wiki ficou só com o que **generaliza** (anti-padrão de duplicar `.context`).
+
+**Conceitos novos:**
+- [[react-query-structural-sharing-defeats-prop-diff]] — o achado mais caro do dia. Refetch *deeply equal* devolve a MESMA referência (structural sharing), então "limpa o estado otimista quando as props mudarem" **nunca dispara** nos caminhos de cancelamento/erro → card preso na posição arrastada. Estado otimista precisa de **sinal explícito de fim de tentativa** (`.finally` sobre promise que nunca rejeita), não de diff de dados. Bug simétrico no mesmo componente: `.map()` inline no pai limpava cedo demais — consertar um agrava o outro.
+- [[move-across-days-via-local-components]] — mover data entre dias remonta por componentes locais; somar 24h erra no DST (dia local de 23h/25h). Não reproduz no Brasil (sem DST desde 2019), o que piora.
+- [[drag-vs-click-decide-by-value-change]] — tap × arraste pelo **valor com snap**, não por pixel: limiar (4px) menor que o passo de snap (~7,5px) fazia tremor de dedo virar PUT no-op **+ escrita no Google**. Junto o kit de Pointer Events (`touch-action:pan-y`, `pointercancel`, flag anti-clique-fantasma, teclado por `detail===0`).
+
+**Atualizadas:**
+- [[external-event-firewall]] — duas extensões: `TimeBlock` usa o mesmo firewall (tabela própria, não `Appointment` sem paciente) e **só-leitura ≠ inerte** (o evento virou clicável — promove ou abre no Google — sem deixar de ser imutável/não-arrastável; regra única em `canPromoteGoogleEvent`).
+- [[chrome-mcp-drive-and-assert-via-js]] §6 — injetar fixture no cliente (patch de `fetch`) + stubar `window.open` para testar caminho externo **sem criar dado na conta real do dono**; injetar leitura é reversível, mutar a fonte externa não.
+- [[regression-test-assert-the-predicate]] — corolário de determinismo: `findFirst` sem `orderBy` escolhe linha arbitrária → flake `P2002` no check seguinte (era o caso do 2.15/2.16 em `test-sprints`).
+
+index.md: +3 concepts, 3 resumos atualizados, raw 22→23. Pendências do dono inalteradas (não commitado; migration `20260724160036` só em DEV; mobile real e mirror-de-bloqueio não testados).
+
+## [2026-07-24 17:35] meta | kb-tune: 4 wikilinks quebrados, drift do CLAUDE.md/ARCHITECTURE.md, 1 pendência stale e grafo atualizado
+
+Afinação dos sistemas de conhecimento (diagnóstico read-only → correções). Sistemas detectados: `.context/` (canônico, soberania declarada de forma consistente por `CLAUDE.md`, `README.md` e `.wiki/AGENTS.md` — sem conflito), `.wiki/`, graphify, memória do agente. Obsidian ausente no escopo varrido.
+
+- **Wikilinks**: 334 links, **4 quebrados** (98,8% íntegros) → todos resolvidos. `[[project-google-calendar-integration-design]]` era typo; `[[user-preferences]]` e `[[feedback-no-git-commands]]` apontavam para a mesma regra que só existia como *seção* do `MEMORY.md` → virou arquivo próprio de memória; `[[../concepts/done-with-chrome-walkthrough]]` (página que nunca existiu) virou prosa + link pro `.context` (anti-padrão de duplicar `.context` na wiki). `[[wiki]]` no `MEMORY.md` fica: é prosa, não link.
+- **Drift do `CLAUDE.md`**: o aviso "ASPIRACIONAL" do topo cobria 4 seções, mas **não** as três que concentravam o resto do erro. Corrigidos: `Comandos Úteis` (mandava `cd backend`/`cd frontend` — não existem), `Variáveis de Ambiente` (`REDIS_URL`/`JWT_SECRET`/`PORT=3333`/`NEXT_PUBLIC_API_URL`, nenhuma consumida), `Convenções › Backend` (rotas `/api/v1/`, pino+Fastify, controller→service→repository) e `Fluxo Principal` (lembrete "2h" → `reminderHoursBefore` default **6**). Também `Regras para os Agents › backend-architect`, que mandava usar **Fastify**, **BullMQ** e filtrar por **`tenant_id`** — texto diretivo que agentes seguem ao pé da letra. Princípios preservados; o aviso do topo agora nomeia só as 3 seções que seguem aspiracionais.
+- **Falsos-positivos descartados** na verificação: "paciente responde Sim/Não" **continua verdade** (`CONFIRM_KEYWORDS` inclui `sim`/`1` — o link é adição, não substituição) e `prisma.config.ts` **usa** mesmo `DIRECT_URL ?? DATABASE_URL` (só aparece em *bracket notation*, que um grep ingênuo por `process.env.X` perde).
+- **`ARCHITECTURE.md`**: dizia "Next.js **14**" (real: 16) sem nenhum marcador de legado → corrigido + nota de que o `.context/` prevalece.
+- **Estado stale**: `.context/plans/deployment-status.md` afirmava "**Falta apenas commit+push da Sprint 11**" — commitada em `8bdbc9f` (ancestral de `main`) e deployada em 2026-06-24. Corrigido.
+- **Grafo**: `graphify update` (só código, sem LLM; `.graphify_root` conferido contra o cwd; **sem `--force`**). 1830→**1942 nós**, 4291→**4481 arestas**, `built_at_commit` agora em `d0b4e67`. Arestas semânticas e hyperedges **preservadas** (139/15/28/14 · 22). As páginas novas entraram na camada estrutural; a camada semântica (LLM) delas só num rebuild completo.
+
+⚠️ Ponto cego declarado: integridade de `#heading` dentro de wikilinks **não** é verificada.
+
+**Addendum (17:50) — achado maior, descoberto ao conferir o working tree:** `src/lib/services/conflict.ts` foi **deletado** e `findConflictingAppointment` não existe mais em `src/`. Não é acidente: os comentários no `POST /api/appointments` e no `/convert` registram a **decisão do dono de 2026-07-24** — *"SOBREPOSIÇÃO É PERMITIDA: dois clientes no mesmo horário são um caso real (atendimento simultâneo, sala dupla) e a grade do Dia já os desenha lado a lado"*. O `400 "Conflito com agendamento de X"` foi removido dos dois caminhos.
+
+Mas a decisão **não tinha chegado aos docs**: 5 pontos do `.context` (README §convenção 8 + índice, `features/appointments.md` ×5, `features/google-calendar.md`, `flows/confirmation-flow.md`) e 2 da `.wiki` ainda descreviam a detecção de conflito como viva, apontando para um arquivo que não existe. Todos corrigidos. Detalhe que valia preservar: em [[idempotent-link-under-race]] a corrida de duplo-agendamento **não foi consertada — foi desqualificada como bug** (o resultado virou válido); a página manteve a lição geral (*read fora da tx não é serializado pelo Serializable*) com nota datada, porque o princípio sobrevive ao exemplo.
+
+Também restaurado o `graphify-out/.graphify_root`, que o `graphify update .` reescreveu de caminho absoluto para `.` — o valor relativo quebraria a checagem de canonicalização que o kb-tune usa antes de autorizar um update.

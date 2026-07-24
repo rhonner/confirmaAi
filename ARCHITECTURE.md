@@ -2,7 +2,9 @@
 
 ## Visão Geral
 
-Monolito Next.js 14 (App Router) com API routes, Prisma ORM, PostgreSQL, e integração WhatsApp via Evolution API.
+Monolito Next.js 16 (App Router) com API routes, Prisma ORM, PostgreSQL, e integração WhatsApp via Evolution API.
+
+> Documento histórico de arquitetura (escrito em 2026-02). A fonte de verdade operacional é [`.context/README.md`](.context/README.md) — em caso de divergência, vale o `.context/`.
 
 ## Diagrama de Módulos
 

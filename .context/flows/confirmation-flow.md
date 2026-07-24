@@ -53,7 +53,7 @@ tions envia     envia (se       agendamento   markNoShows →
 - Validação Zod (`createAppointmentSchema`).
 - Verifica que `patientId` pertence ao mesmo `userId`.
 - Verifica que `dateTime > now`.
-- Verifica conflitos (`findConflictingAppointment`).
+- ~~Verifica conflitos~~ — **removido em 2026-07-24**: sobreposição entre agendamentos é permitida (ver `features/appointments.md`).
 - Cria com `status=PENDING`, `confirmationSentAt=null`, `reminderSentAt=null`.
 → ver `features/appointments.md`.
 

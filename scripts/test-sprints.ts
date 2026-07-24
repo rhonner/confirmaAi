@@ -374,7 +374,12 @@ async function main() {
   check("2.14 audit quota.patient_blocked emitido", 2, blockAudit >= 1);
 
   // 2.15 Delete + recreate reusa slot
-  const firstPatient = await prisma.patient.findFirst({ where: { userId: quotaUser.id } });
+  // Apaga EXATAMENTE o paciente do cpfs[0] (o 2.16 recria com esse CPF). Com
+  // `findFirst` sem `orderBy` o Postgres podia devolver outro paciente e o 2.16
+  // estourava P2002 no unique [userId, cpfHash] — flake real, não regressão.
+  const firstPatient = await prisma.patient.findFirst({
+    where: { userId: quotaUser.id, cpfHash: hashCpf(canonicalizeCpf(cpfs[0])) },
+  });
   await prisma.patient.delete({ where: { id: firstPatient!.id } });
   const orphans = await prisma.patientQuotaSlot.count({
     where: { userId: quotaUser.id, patientId: null },
@@ -2619,6 +2624,242 @@ async function main() {
       linkMsg.includes("sexta às 08:00") &&
       !/responda\s+1\s+para\s+confirmar/i.test(linkMsg),
   );
+
+  // ====================================================================
+  // TB — Horário bloqueado (TimeBlock). FIREWALL: o scheduler NUNCA vê a tabela
+  // (um bloqueio jamais dispara WhatsApp/no-show — corromperia a métrica de
+  // faltas). Espelho no Google reusa o id determinístico + tag origem-app (some
+  // do overlay). Ver .context/features/time-blocks.md.
+  // ====================================================================
+
+  // TB.1 — CRUD round-trip real + isolamento por userId.
+  const tbCreated = await prisma.timeBlock.create({
+    data: {
+      userId: testUser.id,
+      dateTime: new Date("2026-08-01T16:00:00.000Z"),
+      durationMinutes: 60,
+      title: "Almoço",
+    },
+  });
+  const tbListed = await prisma.timeBlock.findMany({ where: { userId: testUser.id } });
+  const tbUpdated = await prisma.timeBlock.update({
+    where: { id: tbCreated.id },
+    data: { durationMinutes: 90 },
+  });
+  const tbOtherUserSees = await prisma.timeBlock.findMany({
+    where: { userId: proUser.id, id: tbCreated.id },
+  });
+  await prisma.timeBlock.delete({ where: { id: tbCreated.id } });
+  const tbAfterDelete = await prisma.timeBlock.findUnique({ where: { id: tbCreated.id } });
+  check(
+    "TB.1 TimeBlock CRUD round-trip + isolamento por userId",
+    10,
+    tbCreated.title === "Almoço" &&
+      tbListed.some((b) => b.id === tbCreated.id) &&
+      tbUpdated.durationMinutes === 90 &&
+      tbOtherUserSees.length === 0 &&
+      tbAfterDelete === null,
+  );
+
+  // TB.1b — defaults do schema (título "Bloqueado", 60 min) quando omitidos.
+  const tbDefault = await prisma.timeBlock.create({
+    data: { userId: testUser.id, dateTime: new Date("2026-08-02T12:00:00.000Z") },
+  });
+  check(
+    "TB.1b defaults do schema: title 'Bloqueado' + 60 min",
+    10,
+    tbDefault.title === "Bloqueado" && tbDefault.durationMinutes === 60,
+  );
+  await prisma.timeBlock.delete({ where: { id: tbDefault.id } });
+
+  // TB.2 — FIREWALL: o scheduler NUNCA referencia TimeBlock (senão um bloqueio
+  // viraria alvo de confirmação/no-show).
+  check("TB.2 firewall: scheduler.ts NUNCA referencia TimeBlock", 10, !/timeblock/i.test(schedulerSrcMsg));
+
+  // TB.3 — rotas usam after()+syncTimeBlock*; o mirror espelha reusando o id
+  // determinístico (appOriginEventId → tag origem-app some do overlay) e gateia
+  // pelo escopo de escrita.
+  const tbRouteSrc = readFileSync(join(root, "src/app/api/time-blocks/route.ts"), "utf8");
+  const tbIdRouteSrc = readFileSync(join(root, "src/app/api/time-blocks/[id]/route.ts"), "utf8");
+  check(
+    "TB.3 rotas after()+syncTimeBlock*; mirror gateia escopo e reusa appOriginEventId",
+    10,
+    tbRouteSrc.includes("syncTimeBlockCreate") &&
+      tbRouteSrc.includes("after(") &&
+      tbIdRouteSrc.includes("syncTimeBlockUpdate") &&
+      tbIdRouteSrc.includes("syncTimeBlockDelete") &&
+      gcalMirrorSrc.includes("syncTimeBlockCreate") &&
+      gcalMirrorSrc.includes("hasWriteScope") &&
+      gcalMirrorSrc.includes("appOriginEventId"),
+  );
+
+  // ====================================================================
+  // MÊS ARRASTÁVEL (MV.*) — arrastar chip entre DIAS mantendo o horário
+  // ====================================================================
+  const monthViewSrc = readFileSync(join(root, "src/components/agenda/month-view.tsx"), "utf8");
+  const agendaPageSrc = readFileSync(join(root, "src/app/(dashboard)/agenda/page.tsx"), "utf8");
+
+  // MV.1 — a visão Mês tem arraste entre dias por Pointer Events, com hit-test
+  // por `data-month-day` e helper que PRESERVA o horário (moveKeepingTime).
+  check(
+    "MV.1 Mês arrastável: pointerdown + hit-test data-month-day + moveKeepingTime",
+    10,
+    monthViewSrc.includes("onPointerDown") &&
+      monthViewSrc.includes("data-month-day") &&
+      monthViewSrc.includes("elementFromPoint") &&
+      monthViewSrc.includes("export function moveKeepingTime") &&
+      // constrói pelos componentes locais (não soma 24h no timestamp)
+      monthViewSrc.includes("src.getHours()") &&
+      monthViewSrc.includes("pointercancel"),
+  );
+
+  // MV.2 — clique × arraste decide pela mudança REAL do DIA (não por limiar de
+  // pixels, que no touch reintroduz "micro-tremor vira reagendamento").
+  check(
+    "MV.2 decide por troca de DIA, sem limiar de pixels",
+    10,
+    monthViewSrc.includes("d.overDay !== d.fromDay") &&
+      !/DRAG_THRESHOLD|THRESHOLD_PX/.test(monthViewSrc) &&
+      monthViewSrc.includes("suppressClickRef"),
+  );
+
+  // MV.3 — o Mês reusa `rescheduleAppointment` do pai: com isso o AVISO de
+  // horário bloqueado (e o refetch ao cancelar) também vale no Mês.
+  check(
+    "MV.3 Mês reusa rescheduleAppointment (aviso de bloqueio vale no Mês)",
+    10,
+    /<MonthView[\s\S]{0,1200}onReschedule=\{rescheduleAppointment\}/.test(agendaPageSrc),
+  );
+
+  // MV.4 — evento do Google nas GRADES é CLICÁVEL (antes: `div` mudo no Dia →
+  // clique não fazia nada) e a regra de promoção vive num lugar só.
+  const dayGridSrc = readFileSync(join(root, "src/components/agenda/day-grid.tsx"), "utf8");
+  check(
+    "MV.4 evento do Google clicável nas grades + regra única canPromoteGoogleEvent",
+    10,
+    dayGridSrc.includes("onSelectGoogleEvent") &&
+      monthViewSrc.includes("onSelectGoogleEvent") &&
+      agendaPageSrc.includes("function canPromoteGoogleEvent") &&
+      // a lista da Semana usa a MESMA regra (não uma cópia do teste de "Ocupado")
+      agendaPageSrc.includes("canPromote={canPromoteGoogleEvent(item.event)}") &&
+      // dia inteiro nunca promove (duração encaixaria em 8h) — invariante da Fase B
+      /return !event\.allDay && event\.title !== "Ocupado"/.test(agendaPageSrc) &&
+      // firewall: as grades NÃO arrastam evento do Google (só agendamento/bloqueio)
+      !/onPointerDown=\{[^}]*GoogleEvent/.test(dayGridSrc),
+  );
+
+  // ====================================================================
+  // REGRAS NOVAS DA AGENDA (RT.*) — passado permitido + sobreposição permitida
+  // ====================================================================
+  const schedulerSrcRt = readFileSync(join(root, "src/lib/services/scheduler.ts"), "utf8");
+  const apptPostSrc = readFileSync(join(root, "src/app/api/appointments/route.ts"), "utf8");
+  const apptPutSrc = readFileSync(join(root, "src/app/api/appointments/[id]/route.ts"), "utf8");
+  const convertSrcRt = readFileSync(
+    join(root, "src/app/api/integrations/google-calendar/convert/route.ts"),
+    "utf8",
+  );
+
+  // RT.1 — FIREWALL do retroativo: o cron não pode marcar NO_SHOW nem mandar
+  // WhatsApp para um registro lançado no passado (senão a taxa de faltas — o
+  // produto — vira lixo e o paciente recebe confirmação de algo que já passou).
+  check(
+    "RT.1 firewall: scheduler filtra retroactive:false em markNoShows e nos envios",
+    10,
+    /status: "PENDING", retroactive: false/.test(schedulerSrcRt) &&
+      /confirmationSentAt: null,[\s\S]{0,120}retroactive: false/.test(schedulerSrcRt),
+  );
+
+  // RT.2 — comportamento REAL no DB: o flag existe, default false, e um registro
+  // retroativo no passado NÃO é varrido pelo mesmo filtro do markNoShows.
+  const rtPatient = await prisma.patient.findFirst({ where: { userId: testUser.id } });
+  if (!rtPatient) throw new Error("RT.*: esperava ao menos um paciente do testUser");
+  const rtPast = await prisma.appointment.create({
+    data: {
+      userId: testUser.id,
+      patientId: rtPatient.id,
+      dateTime: new Date(Date.now() - 3 * 3_600_000),
+      durationMinutes: 30,
+      retroactive: true,
+    },
+  });
+  const rtNormal = await prisma.appointment.create({
+    data: {
+      userId: testUser.id,
+      patientId: rtPatient.id,
+      dateTime: new Date(Date.now() - 3 * 3_600_000),
+      durationMinutes: 30,
+    },
+  });
+  const sweptIds = (
+    await prisma.appointment.findMany({
+      where: { dateTime: { lt: new Date() }, status: "PENDING", retroactive: false, userId: testUser.id },
+      select: { id: true },
+    })
+  ).map((a) => a.id);
+  check(
+    "RT.2 retroativo fica FORA da varredura de no-show; default do schema é false",
+    10,
+    rtPast.retroactive === true &&
+      rtNormal.retroactive === false &&
+      !sweptIds.includes(rtPast.id) &&
+      sweptIds.includes(rtNormal.id),
+  );
+
+  // RT.3 — SOBREPOSIÇÃO permitida de verdade: dois agendamentos no MESMO horário
+  // coexistem (a grade os desenha lado a lado, como o Google Agenda) e nenhuma
+  // rota volta a rejeitar conflito/passado.
+  // ⚠️ Compara sobre o CÓDIGO sem comentários: os próprios comentários dessas
+  // rotas citam a mensagem antiga ("Conflito com agendamento") para explicar o
+  // que saiu — sem o strip, o check falharia por causa da documentação.
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  const apptPostCode = stripComments(apptPostSrc);
+  const apptPutCode = stripComments(apptPutSrc);
+  const convertCode = stripComments(convertSrcRt);
+  const overlapAt = new Date(Date.now() + 48 * 3_600_000);
+  const ov1 = await prisma.appointment.create({
+    data: { userId: testUser.id, patientId: rtPatient.id, dateTime: overlapAt, durationMinutes: 60 },
+  });
+  const ov2 = await prisma.appointment.create({
+    data: { userId: testUser.id, patientId: rtPatient.id, dateTime: overlapAt, durationMinutes: 60 },
+  });
+  check(
+    "RT.3 sobreposição permitida no DB + rotas sem 400 de conflito/passado",
+    10,
+    ov1.id !== ov2.id &&
+      !apptPostCode.includes("Conflito com agendamento") &&
+      !apptPutCode.includes("Conflito com agendamento") &&
+      !convertCode.includes("Conflito com agendamento") &&
+      !apptPostCode.includes("Não é possível agendar no passado") &&
+      !convertCode.includes("Não é possível promover um evento no passado") &&
+      !exists("src/lib/services/conflict.ts"),
+  );
+
+  // RT.4 — o flag é decidido pelo SERVIDOR (regra única `isRetroactive`) nas três
+  // rotas de escrita; o cliente nunca manda `retroactive`.
+  check(
+    "RT.4 as 3 rotas usam isRetroactive (servidor decide o flag)",
+    10,
+    apptPostSrc.includes("isRetroactive(") &&
+      apptPutSrc.includes("isRetroactive(") &&
+      convertSrcRt.includes("isRetroactive(") &&
+      !/retroactive:\s*z\./.test(readFileSync(join(root, "src/lib/validations/appointment.ts"), "utf8")),
+  );
+
+  // RT.5 — Mês: clique na área livre da célula AGENDA (não drila mais para o Dia)
+  // e o selo "Retroativo" aparece nas 3 visões.
+  check(
+    "RT.5 Mês: célula agenda + selo Retroativo nas visões",
+    10,
+    /handleCellClick[\s\S]{0,400}onCreateOnDay\(day\)/.test(monthViewSrc) &&
+      monthViewSrc.includes('aria-label="Retroativo"') &&
+      dayGridSrc.includes('aria-label="Retroativo"') &&
+      agendaPageSrc.includes("RetroactiveBadge"),
+  );
+
+  await prisma.appointment.deleteMany({
+    where: { id: { in: [rtPast.id, rtNormal.id, ov1.id, ov2.id] } },
+  });
 
   // cleanup GCal (cascade apaga a conexão)
   await prisma.$transaction(async (tx) => {

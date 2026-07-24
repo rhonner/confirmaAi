@@ -53,7 +53,9 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
 | Autenticação         | [features/auth.md](features/auth.md)                 | Login, registro, sessão NextAuth, helpers de auth                  |
 | Pacientes            | [features/patients.md](features/patients.md)         | CRUD de pacientes, paginação, busca, export CSV                    |
-| Agendamentos         | [features/appointments.md](features/appointments.md) | CRUD, detecção de conflitos, status, export CSV                    |
+| Agendamentos         | [features/appointments.md](features/appointments.md) | CRUD, status, export CSV, **grade Dia arrastável**. ⚠️ **sobreposição permitida** (guard de conflito removido em 2026-07-24) |
+| Arraste na agenda    | [features/agenda-day-grid.md](features/agenda-day-grid.md) | Dia = grade de horas estilo Google Agenda (arrastar p/ mover o **horário** + alça p/ estender; snap 15min, colunas de sobreposição). Mês = arrastar chip entre **dias** mantendo o horário (`moveKeepingTime`, hit-test `data-month-day`). Pointer Events nos dois; Semana inalterada. Inclui a armadilha do `pending` × structural sharing do React Query |
+| Horário bloqueado    | [features/time-blocks.md](features/time-blocks.md)   | `TimeBlock` (sem paciente): almoço/reunião/férias. Firewall (scheduler não vê); espelho no Google (evento sem convidados); aviso SUAVE ao agendar em cima |
 | Dashboard            | [features/dashboard.md](features/dashboard.md)       | Métricas agregadas, gráfico semanal, prejuízo estimado             |
 | Configurações        | [features/settings.md](features/settings.md)         | Mensagens, antecedência, valor médio, nome da clínica              |
 | WhatsApp (Evolution) | [features/whatsapp.md](features/whatsapp.md)         | Conexão, QR code, status, desconexão por usuário                   |
@@ -118,7 +120,7 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 5. **Adapter Postgres**: `new PrismaClient({ adapter: new PrismaPg({ connectionString }) })`. Sem isso, Prisma v7 não roda.
 6. **Telefones**: formato `+55XXXXXXXXXXX` (10 ou 11 dígitos após `+55`). Helpers em `src/lib/phone.ts`. Evolution API recebe só dígitos (`digitsOnly`).
 7. **Status do agendamento**: `PENDING | CONFIRMED | NOT_CONFIRMED | CANCELED | NO_SHOW`. `NOT_CONFIRMED` é setado manualmente; `NO_SHOW` é setado pelo cron quando passa do horário e ainda está `PENDING`.
-8. **Conflitos**: `findConflictingAppointment` em `src/lib/services/conflict.ts` — overlap `[start, end)`, ignorando `CANCELED`/`NO_SHOW`.
+8. **Sobreposição de agendamentos é PERMITIDA** (decisão do dono, 2026-07-24): não existe checagem de conflito agendamento×agendamento. `findConflictingAppointment` e `src/lib/services/conflict.ts` foram **removidos**. O único aviso de sobreposição é o de **horário bloqueado** (`TimeBlock`) — e ele é **suave** ("Agendar mesmo assim"). Ver `features/appointments.md` e `features/time-blocks.md`.
 9. **Datas como string `yyyy-MM-dd`**: tratadas como dia local completo (não UTC) na rota `GET /api/appointments`.
 10. **Mensagens template**: placeholders `{nome}`, `{data}`, `{hora}`, `{clinica}` (português, lowercase). Renderização em `src/lib/services/message-template.ts`.
 11. **Idioma**: código em **inglês**, UI/mensagens/erros em **português (BR)**.

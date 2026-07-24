@@ -8,12 +8,17 @@ import {
   useCreateAppointment,
   useUpdateAppointment,
   useDeleteAppointment,
+  useTimeBlocks,
+  useCreateTimeBlock,
+  useUpdateTimeBlock,
+  useDeleteTimeBlock,
   usePatients,
   useGoogleCalendarEvents,
   useGoogleCalendarStatus,
   useGoogleCalendarConvert,
   useGoogleEventSignals,
   type GcalEvent,
+  type TimeBlock,
 } from "@/hooks/use-api";
 import { parseEventSignals } from "@/lib/services/google/promote-signals";
 import { Button } from "@/components/ui/button";
@@ -47,7 +52,8 @@ import { PatientFormDialog } from "@/components/forms/patient-form-dialog";
 import { TimeSelect } from "@/components/forms/time-select";
 import { MonthCalendar, getMonthGridRange } from "@/components/agenda/month-calendar";
 import { MonthView } from "@/components/agenda/month-view";
-import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus } from "lucide-react";
+import { DayGrid } from "@/components/agenda/day-grid";
+import { Plus, ChevronLeft, ChevronRight, Calendar, CalendarDays, Clock, CalendarPlus, Lock, History } from "lucide-react";
 import { ExportCsvButton } from "@/components/billing/export-csv-button";
 import { format, startOfWeek, endOfWeek, addWeeks, addMonths, addDays, parseISO, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -89,6 +95,41 @@ const statusOptions = [
   { value: "CANCELED", label: "Cancelado" },
   { value: "NO_SHOW", label: "Faltou" },
 ];
+
+/**
+ * Selo de agendamento RETROATIVO (lançado com data/hora que já passou). Existe
+ * porque um registro desses é invisível para a automação — sem esse selo o
+ * usuário estranharia a ausência de confirmação por WhatsApp. Título explica.
+ */
+const RETROACTIVE_HINT =
+  "Retroativo: lançado depois da data, só para organizar o histórico. Sem confirmação por WhatsApp e sem falta automática.";
+
+function RetroactiveBadge() {
+  return (
+    <Badge
+      variant="outline"
+      className="shrink-0 gap-1 border-muted-foreground/40 text-muted-foreground"
+      title={RETROACTIVE_HINT}
+    >
+      <History className="h-3 w-3" />
+      Retroativo
+    </Badge>
+  );
+}
+
+/**
+ * Regra ÚNICA de "este evento do Google pode virar agendamento?" — usada pela
+ * lista da Semana (botão "Promover") e pelo clique nas grades Dia/Mês.
+ *
+ * - **Dia inteiro não promove**: `handleOpenPromote` encaixa a duração numa das
+ *   `DURATION_OPTIONS` (máx. 8h), então um evento de 24h viraria um agendamento
+ *   de 8h — mentira silenciosa. (Achado de code-review da Fase B.)
+ * - **"Ocupado" não promove**: é o placeholder de evento particular; não há
+ *   título/convidados para pré-preencher nada.
+ */
+function canPromoteGoogleEvent(event: { title: string; allDay: boolean }) {
+  return !event.allDay && event.title !== "Ocupado";
+}
 
 /**
  * Bloco somente-leitura de um evento do Google Calendar (overlay PREMIUM,
@@ -180,6 +221,22 @@ export default function AgendaPage() {
   const [patientFilter, setPatientFilter] = useState<string>("ALL");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
+  // Horário bloqueado (feature TimeBlock): diálogo próprio (criar/editar) e o
+  // aviso de sobreposição ao agendar em cima de um bloqueio.
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState<TimeBlock | null>(null);
+  const [blockDate, setBlockDate] = useState("");
+  const [blockTime, setBlockTime] = useState("");
+  const [blockDuration, setBlockDuration] = useState(60);
+  const [blockTitle, setBlockTitle] = useState("");
+  const [blockDeleteTarget, setBlockDeleteTarget] = useState<string | null>(null);
+  // Modal "horário bloqueado — confirmar?" : proceed aplica a ação; onDismiss
+  // reverte (ex.: refetch p/ desfazer um arraste cancelado).
+  const [blockedConfirm, setBlockedConfirm] = useState<{
+    title: string;
+    proceed: () => void | Promise<unknown>;
+    onDismiss?: () => void;
+  } | null>(null);
   // Promoção de evento do Google (Fase B): quando setado, o diálogo de
   // agendamento entra em "modo promoção" e o submit chama /convert.
   const [promoteEvent, setPromoteEvent] = useState<GcalEvent | null>(null);
@@ -236,6 +293,12 @@ export default function AgendaPage() {
         ? format(monthGrid.end, "yyyy-MM-dd")
         : dayStr;
   const { data: appointments, isLoading } = useAppointments({
+    startDate: rangeStart,
+    endDate: rangeEnd,
+  });
+  // Horários bloqueados da MESMA janela (contexto na agenda + detecção de
+  // sobreposição). Sem status/paciente → não passam pelos filtros.
+  const { data: timeBlocks } = useTimeBlocks({
     startDate: rangeStart,
     endDate: rangeEnd,
   });
@@ -322,6 +385,9 @@ export default function AgendaPage() {
   const createMutation = useCreateAppointment();
   const updateMutation = useUpdateAppointment();
   const deleteMutation = useDeleteAppointment();
+  const createBlockMutation = useCreateTimeBlock();
+  const updateBlockMutation = useUpdateTimeBlock();
+  const deleteBlockMutation = useDeleteTimeBlock();
   const convertMutation = useGoogleCalendarConvert();
   const signalsMutation = useGoogleEventSignals();
 
@@ -373,6 +439,57 @@ export default function AgendaPage() {
       return acc;
     }, {} as Record<string, typeof filteredAppointments>);
   }, [filteredAppointments]);
+
+  // Bloqueios agrupados pelo dia de início. Não sofrem os filtros de
+  // status/paciente (são contexto estrutural da agenda, como a própria grade).
+  const blocksByDay = useMemo(() => {
+    const acc: Record<string, TimeBlock[]> = {};
+    for (const b of timeBlocks ?? []) {
+      const day = format(parseISO(b.dateTime), "yyyy-MM-dd");
+      (acc[day] ??= []).push(b);
+    }
+    return acc;
+  }, [timeBlocks]);
+
+  // Props do DayGrid (modo Dia) memoizadas: senão `.map()` inline recriaria os
+  // arrays a cada render do pai e o efeito de limpeza do `pending` no DayGrid
+  // dispararia em QUALQUER re-render (ex.: mutação em voo), desfazendo o
+  // anti-flicker (o card voltava ao lugar antigo até o refetch). Assim a
+  // referência só muda quando os dados de fato mudam. (code-review 2026-07-24)
+  const patientSingular = term.patient.singular;
+  const dayGridAppointments = useMemo(
+    () =>
+      (appointmentsByDay[dayStr] ?? []).map((a) => ({
+        id: a.id,
+        dateTime: a.dateTime,
+        durationMinutes: a.durationMinutes ?? 30,
+        patientName: a.patient?.name ?? patientSingular,
+        status: a.status,
+        retroactive: a.retroactive === true,
+      })),
+    [appointmentsByDay, dayStr, patientSingular],
+  );
+  const dayGridBlocks = useMemo(
+    () =>
+      (blocksByDay[dayStr] ?? []).map((b) => ({
+        id: b.id,
+        dateTime: b.dateTime,
+        durationMinutes: b.durationMinutes,
+        title: b.title,
+      })),
+    [blocksByDay, dayStr],
+  );
+  const dayGridGoogleEvents = useMemo(
+    () =>
+      (googleEventsByDay[dayStr] ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        start: e.start,
+        end: e.end,
+        allDay: e.allDay,
+      })),
+    [googleEventsByDay, dayStr],
+  );
 
   const hasActiveFilter = statusFilter !== "ALL" || patientFilter !== "ALL";
 
@@ -498,11 +615,145 @@ export default function AgendaPage() {
     });
   };
 
-  const onSubmit = async (data: AppointmentForm) => {
-    try {
-      const dateTime = new Date(`${data.date}T${data.time}:00`).toISOString();
+  // Clique num evento do Google nas GRADES (Dia/Mês). Antes o clique não fazia
+  // NADA no Dia (o bloco era um `div` mudo) e no Mês só drilava para o Dia — ou
+  // seja, o evento parecia "morto" (feedback do dono, 2026-07-24).
+  // Agora: se dá para promover, abre o diálogo de promoção (a ação útil dentro do
+  // app); se não dá (dia inteiro / "Ocupado"), abre o evento no Google, o único
+  // lugar com mais contexto. A lista da Semana segue com o botão "Promover".
+  const handleGoogleEventClick = (id: string) => {
+    const event = googleEvents.find((e) => e.id === id);
+    if (!event) return;
+    if (canPromoteGoogleEvent(event)) {
+      handleOpenPromote(event);
+      return;
+    }
+    if (event.htmlLink) window.open(event.htmlLink, "_blank", "noopener,noreferrer");
+  };
 
-      if (promoteEvent) {
+  // Primeiro bloqueio que sobrepõe [start, start+dur) — base do aviso de conflito.
+  const overlappingBlockFor = (startMs: number, durationMin: number, excludeId?: string) => {
+    const endMs = startMs + durationMin * 60000;
+    for (const b of timeBlocks ?? []) {
+      if (excludeId && b.id === excludeId) continue;
+      const bStart = parseISO(b.dateTime).getTime();
+      const bEnd = bStart + b.durationMinutes * 60000;
+      if (bStart < endMs && bEnd > startMs) return b;
+    }
+    return null;
+  };
+
+  const openNewBlockDialog = (start?: Date) => {
+    setSelectedBlock(null);
+    const base = start ?? (viewMode === "day" ? anchorDate : new Date());
+    setBlockDate(format(base, "yyyy-MM-dd"));
+    setBlockTime(start ? format(start, "HH:mm") : "");
+    setBlockDuration(60);
+    setBlockTitle("");
+    setBlockDialogOpen(true);
+  };
+
+  const openEditBlockDialog = (block: TimeBlock) => {
+    setSelectedBlock(block);
+    const dt = parseISO(block.dateTime);
+    setBlockDate(format(dt, "yyyy-MM-dd"));
+    setBlockTime(format(dt, "HH:mm"));
+    setBlockDuration(block.durationMinutes);
+    // "Bloqueado" é o default — no campo, mostramos vazio (placeholder) p/ o
+    // usuário perceber que é opcional.
+    setBlockTitle(block.title === "Bloqueado" ? "" : block.title);
+    setBlockDialogOpen(true);
+  };
+
+  const handleSubmitBlock = async () => {
+    if (!blockDate || !blockTime) return;
+    const dateTime = new Date(`${blockDate}T${blockTime}:00`).toISOString();
+    const title = blockTitle.trim();
+    try {
+      if (selectedBlock) {
+        await updateBlockMutation.mutateAsync({
+          id: selectedBlock.id,
+          dateTime,
+          durationMinutes: blockDuration,
+          title: title || "Bloqueado",
+        });
+      } else {
+        await createBlockMutation.mutateAsync({
+          dateTime,
+          durationMinutes: blockDuration,
+          ...(title ? { title } : {}),
+        });
+      }
+      setBlockDialogOpen(false);
+    } catch {
+      // toast via mutação
+    }
+  };
+
+  const handleDeleteBlock = async () => {
+    if (blockDeleteTarget) {
+      await deleteBlockMutation.mutateAsync(blockDeleteTarget);
+      setBlockDeleteTarget(null);
+      setBlockDialogOpen(false);
+    }
+  };
+
+  // Reagenda um agendamento (arraste/resize na grade). Avisa se cair num bloqueio.
+  //
+  // ⚠️ Contrato com as grades (DayGrid/MonthView): a promise devolvida resolve SÓ
+  // quando a tentativa terminou de verdade — mutação + refetch, ou desistência no
+  // aviso de bloqueio. As grades usam isso para soltar o `pending` (anti-flicker).
+  // Sem isso, no caminho "cancelou"/"erro" NADA muda no servidor e o React Query
+  // devolve a MESMA referência de dados (structural sharing) → o efeito que
+  // observa as props nunca dispara e o card fica preso na posição arrastada.
+  const rescheduleAppointment = (id: string, newStart: Date, newDurationMinutes: number) => {
+    const doIt = () =>
+      updateMutation
+        .mutateAsync({ id, dateTime: newStart.toISOString(), durationMinutes: newDurationMinutes })
+        .catch(() => {}) // erro já é toast na mutação; o refetch abaixo restaura a posição
+        .then(() => queryClient.invalidateQueries({ queryKey: ["appointments"] }));
+    const overlap = overlappingBlockFor(newStart.getTime(), newDurationMinutes);
+    if (overlap) {
+      return new Promise<void>((resolve) => {
+        setBlockedConfirm({
+          title: overlap.title,
+          proceed: () => doIt().finally(resolve),
+          // Cancelou → refetch p/ a grade devolver o card ao lugar original.
+          onDismiss: () =>
+            queryClient.invalidateQueries({ queryKey: ["appointments"] }).finally(resolve),
+        });
+      });
+    }
+    return doIt();
+  };
+
+  const rescheduleBlock = (id: string, newStart: Date, newDurationMinutes: number) =>
+    updateBlockMutation
+      .mutateAsync({ id, dateTime: newStart.toISOString(), durationMinutes: newDurationMinutes })
+      .catch(() => {})
+      .then(() => queryClient.invalidateQueries({ queryKey: ["time-blocks"] }));
+
+  // Clique numa área livre da grade → novo agendamento já naquele horário.
+  const handleCreateAt = (start: Date) => {
+    setPromoteEvent(null);
+    setNewPatientDefaults({});
+    setSelectedAppointment(null);
+    reset({
+      patientId: "",
+      date: format(start, "yyyy-MM-dd"),
+      time: format(start, "HH:mm"),
+      durationMinutes: 30,
+      notes: "",
+    });
+    setDialogOpen(true);
+  };
+
+  const onSubmit = async (data: AppointmentForm) => {
+    const dateTime = new Date(`${data.date}T${data.time}:00`).toISOString();
+
+    // Promoção de evento do Google (Fase B) — fluxo próprio, sem aviso de bloqueio.
+    if (promoteEvent) {
+      try {
         await convertMutation.mutateAsync({
           googleEventId: promoteEvent.id,
           dateTime,
@@ -518,7 +769,16 @@ export default function AgendaPage() {
         });
         setPromoteEvent(null);
         setNewPatientDefaults({});
-      } else if (selectedAppointment) {
+        setDialogOpen(false);
+        reset();
+      } catch {
+        // toast via mutação
+      }
+      return;
+    }
+
+    const persistAppointment = async () => {
+      if (selectedAppointment) {
         // Só enviamos `status` quando o usuário DE FATO mexeu no seletor. Enviar
         // sempre o valor capturado ao abrir a janela sobrescreveria uma mudança
         // feita pelo servidor no meio-tempo (paciente confirma no WhatsApp / cron
@@ -543,8 +803,37 @@ export default function AgendaPage() {
       }
       setDialogOpen(false);
       reset();
-    } catch (error) {
-      // Error already shown via toast (mutation onError).
+    };
+
+    // Aviso de horário bloqueado: só quando o horário/duração é novo ou mudou
+    // (editar só observações não deve reabrir o aviso). Bloqueio é SUAVE — apenas
+    // confirma, não impede.
+    const startMs = new Date(dateTime).getTime();
+    const scheduleChanged = selectedAppointment
+      ? startMs !== parseISO(selectedAppointment.dateTime).getTime() ||
+        data.durationMinutes !== selectedAppointment.durationMinutes
+      : true;
+    const overlap = scheduleChanged
+      ? overlappingBlockFor(startMs, data.durationMinutes)
+      : null;
+    if (overlap) {
+      setBlockedConfirm({
+        title: overlap.title,
+        proceed: async () => {
+          try {
+            await persistAppointment();
+          } catch {
+            // toast via mutação
+          }
+        },
+      });
+      return;
+    }
+
+    try {
+      await persistAppointment();
+    } catch {
+      // toast via mutação
     }
   };
 
@@ -575,6 +864,10 @@ export default function AgendaPage() {
         action={
           <div className="flex flex-wrap gap-2">
             <ExportCsvButton url="/api/appointments/export" />
+            <Button variant="outline" onClick={() => openNewBlockDialog()}>
+              <Lock className="mr-2 h-4 w-4" />
+              Bloquear horário
+            </Button>
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Agendamento
@@ -690,9 +983,15 @@ export default function AgendaPage() {
                   )}
                 </div>
               </div>
-              {!errors.time && isPastSchedule && !selectedAppointment && (
+              {/* Agendar no passado é PERMITIDO (registro de organização) — o
+                  aviso explica a consequência em vez de só alertar, porque é
+                  aqui que o usuário descobre por que não sai WhatsApp. Vale
+                  também ao EDITAR: mover para o passado tira da automação. */}
+              {!errors.time && isPastSchedule && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 -mt-2">
-                  Atenção: este horário já passou.
+                  Este horário já passou — vai entrar como{" "}
+                  <strong>Retroativo</strong>: serve para organizar o histórico,
+                  sem confirmação por WhatsApp nem falta automática.
                 </p>
               )}
 
@@ -917,7 +1216,8 @@ export default function AgendaPage() {
         </p>
       )}
 
-      {/* Month / Week / Day View */}
+      {/* Mês (grade; arrasta chip entre DIAS, mantendo o horário) · Dia (grade de
+          horas; arrasta/estende o HORÁRIO) · Semana (lista) */}
       {viewMode === "month" ? (
         <MonthView
           month={anchorDate}
@@ -935,13 +1235,48 @@ export default function AgendaPage() {
             })
           }
           onCreateOnDay={handleCreateOnDay}
+          onSelectGoogleEvent={handleGoogleEventClick}
+          onReschedule={rescheduleAppointment}
           getStatusColor={getStatusColor}
           getStatusLabel={getStatusLabel}
           loading={isLoading}
         />
+      ) : viewMode === "day" ? (
+        isLoading ? (
+          <Skeleton className="h-[600px] w-full rounded-lg" />
+        ) : (
+          <DayGrid
+            day={anchorDate}
+            appointments={dayGridAppointments}
+            blocks={dayGridBlocks}
+            googleEvents={dayGridGoogleEvents}
+            getStatusColor={getStatusColor}
+            getStatusLabel={getStatusLabel}
+            onEditAppointment={(id) => {
+              const a = (appointmentsByDay[dayStr] ?? []).find((x) => x.id === id);
+              if (a)
+                handleOpenDialog({
+                  id: a.id,
+                  dateTime: a.dateTime,
+                  durationMinutes: a.durationMinutes ?? 30,
+                  patientId: a.patientId,
+                  notes: a.notes,
+                  status: a.status,
+                });
+            }}
+            onEditBlock={(id) => {
+              const b = (blocksByDay[dayStr] ?? []).find((x) => x.id === id);
+              if (b) openEditBlockDialog(b);
+            }}
+            onSelectGoogleEvent={handleGoogleEventClick}
+            onCreateAt={handleCreateAt}
+            onReschedule={rescheduleAppointment}
+            onRescheduleBlock={rescheduleBlock}
+          />
+        )
       ) : isLoading ? (
         <div className="grid gap-4">
-          {Array.from({ length: viewMode === "week" ? 7 : 1 }).map((_, i) => (
+          {Array.from({ length: 7 }).map((_, i) => (
             <Card key={i}>
               <CardHeader className="pb-3">
                 <Skeleton className="h-5 w-48" />
@@ -962,16 +1297,16 @@ export default function AgendaPage() {
             </Card>
           ))}
         </div>
-      ) : filteredAppointments.length === 0 && googleEvents.length === 0 ? (
+      ) : filteredAppointments.length === 0 &&
+        googleEvents.length === 0 &&
+        (timeBlocks?.length ?? 0) === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
           <CalendarPlus className="h-16 w-16 text-muted-foreground/50" />
           <div className="text-center">
             <p className="font-medium text-lg">
               {hasActiveFilter
                 ? "Nenhum agendamento corresponde aos filtros"
-                : viewMode === "week"
-                ? "Nenhum agendamento nesta semana"
-                : "Nenhum agendamento neste dia"}
+                : "Nenhum agendamento nesta semana"}
             </p>
             <p className="text-sm text-muted-foreground">
               {hasActiveFilter
@@ -992,13 +1327,19 @@ export default function AgendaPage() {
             const dayKey = format(day, "yyyy-MM-dd");
             const dayAppointments = appointmentsByDay[dayKey] || [];
             const dayGoogleEvents = googleEventsByDay[dayKey] || [];
-            // Intercala agendamentos e eventos do Google por horário; blocos
-            // de dia inteiro do Google ficam pinados no topo do dia.
+            const dayBlocks = blocksByDay[dayKey] || [];
+            // Intercala agendamentos, bloqueios e eventos do Google por horário;
+            // blocos de dia inteiro do Google ficam pinados no topo do dia.
             const timedItems = [
               ...dayAppointments.map((appointment) => ({
                 kind: "appointment" as const,
                 time: parseISO(appointment.dateTime).getTime(),
                 appointment,
+              })),
+              ...dayBlocks.map((block) => ({
+                kind: "block" as const,
+                time: parseISO(block.dateTime).getTime(),
+                block,
               })),
               ...dayGoogleEvents
                 .filter((e) => !e.allDay)
@@ -1024,7 +1365,9 @@ export default function AgendaPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 sm:px-6">
-                  {dayAppointments.length === 0 && dayGoogleEvents.length === 0 ? (
+                  {dayAppointments.length === 0 &&
+                  dayGoogleEvents.length === 0 &&
+                  dayBlocks.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Nenhum agendamento
                     </p>
@@ -1039,9 +1382,37 @@ export default function AgendaPage() {
                             <GoogleEventBlock
                               key={`${item.event.id}-${dayKey}`}
                               event={item.event}
-                              canPromote={item.event.title !== "Ocupado"}
+                              canPromote={canPromoteGoogleEvent(item.event)}
                               onPromote={() => handleOpenPromote(item.event)}
                             />
+                          );
+                        }
+                        if (item.kind === "block") {
+                          const block = item.block;
+                          const start = parseISO(block.dateTime);
+                          const end = new Date(start.getTime() + block.durationMinutes * 60000);
+                          return (
+                            <div
+                              key={block.id}
+                              onClick={() => openEditBlockDialog(block)}
+                              className="flex items-center justify-between gap-2 p-3 rounded-lg border border-zinc-400/50 bg-[repeating-linear-gradient(45deg,rgba(113,113,122,0.12)_0px,rgba(113,113,122,0.12)_6px,transparent_6px,transparent_12px)] hover:bg-accent/40 transition-all duration-200 cursor-pointer"
+                              title="Horário bloqueado — clique para editar"
+                            >
+                              <div className="flex min-w-0 items-center gap-4 flex-1">
+                                <div className="flex shrink-0 items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200">
+                                  <Lock className="h-4 w-4" />
+                                  <span className="font-medium">
+                                    {format(start, "HH:mm")}–{format(end, "HH:mm")}
+                                  </span>
+                                </div>
+                                <span className="min-w-0 break-words font-medium text-zinc-700 dark:text-zinc-200">
+                                  {block.title}
+                                </span>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 border-zinc-400/50 text-zinc-600 dark:text-zinc-300">
+                                Bloqueado
+                              </Badge>
+                            </div>
                           );
                         }
                         const appointment = item.appointment;
@@ -1061,10 +1432,11 @@ export default function AgendaPage() {
                                   ({appointment.durationMinutes ?? 30} min)
                                 </span>
                               </div>
-                              <span className="truncate font-medium">
+                              <span className="min-w-0 break-words font-medium">
                                 {appointment.patient?.name}
                               </span>
                             </div>
+                            {appointment.retroactive && <RetroactiveBadge />}
                             <Badge className={`${getStatusColor(appointment.status)} shrink-0`}>
                               {getStatusLabel(appointment.status)}
                             </Badge>
@@ -1108,6 +1480,155 @@ export default function AgendaPage() {
             >
               Excluir
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bloquear horário (criar/editar) */}
+      <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
+        <DialogContent className="sm:max-w-[460px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedBlock ? "Editar horário bloqueado" : "Bloquear horário"}</DialogTitle>
+            <DialogDescription>
+              {selectedBlock
+                ? "Atualize o período bloqueado."
+                : "Reserve um período na agenda (almoço, reunião, folga). Nenhum paciente é agendado e nenhuma confirmação é enviada."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="blockTitle">Título (opcional)</Label>
+              <Input
+                id="blockTitle"
+                value={blockTitle}
+                maxLength={200}
+                placeholder="Bloqueado"
+                onChange={(e) => setBlockTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="blockDate">Data</Label>
+              <Input
+                id="blockDate"
+                type="date"
+                value={blockDate}
+                onChange={(e) => setBlockDate(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="blockTime">Horário</Label>
+                <TimeSelect id="blockTime" value={blockTime} onChange={setBlockTime} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="blockDuration">Duração</Label>
+                <select
+                  id="blockDuration"
+                  value={blockDuration}
+                  onChange={(e) => setBlockDuration(Number(e.target.value))}
+                  className="h-10 w-full rounded-lg border border-input/20 bg-input/10 px-3 text-sm shadow-xs transition-all duration-200 outline-none focus-visible:border-primary/50 focus-visible:bg-input/20 focus-visible:ring-2 focus-visible:ring-primary/20"
+                >
+                  {[15, 30, 45, 60, 90, 120, 180, 240, 480, 1440].map((d) => (
+                    <option key={d} value={d}>
+                      {d === 1440 ? "Dia inteiro" : d < 60 ? `${d} min` : d === 60 ? "1 hora" : `${d / 60} horas`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            {selectedBlock && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setBlockDeleteTarget(selectedBlock.id)}
+                className="sm:mr-auto"
+              >
+                Excluir
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => setBlockDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitBlock}
+              disabled={
+                !blockDate ||
+                !blockTime ||
+                createBlockMutation.isPending ||
+                updateBlockMutation.isPending
+              }
+            >
+              {selectedBlock ? "Salvar" : "Bloquear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Excluir bloqueio */}
+      <AlertDialog open={!!blockDeleteTarget} onOpenChange={(open) => !open && setBlockDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover bloqueio</AlertDialogTitle>
+            <AlertDialogDescription>
+              O horário volta a ficar livre. Se você usa a Google Agenda, o evento correspondente também é removido de lá.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteBlock}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Aviso: agendando em cima de um horário bloqueado (suave — só confirma) */}
+      <AlertDialog
+        open={!!blockedConfirm}
+        onOpenChange={(open) => {
+          // Fechou via ESC/backdrop → trata como "Voltar" (reverte se necessário).
+          if (!open && blockedConfirm) {
+            blockedConfirm.onDismiss?.();
+            setBlockedConfirm(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Horário bloqueado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este horário está reservado como{" "}
+              <strong>{blockedConfirm?.title}</strong>. Quer agendar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const dismiss = blockedConfirm?.onDismiss;
+                setBlockedConfirm(null);
+                dismiss?.();
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const proceed = blockedConfirm?.proceed;
+                setBlockedConfirm(null);
+                proceed?.();
+              }}
+            >
+              Agendar mesmo assim
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

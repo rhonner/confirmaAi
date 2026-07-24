@@ -67,7 +67,7 @@ Faz par com as técnicas em [[chrome-mcp-drive-and-assert-via-js]].
 
 ## Implicação pra Definition of Done
 
-**Esses bugs não são pegáveis por typecheck nem vitest.** Só validação no browser real (Chrome MCP) garante. Isso reforça [[../concepts/done-with-chrome-walkthrough]] (regra hard).
+**Esses bugs não são pegáveis por typecheck nem vitest.** Só validação no browser real (Chrome MCP) garante. Isso reforça o item 5 da "Definição de feito" (walk-through no Chrome MCP é **regra hard**, não opcional) — ver [`.context/README.md`](../../../.context/README.md).
 
 ## Wikilinks
 

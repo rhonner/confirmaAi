@@ -66,6 +66,13 @@
   `onSubmit` já chama `useSession().update()` → a terminologia reflete na hora. **Validado E2E no Chrome:**
   trocar p/ "Saúde" → sidebar "Clientes"→"Pacientes" na hora + toast. Gate: tsc·vitest 386·build·sprints 153/153.
 
+## Rótulo "Ramo" → "Segmento" na UI (2026-07-24, decisão do dono)
+- O TEXTO visível passou de "Ramo do negócio" para **"Segmento do negócio"** (Label em
+  `configuracoes/page.tsx`, título do wizard em `onboarding-wizard.tsx`, erro "Segmento
+  inválido" em `api/onboarding/route.ts`). **O código não mudou**: o campo/enum continua
+  `businessType`; comentários/JSDoc que dizem "ramo" ficaram (não são visíveis). Ao ler este
+  arquivo, "ramo" = "segmento" na UI.
+
 ## ⚠️ Deferido (polish — NÃO é bug, decisão do dono quando quiser)
 - Rótulos "Paciente" que ficaram: mensagens de toast do **server** (`/api/patients/*`), `plan-meta.ts`,
   `paywall-modal` (const de módulo), `plan-card`, páginas públicas (`precos`, `verificar-email`), e o fallback

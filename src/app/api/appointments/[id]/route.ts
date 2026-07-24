@@ -8,7 +8,7 @@ import {
   notFoundResponse,
   serverErrorResponse
 } from "@/lib/auth-helpers"
-import { findConflictingAppointment } from "@/lib/services/conflict"
+import { isRetroactive } from "@/lib/retroactive"
 import { auditWrap } from "@/lib/audit"
 import { syncAppointmentUpdate, syncAppointmentDelete } from "@/lib/services/google/mirror"
 import type { ApiResponse, AppointmentResponse } from "@/lib/types/api"
@@ -102,32 +102,19 @@ export const PUT = auditWrap(async (
       }
     }
 
-    const willChangeSchedule =
-      (dateTime !== undefined &&
-        new Date(dateTime).getTime() !== existingAppointment.dateTime.getTime()) ||
-      (durationMinutes !== undefined &&
-        durationMinutes !== existingAppointment.durationMinutes)
-
-    if (willChangeSchedule) {
-      const conflict = await findConflictingAppointment({
-        userId: session.user.id,
-        dateTime: dateTime
-          ? new Date(dateTime)
-          : existingAppointment.dateTime,
-        durationMinutes:
-          durationMinutes ?? existingAppointment.durationMinutes,
-        ignoreId: id,
-      })
-      if (conflict) {
-        return badRequestResponse(
-          `Conflito com agendamento de ${conflict.patient.name}`,
-        )
-      }
-    }
-
+    // SOBREPOSIÇÃO É PERMITIDA (decisão do dono 2026-07-24) — o antigo 400
+    // "Conflito com agendamento de X" saiu daqui e do POST. Arrastar um card
+    // para cima de outro na grade agora só reagenda (a grade os desenha em
+    // colunas lado a lado, como o Google Agenda).
     const updateData: any = {}
     if (patientId !== undefined) updateData.patientId = patientId
-    if (dateTime !== undefined) updateData.dateTime = new Date(dateTime)
+    if (dateTime !== undefined) {
+      updateData.dateTime = new Date(dateTime)
+      // Reavalia o flag SEMPRE que o horário é reescrito: mandar para o passado
+      // marca como retroativo (sai da automação); trazer de volta para o futuro
+      // devolve o agendamento ao fluxo normal de confirmação/no-show.
+      updateData.retroactive = isRetroactive(new Date(dateTime))
+    }
     if (durationMinutes !== undefined) updateData.durationMinutes = durationMinutes
     if (status !== undefined) updateData.status = status
     if (notes !== undefined) updateData.notes = notes

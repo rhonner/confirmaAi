@@ -82,7 +82,7 @@ export function OnboardingWizard() {
           reaparece no próximo load enquanto o onboarding não for concluído. */}
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Bem-vindo! Qual é o ramo do seu negócio?</DialogTitle>
+          <DialogTitle>Bem-vindo! Qual é o segmento do seu negócio?</DialogTitle>
           <DialogDescription>
             Isso personaliza o sistema para você — inclusive como chamamos os seus
             cadastrados (paciente ou cliente).

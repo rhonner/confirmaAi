@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma"
 import { AppointmentStatus } from "@/generated/prisma/client"
 import { createAppointmentSchema } from "@/lib/validations/appointment"
 import { getAuthSession, unauthorizedResponse, badRequestResponse, serverErrorResponse } from "@/lib/auth-helpers"
-import { findConflictingAppointment } from "@/lib/services/conflict"
 import { startOfDayInAppTz, endOfDayInAppTz } from "@/lib/timezone"
+import { isRetroactive } from "@/lib/retroactive"
 import { auditWrap } from "@/lib/audit"
 import { syncAppointmentCreate } from "@/lib/services/google/mirror"
 import type { ApiResponse, PaginatedResponse, AppointmentResponse } from "@/lib/types/api"
@@ -134,11 +134,12 @@ export const POST = auditWrap(async (request: NextRequest) => {
     const { patientId, dateTime, durationMinutes, notes } = validation.data
     const duration = durationMinutes ?? 30
 
-    // Reject appointments in the past
+    // Agendar no PASSADO é permitido (registro de organização, decisão do dono
+    // 2026-07-24): não rejeitamos mais. Marcamos como `retroactive` para o
+    // scheduler não mandar WhatsApp nem marcar NO_SHOW automático.
+    // O flag é decidido AQUI, no servidor — o cliente não manda esse campo.
     const appointmentDate = new Date(dateTime)
-    if (appointmentDate < new Date()) {
-      return badRequestResponse("Não é possível agendar no passado")
-    }
+    const retroactive = isRetroactive(appointmentDate)
 
     // Verify patient belongs to user
     const patient = await prisma.patient.findFirst({
@@ -152,23 +153,17 @@ export const POST = auditWrap(async (request: NextRequest) => {
       return badRequestResponse("Paciente não encontrado")
     }
 
-    const conflict = await findConflictingAppointment({
-      userId: session.user.id,
-      dateTime: appointmentDate,
-      durationMinutes: duration,
-    })
-    if (conflict) {
-      return badRequestResponse(
-        `Conflito com agendamento de ${conflict.patient.name}`,
-      )
-    }
-
+    // SOBREPOSIÇÃO É PERMITIDA (decisão do dono 2026-07-24): dois clientes no
+    // mesmo horário são um caso real (atendimento simultâneo, sala dupla) e a
+    // grade do Dia já os desenha lado a lado, como o Google Agenda. Sem aviso —
+    // o antigo 400 "Conflito com agendamento de X" foi removido.
     const appointment = await prisma.appointment.create({
       data: {
         patientId,
         userId: session.user.id,
         dateTime: new Date(dateTime),
         durationMinutes: duration,
+        retroactive,
         notes,
       },
       include: {

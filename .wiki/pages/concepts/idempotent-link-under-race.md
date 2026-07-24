@@ -37,6 +37,8 @@ O mesmo `/convert` faz o **check de conflito de horário** (`findConflictingAppo
 - Isto é **classe pré-existente idêntica ao `POST /appointments`** (que nem usa tx). Aceito por design; endurecer exige constraint de exclusão no DB (mudança app-wide).
 - **Lição**: envolver escritas numa tx Serializable **não** torna atômico um guard cujo read acontece antes/fora dela. Ou o read entra na tx (com o client `tx`), ou a garantia vira do DB (exclusion constraint / unique).
 
+> **Atualização 2026-07-24 — o exemplo dissolveu, a lição fica.** O dono decidiu que **sobreposição de agendamentos é permitida** e o guard `findConflictingAppointment` foi removido do `/convert` e do `POST /appointments` (`src/lib/services/conflict.ts` deletado). Agendamentos sobrepostos passaram a ser um resultado **válido**, então esta corrida específica **deixou de ser um risco** — não foi consertada, foi *desqualificada como bug*. O princípio geral (read fora da tx não é serializado) continua valendo e é o que torna esta página útil; só não procure mais o `findConflictingAppointment` no código. Ver `.context/features/appointments.md`.
+
 ## Cross-refs
 
 - `.context/features/google-calendar.md` — § Fase B (o catch do `/convert` e o comentário sobre o conflito fora da tx).

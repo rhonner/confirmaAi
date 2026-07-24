@@ -256,7 +256,7 @@ export default function ConfiguracoesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="businessType">Ramo do negócio</Label>
+              <Label htmlFor="businessType">Segmento do negócio</Label>
               <select
                 id="businessType"
                 {...register("businessType")}

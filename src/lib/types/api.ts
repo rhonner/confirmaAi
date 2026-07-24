@@ -1,4 +1,4 @@
-import type { User, Patient, Appointment, Settings, MessageLog } from "@/generated/prisma/client"
+import type { User, Patient, Appointment, Settings, MessageLog, TimeBlock } from "@/generated/prisma/client"
 
 export type ApiResponse<T = unknown> = {
   data?: T
@@ -31,6 +31,9 @@ export type AppointmentResponse = Appointment & {
   patient: Pick<Patient, "id" | "name" | "phone">
   messageLogs?: MessageLog[]
 }
+
+// Horário bloqueado (sem paciente). Ver .context/features/time-blocks.md.
+export type TimeBlockResponse = TimeBlock
 
 export type DashboardStats = {
   totalAppointments: number

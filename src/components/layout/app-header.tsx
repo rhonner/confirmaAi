@@ -59,8 +59,8 @@ export function AppHeader({
         </Button>
       )}
 
-      <div className="flex-1">
-        <h2 className="text-lg font-semibold tracking-tight">{clinicName}</h2>
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate text-lg font-semibold tracking-tight">{clinicName}</h2>
       </div>
 
       <div className="flex items-center gap-2">

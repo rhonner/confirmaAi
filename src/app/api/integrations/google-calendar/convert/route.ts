@@ -17,8 +17,8 @@ import {
   SlotConflictError,
 } from "@/lib/billing";
 import { canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator";
+import { isRetroactive } from "@/lib/retroactive";
 import { createPatientSchema } from "@/lib/validations/patient";
-import { findConflictingAppointment } from "@/lib/services/conflict";
 import type { ApiResponse, AppointmentResponse } from "@/lib/types/api";
 
 /**
@@ -27,7 +27,8 @@ import type { ApiResponse, AppointmentResponse } from "@/lib/types/api";
  *
  * Fluxo: gate PREMIUM/e-mail (`gcal.convert`) → resolve paciente (existente por
  * id/telefone/CPF, ou cria novo passando pela quota) → cria Appointment PENDING
- * (mesma regra de conflito do POST /appointments) → grava `ExternalEvent` como
+ * (sobreposição permitida e passado permitido como `retroactive`, mesmas regras
+ * do POST /appointments desde 2026-07-24) → grava `ExternalEvent` como
  * link idempotente (o firewall: o scheduler NUNCA lê ExternalEvent; o
  * Appointment gerado é um agendamento normal). Idempotente por evento
  * (`@@unique([userId, googleEventId])`).
@@ -138,12 +139,12 @@ export const POST = auditWrap(async (request: NextRequest) => {
       );
     }
 
-    // Rejeita passado — senão markNoShows marcaria NO_SHOW falso no próximo cron.
+    // Promover evento no PASSADO é permitido (2026-07-24, mesma regra do POST
+    // /appointments): vira um registro `retroactive`, que o cron não varre — era
+    // esse o motivo do antigo 400 (markNoShows marcaria NO_SHOW falso).
     const when = new Date(input.dateTime);
     if (Number.isNaN(when.getTime())) return badRequestResponse("Data/hora inválida");
-    if (when < new Date()) {
-      return badRequestResponse("Não é possível promover um evento no passado");
-    }
+    const retroactive = isRetroactive(when);
     const duration = input.durationMinutes ?? 30;
 
     // Identificadores do paciente (quando criando/casando por dados).
@@ -197,16 +198,10 @@ export const POST = auditWrap(async (request: NextRequest) => {
       }
     }
 
-    // Conflito de horário — mesma regra (e mesma limitação) do POST /appointments:
-    // é um guard SUAVE, feito FORA da tx, no cliente global. A tx Serializable
-    // abaixo NÃO protege contra duplo-agendamento por corrida (dois /convert
-    // simultâneos, eventos diferentes, mesmo horário → ambos passam aqui e criam
-    // Appointments sobrepostos). Aceito por design (idem POST /appointments);
-    // endurecer exigiria constraint de exclusão no DB, mudança app-wide.
-    const conflict = await findConflictingAppointment({ userId, dateTime: when, durationMinutes: duration });
-    if (conflict) {
-      return badRequestResponse(`Conflito com agendamento de ${conflict.patient.name}`);
-    }
+    // SOBREPOSIÇÃO É PERMITIDA (2026-07-24, mesma regra do POST /appointments):
+    // o guard de conflito saiu daqui. Com isso a antiga limitação documentada
+    // (duplo-agendamento por corrida entre dois /convert) deixa de ser um risco:
+    // agendamentos sobrepostos são um resultado VÁLIDO agora.
 
     // Tx Serializable: (cria/vincula paciente) + cria Appointment + linka ExternalEvent.
     try {
@@ -242,6 +237,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
               userId,
               dateTime: when,
               durationMinutes: duration,
+              retroactive,
               notes: input.notes ?? undefined,
             },
             include: APP_INCLUDE,

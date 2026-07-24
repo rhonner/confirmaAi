@@ -2,10 +2,11 @@
 title: Teste de regressão deve asserir o predicado, não a chamada
 type: concept
 created: 2026-07-10
-updated: 2026-07-10
-tags: [testing, gotcha, regression, source-grep]
+updated: 2026-07-24
+tags: [testing, gotcha, regression, source-grep, flake, determinism]
 sources:
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
+  - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
   - .context/features/google-calendar.md
 related:
   - pages/concepts/append-only-via-pg-trigger.md
@@ -37,6 +38,17 @@ Em ambos, `"externalEvent.findMany"` continua presente e a query re-implementada
 - **Cheiro**: o nome do check afirma um comportamento observável ("esconde eventos promovidos") mas as asserções só tocam pré-condições (dados existem, função é chamada). Feche a distância entre o nome e a asserção.
 - Melhor ainda quando barato: **observe a saída real** (invoque o handler / faça a request) em vez de inspecionar o source.
 
+## Corolário: o teste também precisa escolher sua fixture de forma determinística
+
+Mesma família de defeito, do outro lado — o check não mente sobre o comportamento, mas sobre **qual linha ele pegou**.
+
+`findFirst` **sem `orderBy`** não tem ordem garantida: o Postgres devolve o que for conveniente ao plano, e isso muda com o estado da tabela. No `scripts/test-sprints.ts`, o check 2.15 apagava "um paciente" via `findFirst` sem `orderBy`; dependendo de qual linha caía, o 2.16 seguinte estourava `P2002` no unique `[userId, cpfHash]`. Flake intermitente, sem relação com o código sob teste (2026-07-24).
+
+- **Regra**: em teste, todo `findFirst`/`take: 1` que alimenta uma ação destrutiva ou uma asserção leva **`orderBy` explícito** (`{ createdAt: "asc" }`, `{ id: "asc" }`) — ou, melhor, filtra pela fixture que o próprio check criou.
+- **Cheiro**: um check falha "às vezes" e passa ao rodar sozinho. Antes de culpar concorrência, procure seleção de linha sem ordem.
+- Vale para o mesmo `test:sprints` que já precisa rodar **isolado** do vitest (contenção no Postgres local) — duas fontes distintas de não-determinismo que se confundem no sintoma.
+
 ## Cross-refs
 
 - `.context/features/google-calendar.md` — GCAL.9 (endurecido) e a de-dup em `events/route.ts`.
+- `.context/README.md` § "Definição de feito" — `test:sprints` roda isolado.

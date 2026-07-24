@@ -142,6 +142,7 @@ model User {
   patientQuotaSlots PatientQuotaSlot[]
   googleCalendar    GoogleCalendarConnection?
   externalEvents    ExternalEvent[]
+  timeBlocks        TimeBlock[]
 
   @@index([cpfHash])
   @@index([deletedAt])
@@ -204,6 +205,15 @@ model Appointment {
   // o mirror os ignora). Ver .context/features/google-calendar.md § Fase C.
   googleEventId      String?
   googleCalendarId   String?
+  // RETROATIVO: lançado com data/hora que JÁ PASSOU (registro de organização,
+  // 2026-07-24). Setado pelo backend na escrita (`dateTime < now`), nunca pelo
+  // cliente. NÃO dá para derivar isso de `dateTime < now` na leitura: um
+  // agendamento marcado para o futuro que simplesmente PASSOU precisa continuar
+  // sendo varrido (é a falta que o produto mede) — o flag distingue "lancei no
+  // passado de propósito" de "passou o horário".
+  // Consequência: fica FORA da automação (sem confirmação por WhatsApp e sem
+  // NO_SHOW automático). Ver .context/features/appointments.md § Retroativo.
+  retroactive        Boolean           @default(false)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -392,4 +402,32 @@ model ExternalEvent {
 
   @@unique([userId, googleEventId])
   @@index([userId])
+}
+
+// Horário BLOQUEADO na agenda (sem paciente, sem confirmação por WhatsApp) —
+// ex.: almoço, férias, reunião. NÃO é um Appointment: o scheduler
+// (sendConfirmations/sendReminders/markNoShows) NUNCA consulta esta tabela, então
+// um bloqueio jamais dispara WhatsApp nem vira NO_SHOW (mesmo princípio de
+// firewall do ExternalEvent). É espelhado no Google Calendar do tenant como um
+// evento SEM convidados (título = `title`), via mirror.ts (Fase C). Ao criar um
+// agendamento que sobrepõe um bloqueio, a UI apenas AVISA (modal de confirmação)
+// — o bloqueio não impede, só alerta. NÃO faz parte de AUDITED_MODELS.
+// Ver .context/features/time-blocks.md.
+model TimeBlock {
+  id               String   @id @default(cuid())
+  userId           String
+  dateTime         DateTime
+  durationMinutes  Int      @default(60)
+  title            String   @default("Bloqueado")
+  // Fase C: id do evento espelho no Google (null = ainda não espelhado). Mesmo
+  // esquema do Appointment.googleEventId.
+  googleEventId    String?
+  googleCalendarId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([dateTime])
 }

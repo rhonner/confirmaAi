@@ -1,13 +1,18 @@
-# Graph Report - .  (2026-07-24)
+# Graph Report - saas1  (2026-07-24)
 
 ## Corpus Check
-- 448 files · ~255,577 words
+- 454 files · ~275,302 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1830 nodes · 4291 edges · 157 communities (93 shown, 64 thin omitted)
+- 1945 nodes · 4490 edges · 175 communities (107 shown, 68 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 88 edges (avg confidence: 0.78)
-- Token cost: 1,028,827 input · 0 output
+- Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `d0b4e676`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - Seed & Backfill Scripts
@@ -161,18 +166,36 @@
 - Next.js Starter Icon (window)
 - Session Note Template
 - Wiki Append-only Log
+- usage.ts
+- whatsapp-alerts.ts
+- day-grid.tsx
+- evolution.ts
+- password-reset.ts
+- email-verification.ts
+- plans.ts
+- BillingProviderImpl
+- lib/auth.ts
+- convert/route.ts
+- Mover entre dias: componentes locais, não aritmética de timestamp
+- disposable-emails.ts
+- ux-writer.md
+- seed.ts
+- recaptcha.ts
+- eslint
+- bcryptjs
+- @testing-library/jest-dom
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 130 edges
-2. `getAuthSession()` - 57 edges
+2. `getAuthSession()` - 60 edges
 3. `main()` - 56 edges
-4. `audit()` - 55 edges
-5. `unauthorizedResponse()` - 50 edges
-6. `serverErrorResponse()` - 48 edges
+4. `audit()` - 56 edges
+5. `unauthorizedResponse()` - 53 edges
+6. `serverErrorResponse()` - 51 edges
 7. `Button()` - 35 edges
-8. `Monetization v2 state snapshot` - 32 edges
-9. `ApiResponse` - 30 edges
-10. `captureError()` - 29 edges
+8. `ApiResponse` - 32 edges
+9. `Monetization v2 state snapshot` - 32 edges
+10. `fetchApi()` - 31 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Confirmação por link (HMAC stateless token, page GET + POST, auto-cancel)` --semantically_similar_to--> `Automatic confirmation flow (24h send, webhook reply, no-show)`  [INFERRED] [semantically similar]
@@ -214,15 +237,15 @@
 - **Estratégia de monetização: níveis de assinatura, limite de 5 pacientes únicos, bloqueio/paywall e cobrança** — monetizacao_prompt_niveis_de_assinatura, monetizacao_prompt_plano_free, monetizacao_prompt_plano_pago, monetizacao_prompt_limite_5_pacientes_unicos, monetizacao_prompt_fluxo_de_bloqueio, monetizacao_prompt_cobranca_pix_cartao [EXTRACTED 1.00]
 - **Generic Next.js starter-template boilerplate icons (low value)** — public_file_starter_icon, public_globe_starter_icon, public_next_starter_icon, public_vercel_starter_icon, public_window_starter_icon [INFERRED 0.85]
 
-## Communities (157 total, 64 thin omitted)
+## Communities (175 total, 68 thin omitted)
 
 ### Community 0 - "Seed & Backfill Scripts"
-Cohesion: 0.05
-Nodes (65): adapter, main(), prisma, main(), main(), RegisterPage(), useRecaptcha(), Window (+57 more)
+Cohesion: 0.08
+Nodes (32): GET(), PhoneInput, PhoneInputProps, brPhoneCandidates(), digitsOnly(), formatPhoneDisplay(), getLocalDigits(), isValidPhone() (+24 more)
 
 ### Community 1 - "Patient & Usage UI Components"
 Cohesion: 0.04
-Nodes (60): LEVEL_STYLES, MessageUsagePill(), UsageBadge(), Patient, PatientComboboxProps, AlertDialogOverlay(), Avatar(), AvatarBadge() (+52 more)
+Nodes (61): LEVEL_STYLES, MessageUsagePill(), UsageBadge(), Patient, PatientComboboxProps, AlertDialogOverlay(), Avatar(), AvatarBadge() (+53 more)
 
 ### Community 2 - "Feature Registry (.context)"
 Cohesion: 0.07
@@ -230,55 +253,55 @@ Nodes (68): Feature: audit, Feature: auth, Feature: billing, Feature: dashboard,
 
 ### Community 3 - "Agenda & Appointment Form"
 Cohesion: 0.06
-Nodes (57): AccountsSection(), AgendaPage(), AppointmentForm, appointmentSchema, DURATION_OPTIONS, statusOptions, UpcomingAppointments(), getMonthGridRange() (+49 more)
+Nodes (58): AccountsSection(), AgendaPage(), AppointmentForm, appointmentSchema, canPromoteGoogleEvent(), DURATION_OPTIONS, statusOptions, ConfiguracoesPage() (+50 more)
 
 ### Community 4 - "API Routes & Legal Pages"
-Cohesion: 0.05
-Nodes (39): handler, POST, metadata, metadata, LegalPage(), DISPOSABLE_DOMAINS, disposableDomainCount(), isDisposableEmail() (+31 more)
+Cohesion: 0.27
+Nodes (6): metadata, metadata, LegalPage(), LegalSection, PRIVACY_SECTIONS, TERMS_SECTIONS
 
 ### Community 5 - "BM25 Search Engine (skill)"
 Cohesion: 0.06
 Nodes (42): BM25, detect_domain(), _load_csv(), Lowercase, split, remove punctuation, filter short words, Build BM25 index from documents, Score all documents against query, Load CSV and return list of dicts, Core search function using BM25 (+34 more)
 
 ### Community 6 - "Asaas Billing Provider"
-Cohesion: 0.07
-Nodes (16): AsaasProvider, deriveNextDueDate(), mapPaymentStatus(), mapPaymentStatus(), MockProvider, computePixExpiresAt(), _ttlRaw, BillingProviderImpl (+8 more)
+Cohesion: 0.11
+Nodes (13): deriveNextDueDate(), mapPaymentStatus(), mapPaymentStatus(), MockProvider, computePixExpiresAt(), _ttlRaw, CheckoutMethod, CreateCheckoutInput (+5 more)
 
 ### Community 7 - "Checkout & Billing Pages"
-Cohesion: 0.11
-Nodes (33): CheckoutPage(), CheckoutResponse, BillingPage(), CheckoutSuccessPage(), metadata, metadata, Status, FEATURE_ROWS (+25 more)
+Cohesion: 0.10
+Nodes (38): CheckoutPage(), CheckoutResponse, CheckoutSuccessPage(), SettingsForm, settingsSchema, metadata, metadata, Status (+30 more)
 
 ### Community 8 - "Auth & Email-Verify Routes"
-Cohesion: 0.08
-Nodes (41): bodySchema, POST, GET, createVerificationToken(), hashToken(), SendResult, sendVerificationEmail(), verifyEmailToken() (+33 more)
+Cohesion: 0.07
+Nodes (48): createVerificationToken(), hashToken(), SendResult, sendVerificationEmail(), verifyEmailToken(), VerifyResult, b64(), makeResetToken() (+40 more)
 
 ### Community 9 - "Phone Input & Normalization"
-Cohesion: 0.08
-Nodes (32): GET(), PhoneInput, PhoneInputProps, brPhoneCandidates(), digitsOnly(), formatPhoneDisplay(), getLocalDigits(), isValidPhone() (+24 more)
+Cohesion: 0.13
+Nodes (19): react, react, BillingPage(), ExportCsvButton(), QuotaBanner(), PatientCombobox(), PatientFormDialog(), FormItem() (+11 more)
 
 ### Community 10 - "Claude Agents & Skills"
 Cohesion: 0.09
 Nodes (43): backend-architect agent, code-reviewer agent, frontend-developer agent, ralph-loop agent, ui-designer agent, ui-ux-pro-max design skill, Template de registro de feature, Reset de conta Free (1x vitalício) (+35 more)
 
 ### Community 11 - "CRUD API Routes"
-Cohesion: 0.08
-Nodes (29): DELETE, GET(), PUT, POST, APP_INCLUDE, convertSchema, patientCollisionResponse(), POST (+21 more)
+Cohesion: 0.10
+Nodes (37): POST, DELETE, PUT, GET(), POST, POST, POST, POST() (+29 more)
 
 ### Community 12 - "CSV Export Routes (RFC-4180)"
-Cohesion: 0.12
-Nodes (28): RFC-4180, GET(), STATUS_LABEL, GET(), GET(), ConnectResponse, POST, POST() (+20 more)
+Cohesion: 0.22
+Nodes (12): RFC-4180, GET(), STATUS_LABEL, GET(), GET(), paywallResponse(), buildCsv(), csvEscape() (+4 more)
 
 ### Community 13 - "Admin Audit Pages"
-Cohesion: 0.13
-Nodes (24): AdminAuditPage(), fmt(), ACTOR_LABEL, AtividadePage(), PacientesPage(), ExistingPatient, PageHeader(), PageHeaderProps (+16 more)
+Cohesion: 0.14
+Nodes (23): AdminAuditPage(), fmt(), ACTOR_LABEL, AtividadePage(), PacientesPage(), ExistingPatient, PageHeader(), PageHeaderProps (+15 more)
 
 ### Community 14 - "Google OAuth (PKCE)"
 Cohesion: 0.11
-Nodes (26): RFC-7636, base64Url(), buildAuthUrl(), decodeIdTokenEmail(), exchangeCode(), expiryFrom(), generatePkcePair(), generateState() (+18 more)
+Nodes (28): RFC-7636, main(), base64Url(), buildAuthUrl(), decodeIdTokenEmail(), exchangeCode(), expiryFrom(), generatePkcePair() (+20 more)
 
 ### Community 15 - "API Routes (POST)"
-Cohesion: 0.11
-Nodes (20): DELETE, POST, bodySchema, POST, bodySchema, CheckoutResponse, POST, POST (+12 more)
+Cohesion: 0.08
+Nodes (41): main(), DELETE, bodySchema, POST, bodySchema, POST, POST, GET (+33 more)
 
 ### Community 16 - "Paywall & Export UI"
 Cohesion: 0.13
@@ -293,52 +316,52 @@ Cohesion: 0.07
 Nodes (28): dom, dom.iterable, esnext, **/*.mts, .next/dev/types/**/*.ts, next-env.d.ts, .next/types/**/*.ts, node_modules (+20 more)
 
 ### Community 19 - "Scheduler & Billing Maintenance"
-Cohesion: 0.14
-Nodes (21): main(), GET(), POST(), audit(), runBillingMaintenance(), formatAppointmentTime(), formatMessage(), appBaseUrl() (+13 more)
+Cohesion: 0.16
+Nodes (16): onRequestError(), register(), appBaseUrl(), autoCancelUnconfirmed(), CONFIRMATION, effectiveDeadlineMs(), startScheduler(), logQuotaBlockedOnce() (+8 more)
 
 ### Community 20 - "API Routes (POST bodies)"
-Cohesion: 0.15
-Nodes (19): bodySchema, POST, POST, POST, AuditContext, getAuditContext(), getOrSystemContext(), requireAuditContext() (+11 more)
+Cohesion: 0.26
+Nodes (13): RegisterPage(), canonicalizeCnpj(), checkDigit(), CNPJ_W1, CNPJ_W2, CnpjValidationResult, formatCnpj(), SEQUENTIAL_CNPJS (+5 more)
 
 ### Community 21 - "Login & Auth Pages"
 Cohesion: 0.14
 Nodes (13): Form, schema, LoginForm, loginSchema, Form, schema, RegisterForm, registerSchema (+5 more)
 
 ### Community 22 - "Google Calendar Read API"
-Cohesion: 0.16
-Nodes (21): accessTokenIsFresh(), ensureAccessToken(), fetchGoogleEventById(), fetchGoogleEventsForUser(), GcalEventByIdResult, GcalEventDetailDTO, GcalEventDTO, GcalFetchResult (+13 more)
+Cohesion: 0.13
+Nodes (28): accessTokenIsFresh(), AppointmentEventInput, buildEventResource(), createGoogleEvent(), deleteEventOnce(), ensureAccessToken(), fetchGoogleEventById(), fetchGoogleEventsForUser() (+20 more)
 
 ### Community 23 - "Google Calendar Write API"
-Cohesion: 0.20
-Nodes (23): AppointmentEventInput, appOriginEventId(), buildEventResource(), createGoogleEvent(), deleteEventOnce(), deleteGoogleEvent(), insertEventOnce(), patchEventOnce() (+15 more)
+Cohesion: 0.22
+Nodes (23): appOriginEventId(), deleteGoogleEvent(), APPT_SELECT, ApptRow, auditBlockPushed(), auditPushed(), BLOCK_SELECT, blockEventInput() (+15 more)
 
 ### Community 24 - "Ops Scripts (gcal/beta)"
 Cohesion: 0.10
-Nodes (8): ConnectResponse, POST, GET(), StatusResponse, ExtendedPrisma, globalForPrisma, getInstanceStatus(), whatsappReconnectedPatch()
+Nodes (10): bodySchema, POST, bodySchema, CheckoutResponse, POST, detectOwnerCpfReuse(), maskEmail(), OwnerCpfDedupResult (+2 more)
 
 ### Community 25 - "Dashboard & Layout"
-Cohesion: 0.15
-Nodes (11): computeWeeklyTrend(), DashboardPage(), LogoMark(), AppSidebarProps, navigation, ThemeToggle(), LegalDialog(), Tooltip() (+3 more)
+Cohesion: 0.18
+Nodes (10): computeWeeklyTrend(), DashboardPage(), LogoMark(), AppSidebarProps, navigation, LegalDialog(), Tooltip(), TooltipContent() (+2 more)
 
 ### Community 26 - "shadcn/ui Config"
 Cohesion: 0.10
 Nodes (19): aliases, components, hooks, lib, ui, utils, iconLibrary, registries (+11 more)
 
 ### Community 27 - "React UI Components"
-Cohesion: 0.16
-Nodes (16): react, react, ExportCsvButton(), QuotaBanner(), PatientCombobox(), PatientFormDialog(), FormItem(), useCreatePatient() (+8 more)
+Cohesion: 0.07
+Nodes (28): ⚠️ Armadilha: `pending` (anti-flicker) precisa de sinal EXPLÍCITO para sair, Arquivos, Arraste entre dias no modo Mês (`month-view.tsx`), Callbacks (fornecidos pelo `agenda/page.tsx`), Clique num evento do Google (nas duas grades), Como estender, Feature: Arraste na agenda (grade de horas do Dia + Mês entre dias), Interação de arraste/resize (Pointer Events) (+20 more)
 
 ### Community 28 - "Admin Layout & Routes"
-Cohesion: 0.23
-Nodes (13): AdminLayout(), AdminAccount, GET(), AUDIT_SELECT, GET(), bodySchema, POST(), RootPage() (+5 more)
+Cohesion: 0.14
+Nodes (22): main(), AdminLayout(), AdminAccount, GET(), AUDIT_SELECT, GET(), bodySchema, POST() (+14 more)
 
 ### Community 29 - "Playwright E2E Specs"
 Cohesion: 0.19
 Nodes (11): TIMES, last9, PATIENT, PATIENT_UPDATED, tomorrow, displayPhone(), expectTime(), fillPhoneInput() (+3 more)
 
 ### Community 30 - "Test Runner (test:sprints)"
-Cohesion: 0.22
-Nodes (12): check(), generateValidCpf(), main(), results, Sprint, isPatientPurgeDue(), runAccountPurge(), maskEmail() (+4 more)
+Cohesion: 0.28
+Nodes (12): check(), generateValidCpf(), main(), results, Sprint, isPatientPurgeDue(), maskEmail(), maskPhone() (+4 more)
 
 ### Community 31 - "Dev-with-Agents Workflow"
 Cohesion: 0.15
@@ -357,12 +380,12 @@ Cohesion: 0.13
 Nodes (15): eslint, jsdom, devDependencies, eslint, jsdom, @testing-library/react, ts-node, @types/pg (+7 more)
 
 ### Community 35 - "Settings Page & Form"
-Cohesion: 0.18
-Nodes (12): ConfiguracoesPage(), formatTemplatePreview(), SettingsForm, settingsSchema, TemplatePreview(), OnboardingBanner(), AccountDataCard(), TEMPLATE_VARS (+4 more)
+Cohesion: 0.19
+Nodes (14): Action, Allow, checkStatus(), Decision, Deny, DenyReason, getPlanConfig(), PlanConfig (+6 more)
 
 ### Community 36 - "Dashboard Shell & Guards"
-Cohesion: 0.18
-Nodes (11): DashboardLayout(), AppHeader(), AppSidebar(), SessionGuard(), UnsavedChangesGuard(), OnboardingWizard(), Sheet(), WhatsappDisconnectedBanner() (+3 more)
+Cohesion: 0.20
+Nodes (10): DashboardLayout(), AppHeader(), AppSidebar(), SessionGuard(), OnboardingWizard(), SheetContent(), WhatsappDisconnectedBanner(), useWhatsappStatus() (+2 more)
 
 ### Community 37 - "Patients & Quota Feature"
 Cohesion: 0.19
@@ -378,7 +401,7 @@ Nodes (7): EvolutionEvent, POST, sendText(), CANCEL_KEYWORDS, CONFIRM_KEYWORDS, 
 
 ### Community 40 - "Confirmation Link Page"
 Cohesion: 0.21
-Nodes (7): ConfirmarPage(), metadata, ConfirmActions(), Result, formatAppointmentDate(), buildConfirmationAck(), SAT_2330
+Nodes (8): ConfirmarPage(), metadata, ConfirmActions(), Result, formatAppointmentDate(), formatAppointmentTime(), buildConfirmationAck(), SAT_2330
 
 ### Community 41 - "External Event Firewall"
 Cohesion: 0.21
@@ -389,8 +412,8 @@ Cohesion: 0.30
 Nodes (9): bodySchema, POST(), b64(), ConfirmationVerify, makeConfirmationToken(), secret(), sign(), unb64() (+1 more)
 
 ### Community 43 - "Template Editor (TipTap)"
-Cohesion: 0.20
-Nodes (10): InlineJSON, lineToInline(), parse(), TemplateEditor, TemplateEditorHandle, TemplateEditorProps, TemplateVar, VAR_ALTERNATION (+2 more)
+Cohesion: 0.15
+Nodes (14): formatTemplatePreview(), TemplatePreview(), InlineJSON, lineToInline(), parse(), TEMPLATE_VARS, TemplateEditor, TemplateEditorHandle (+6 more)
 
 ### Community 44 - "Audit Prisma Extension"
 Cohesion: 0.21
@@ -401,8 +424,8 @@ Cohesion: 0.31
 Nodes (6): GET(), GET, buildAccountExport(), actionLabel(), knownActions(), LABELS
 
 ### Community 46 - "API Routes (GET/POST)"
-Cohesion: 0.31
-Nodes (7): POST, GET(), SubscriptionResponse, resetBlockMessage(), resetEligibility, ResetEligibilityReason, hasAdminOverride()
+Cohesion: 0.19
+Nodes (10): appointmentStatusValues, CreateAppointmentInput, createAppointmentSchema, UpdateAppointmentInput, updateAppointmentSchema, registerSchema, cpfSchema, CreatePatientInput (+2 more)
 
 ### Community 47 - "Form Components (shadcn)"
 Cohesion: 0.25
@@ -417,16 +440,16 @@ Cohesion: 0.31
 Nodes (10): brPhoneCandidates (nono dígito fix), findPendingAppointmentForResponse (FIFO match), Webhook Evolution, WhatsApp connection feature, Appointment.status state machine, Confirmação Automática E2E flow, Multi-tenancy isolation flow, getAuthSession (+2 more)
 
 ### Community 50 - "Token Crypto & GCal Scripts"
-Cohesion: 0.36
-Nodes (7): main(), decodeKey(), decryptToken(), encryptToken(), keyForVersion(), HEX_KEY_A, HEX_KEY_B
+Cohesion: 0.43
+Nodes (5): decodeKey(), encryptToken(), keyForVersion(), HEX_KEY_A, HEX_KEY_B
 
 ### Community 51 - "Root Layout & Fonts"
 Cohesion: 0.24
 Nodes (6): geistMono, metadata, plusJakarta, Providers(), Toaster(), TooltipProvider()
 
 ### Community 52 - "Billing Notifications (Dunning)"
-Cohesion: 0.31
-Nodes (8): BillingNotificationStats, DUNNING_STAGES, DunningDecision, DunningStage, dunningStageDue(), resolvePastDueSince(), runBillingNotifications(), usageThresholdDue()
+Cohesion: 0.45
+Nodes (10): allIdentifiers(), canonicalizePhone(), getPepper(), hashCnpj(), hashCpf(), hashDocument(), hashPhone(), primaryIdentifier() (+2 more)
 
 ### Community 53 - "Message Template Assembly"
 Cohesion: 0.33
@@ -442,15 +465,11 @@ Nodes (9): Google Calendar integration (feature, phases A/B/C), Google event ove
 
 ### Community 56 - "Runtime Dependencies (bcrypt/pg)"
 Cohesion: 0.22
-Nodes (9): bcryptjs, dependencies, bcryptjs, pg, @tiptap/extension-placeholder, zod, pg, @tiptap/extension-placeholder (+1 more)
+Nodes (9): class-variance-authority, dependencies, class-variance-authority, pg, @tiptap/extension-placeholder, zod, pg, @tiptap/extension-placeholder (+1 more)
 
 ### Community 57 - "WhatsApp Resilience"
 Cohesion: 0.28
 Nodes (9): runWhatsappResilience, WhatsappDisconnectedBanner, Evolution API client (evolution.ts), WhatsApp resilience (whatsapp-alerts.ts), DIRECT_URL vs pooled DATABASE_URL (Neon), Hetzner VPS Evolution stack, Resend email service, Deployment Status snapshot (+1 more)
-
-### Community 58 - "Instrumentation & Cron Bootstrap"
-Cohesion: 0.33
-Nodes (7): onRequestError(), register(), CaptureArea, CaptureContext, captureError(), initObservability(), sentryEnabled()
 
 ### Community 59 - "Email-Verify & Login Gate"
 Cohesion: 0.29
@@ -513,8 +532,8 @@ Cohesion: 0.33
 Nodes (5): name, prisma, seed, private, version
 
 ### Community 74 - "Time Select Component"
-Cohesion: 0.47
-Nodes (5): HOURS, MINUTES, splitTime(), TimeSelect, TimeSelectProps
+Cohesion: 0.14
+Nodes (13): CellItem, DragState, minutesOfDay(), MonthAppointment, MonthView(), MonthViewProps, moveKeepingTime(), statusDotClass() (+5 more)
 
 ### Community 75 - "NextAuth Types"
 Cohesion: 0.33
@@ -564,25 +583,85 @@ Nodes (3): effectivePlanTier() — override active → PREMIUM at 4 gates, Entit
 Cohesion: 1.00
 Nodes (3): Identifier hash namespacing (cpf:/cnpj: dispatch preserves compat), Owner document accepts CPF or CNPJ (single auto-detect field), Sessão 2026-06-26 — Documento do dono CPF ou CNPJ
 
+### Community 93 - "class-variance-authority"
+Cohesion: 0.36
+Nodes (6): ConnectResponse, POST, GcalStatusResponse, GET(), check(), isGoogleOAuthConfigured()
+
+### Community 126 - "testing-library/jest-dom"
+Cohesion: 0.12
+Nodes (14): A regra, Arraste ou toque? Pergunte ao valor, não ao pixel, Contexto, Cross-refs, Fontes, O resto do kit de Pointer Events, Quando NÃO se aplica, A regra (+6 more)
+
+### Community 157 - "usage.ts"
+Cohesion: 0.12
+Nodes (20): main(), GET(), SubscriptionResponse, resetBlockMessage(), resetEligibility, ResetEligibilityReason, effectivePlanTier(), hasAdminOverride() (+12 more)
+
+### Community 158 - "whatsapp-alerts.ts"
+Cohesion: 0.32
+Nodes (6): ConnectResponse, POST, GET(), StatusResponse, getInstanceStatus(), whatsappReconnectedPatch()
+
+### Community 159 - "day-grid.tsx"
+Cohesion: 0.19
+Nodes (13): DayGrid(), DayGridProps, DragState, fmtMinLabel(), googleDurationMin(), GridAppointment, GridBlock, GridGoogleEvent (+5 more)
+
+### Community 160 - "evolution.ts"
+Cohesion: 0.52
+Nodes (5): canonicalizeCpf(), CpfValidationResult, formatCpf(), SEQUENTIAL_CPFS, validateCpf()
+
+### Community 161 - "password-reset.ts"
+Cohesion: 0.47
+Nodes (5): HOURS, MINUTES, splitTime(), TimeSelect, TimeSelectProps
+
+### Community 162 - "email-verification.ts"
+Cohesion: 0.60
+Nodes (3): validateDocument(), CheckoutCpfResult, resolveCheckoutCpf()
+
+### Community 165 - "lib/auth.ts"
+Cohesion: 0.18
+Nodes (10): handler, authOptions, EmailNotVerifiedError, extractIp(), readHeader(), LoginInput, loginSchema, RegisterInput (+2 more)
+
+### Community 166 - "convert/route.ts"
+Cohesion: 0.14
+Nodes (10): APP_INCLUDE, convertSchema, patientCollisionResponse(), POST, QuotaExceededInTx, GET(), POST, QuotaExceededInTx (+2 more)
+
+### Community 167 - "Mover entre dias: componentes locais, não aritmética de timestamp"
+Cohesion: 0.25
+Nodes (7): A regra, Contexto, Cross-refs, Fontes, Mover entre dias: componentes locais, não aritmética de timestamp, Pontos-chave, Quando NÃO se aplica
+
+### Community 168 - "disposable-emails.ts"
+Cohesion: 0.70
+Nodes (3): DISPOSABLE_DOMAINS, disposableDomainCount(), isDisposableEmail()
+
+### Community 169 - "ux-writer.md"
+Cohesion: 0.50
+Nodes (3): Como você trabalha, Exemplos do padrão (antes → depois), Princípios de escrita (nesta ordem)
+
+### Community 170 - "seed.ts"
+Cohesion: 0.50
+Nodes (3): adapter, main(), prisma
+
+### Community 171 - "recaptcha.ts"
+Cohesion: 0.29
+Nodes (7): POST, RecaptchaResult, verifyRecaptchaToken(), checkSignupRateLimit(), hashEmail(), RateLimitResult, trackSignupAttempt()
+
 ## Knowledge Gaps
-- **481 isolated node(s):** `$schema`, `UserPromptSubmit`, `SessionStart`, `SessionEnd`, `session-checkpoint.sh script` (+476 more)
+- **543 isolated node(s):** `$schema`, `UserPromptSubmit`, `SessionStart`, `SessionEnd`, `session-checkpoint.sh script` (+538 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **64 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **68 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `dependencies` connect `Runtime Dependencies (bcrypt/pg)` to `React UI Components`, `package.json Metadata`, `Prisma Client & Login Diagnose`, `auth/prisma-adapter`, `class-variance-authority`, `clsx`, `cmdk`, `date-fns`, `date-fns-tz`, `hookform/resolvers`, `lucide-react`, `next`, `next-auth`, `next-themes`, `node-cron`, `prisma`, `prisma/adapter-pg`, `radix-ui`, `react-dom`, `react-hook-form`, `recharts`, `sentry/nextjs`, `sonner`, `tailwind-merge`, `tanstack/react-query`, `tiptap/pm`, `tiptap/react`, `tiptap/starter-kit`, `zustand`?**
-  _High betweenness centrality (0.104) - this node is a cross-community bridge._
-- **Why does `react` connect `React UI Components` to `Settings Page & Form`, `Dashboard Shell & Guards`, `Checkout & Billing Pages`, `Admin Audit Pages`, `Form Components (shadcn)`, `Runtime Dependencies (bcrypt/pg)`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
-- **Why does `cn()` connect `Patient & Usage UI Components` to `Agenda & Appointment Form`, `Settings Page & Form`, `Dashboard Shell & Guards`, `Checkout & Billing Pages`, `Phone Input & Normalization`, `Time Select Component`, `Template Editor (TipTap)`, `Admin Audit Pages`, `Form Components (shadcn)`, `Paywall & Export UI`, `Login & Auth Pages`, `Dashboard & Layout`, `React UI Components`, `Currency Mask Input`?**
-  _High betweenness centrality (0.073) - this node is a cross-community bridge._
+- **Why does `dependencies` connect `Runtime Dependencies (bcrypt/pg)` to `Phone Input & Normalization`, `bcryptjs`, `package.json Metadata`, `Prisma Client & Login Diagnose`, `auth/prisma-adapter`, `clsx`, `cmdk`, `date-fns`, `date-fns-tz`, `hookform/resolvers`, `lucide-react`, `next`, `next-auth`, `next-themes`, `node-cron`, `prisma`, `prisma/adapter-pg`, `radix-ui`, `react-dom`, `react-hook-form`, `recharts`, `sentry/nextjs`, `sonner`, `tailwind-merge`, `tanstack/react-query`, `tiptap/pm`, `tiptap/react`, `tiptap/starter-kit`, `zustand`?**
+  _High betweenness centrality (0.098) - this node is a cross-community bridge._
+- **Why does `react` connect `Phone Input & Normalization` to `Runtime Dependencies (bcrypt/pg)`, `Form Components (shadcn)`, `Admin Audit Pages`, `Checkout & Billing Pages`?**
+  _High betweenness centrality (0.095) - this node is a cross-community bridge._
+- **Why does `cn()` connect `Patient & Usage UI Components` to `Seed & Backfill Scripts`, `password-reset.ts`, `Dashboard Shell & Guards`, `Checkout & Billing Pages`, `Phone Input & Normalization`, `Time Select Component`, `Template Editor (TipTap)`, `Admin Audit Pages`, `Form Components (shadcn)`, `Paywall & Export UI`, `Login & Auth Pages`, `Dashboard & Layout`, `Currency Mask Input`?**
+  _High betweenness centrality (0.076) - this node is a cross-community bridge._
 - **What connects `$schema`, `UserPromptSubmit`, `SessionStart` to the rest of the system?**
-  _481 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _543 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Seed & Backfill Scripts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05471956224350205 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08456659619450317 - nodes in this community are weakly interconnected._
 - **Should `Patient & Usage UI Components` be split into smaller, more focused modules?**
-  _Cohesion score 0.04290332059947106 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04188181296615032 - nodes in this community are weakly interconnected._
 - **Should `Feature Registry (.context)` be split into smaller, more focused modules?**
   _Cohesion score 0.06628621597892889 - nodes in this community are weakly interconnected._

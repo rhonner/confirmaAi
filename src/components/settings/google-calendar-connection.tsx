@@ -25,9 +25,9 @@ const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
     "O tempo do consentimento esgotou (a sessão de segurança expira em ~10 min). Conecte novamente e conclua sem demora.",
   plan: "Recurso disponível apenas no plano Premium.",
   scope:
-    "Você concluiu o login sem autorizar o acesso à agenda. Conecte novamente e, na tela do Google, permita que o ConfirmaAí veja os eventos do seu Google Calendar.",
+    "Você concluiu o login sem autorizar o acesso à agenda. Conecte novamente e, na tela do Google, permita que a Clínica Organizada veja os eventos do seu Google Calendar.",
   no_refresh:
-    "O Google não devolveu as credenciais esperadas. Remova o acesso do ConfirmaAí em myaccount.google.com/permissions e tente novamente.",
+    "O Google não devolveu as credenciais esperadas. Remova o acesso da Clínica Organizada em myaccount.google.com/permissions e tente novamente.",
   session: "Sua sessão expirou durante a conexão. Faça login e tente de novo.",
   internal: "Erro inesperado ao conectar com o Google. Tente novamente.",
 };
@@ -110,8 +110,8 @@ export function GoogleCalendarConnection() {
           Google Agenda
         </CardTitle>
         <CardDescription>
-          Veja os eventos do seu Google Calendar dentro da agenda do ConfirmaAí,
-          e espelhe seus agendamentos no Google automaticamente.
+          Veja seus eventos da Google Agenda aqui na Clínica Organizada e envie
+          automaticamente para o Google tudo o que você marcar por aqui.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -165,7 +165,7 @@ export function GoogleCalendarConnection() {
                   </p>
                   {data.mirrorActive ? (
                     <p className="mt-1 text-sm text-green-700 dark:text-green-500">
-                      Seus agendamentos são espelhados automaticamente nesta agenda.
+                      Tudo o que você agenda aqui aparece automaticamente nesta Google Agenda.
                     </p>
                   ) : data.needsWriteReconsent ? (
                     <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-500">
@@ -239,10 +239,12 @@ export function GoogleCalendarConnection() {
           </div>
         </div>
         <p className="mt-4 text-[11px] text-muted-foreground">
-          Eventos do Google aparecem apenas como blocos de contexto — eles não
-          recebem confirmações automáticas de WhatsApp. Os agendamentos que você
-          cria no ConfirmaAí são espelhados na sua agenda principal do Google
-          (sem convidar o paciente); cancelar ou excluir remove o evento de lá.
+          Como funciona: os eventos que já existem na sua Google Agenda aparecem
+          aqui só para você não marcar em cima deles — eles não recebem
+          confirmação por WhatsApp. Os agendamentos que você cria na Clínica
+          Organizada vão sozinhos para a sua Google Agenda principal (sem
+          convidar nem notificar o paciente). Se você cancelar ou excluir um
+          agendamento, o evento some de lá também.
         </p>
       </CardContent>
     </Card>

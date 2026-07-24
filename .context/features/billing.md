@@ -172,6 +172,14 @@ Confirmado em 2026-05-07 via Chrome MCP, fluxo end-to-end:
 7. ✅ `/billing` mostra "Plano atual: Pro / ACTIVE / Ilimitado / Próxima cobrança em 05/06/2026".
 8. ✅ "Cancelar assinatura" → AlertDialog → confirma → toast verde + texto laranja "Assinatura cancelada. Você mantém o acesso até 05/06/2026" + botão "Cancelar" some.
 
+## Status amigável na página "Plano e Cobrança" (2026-07-24, feedback do dono)
+
+A página `/billing` mostrava o enum cru `PAST_DUE` no campo Status. Agora usa
+`getSubscriptionStatusMeta(status)` (`src/lib/subscription-status.ts`, fonte única, pura) →
+rótulo pt-BR + cor: ACTIVE="Ativo" (verde), PAST_DUE="Pagamento em atraso" (âmbar),
+CANCELED="Cancelado" (muted), SUSPENDED="Suspenso" (vermelho). O `Stat` da página aceita
+`valueClassName`. Validado no Chrome (conta PREMIUM/ACTIVE → "Ativo" verde).
+
 ## Rodando local: Mock vs Sandbox vs Produção
 
 > Como apontar o `npm run dev` local para cada ambiente de cobrança. O seletor é o `factory.ts`: lê `BILLING_PROVIDER` (`ASAAS` | `MOCK`) com fallback por `NODE_ENV` (dev → Mock, production → Asaas).

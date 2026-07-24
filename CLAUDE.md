@@ -10,7 +10,7 @@
 > - Alterações estruturais em features existentes DEVEM atualizar o `.md` correspondente.
 > - Em caso de conflito entre `CLAUDE.md` e `.context/`, o `.context/` é a fonte de verdade operacional.
 >
-> ⚠️ **As seções _Stack Tecnológica_, _Estrutura de Pastas_, _Modelo de Dados_ e _Regras para os Agents_ abaixo são ASPIRACIONAIS e não refletem o código** (não há Fastify, Redis/BullMQ, `backend/`+`frontend/`, nem `tenant_id`). Realidade: monolito **Next.js 16**, **node-cron**, multi-tenancy por **`userId`**, rotas em `src/app/api` sem `/v1`. Detalhes na seção "⚠️ REALIDADE DO CÓDIGO" abaixo e em [`.context/README.md`](.context/README.md). Use o restante deste arquivo só para princípios (multi-tenancy, validação Zod, modular por feature).
+> ⚠️ **As seções _Stack Tecnológica_, _Estrutura de Pastas_ e _Modelo de Dados_ abaixo são ASPIRACIONAIS e não refletem o código** (não há Fastify, Redis/BullMQ, `backend/`+`frontend/`, nem `tenant_id`). Realidade: monolito **Next.js 16**, **node-cron**, multi-tenancy por **`userId`**, rotas em `src/app/api` sem `/v1`. Detalhes na seção "⚠️ REALIDADE DO CÓDIGO" abaixo e em [`.context/README.md`](.context/README.md). Use essas três seções só para princípios (multi-tenancy, validação Zod, modular por feature) — as demais (_Fluxo Principal_, _Convenções de Código_, _Comandos Úteis_, _Variáveis de Ambiente_, _Regras para os Agents_) foram conferidas contra o código em **2026-07-24** e estão corretas.
 
 ## Sobre o Projeto
 
@@ -158,9 +158,9 @@ Notification (Log de Notificações)
 
 1. Profissional cadastra paciente (nome + WhatsApp)
 2. Profissional cria agendamento
-3. **24h antes**: Sistema envia confirmação automática via WhatsApp
-4. Paciente responde "Sim" ou "Não"
-5. Se não responde em 2h → envia lembrete
+3. **24h antes** (`confirmationHoursBefore`, default 24): Sistema envia confirmação automática via WhatsApp
+4. Paciente confirma/cancela — por **link** (página + botão) ou respondendo no chat (`1`/`sim`/`ok` · `2`/`não`)
+5. **6h antes** (`reminderHoursBefore`, default 6): se ainda não respondeu → envia lembrete
 6. Sistema marca como "confirmado" ou "não confirmado"
 7. Dashboard mostra taxa de faltas do mês + métricas
 
@@ -175,11 +175,11 @@ Notification (Log de Notificações)
 - Componentes React: `PascalCase` (ex: `AppointmentCard.tsx`)
 
 ### Backend
-- Cada módulo segue a estrutura: `controller → service → repository`
-- Rotas prefixadas com `/api/v1/`
-- Erros padronizados com códigos HTTP corretos
+- Cada rota é um `src/app/api/<recurso>/route.ts` (Route Handler); lógica de negócio em `src/lib/services/`
+- Rotas **sem prefixo de versão** — é `/api/<recurso>`, não `/api/v1/`
+- Erros padronizados com códigos HTTP corretos (`unauthorizedResponse`/`serverErrorResponse` em `src/lib/auth-helpers.ts`)
 - Validação de input em todas as rotas com Zod schemas
-- Logs estruturados com pino (integrado ao Fastify)
+- Erros capturados via `captureError` (`src/lib/observability/index.ts` — console + Sentry opt-in); não há pino
 - Testes com Vitest
 
 ### Frontend
@@ -197,50 +197,52 @@ Notification (Log de Notificações)
 
 ## Comandos Úteis
 
-```bash
-# Backend
-cd backend && npm run dev          # Dev server
-cd backend && npm run build        # Build
-cd backend && npm run test         # Testes
-cd backend && npx prisma migrate dev   # Migrations
-cd backend && npx prisma studio    # DB GUI
+> É **monolito**: tudo roda da raiz. Não existe `cd backend`/`cd frontend`.
 
-# Frontend
-cd frontend && npm run dev         # Dev server (porta 3000)
-cd frontend && npm run build       # Build
-cd frontend && npm run test        # Testes
-cd frontend && npm run lint        # Lint
+```bash
+npm run dev              # Next dev (porta 3000)
+npm run build            # Build de produção
+npm run test             # Vitest unit + integração
+npm run test:e2e         # Playwright
+npm run test:sprints     # Checklist E2E no DB local (rodar ISOLADO do vitest)
+npm run lint             # ESLint
+npm run db:migrate       # prisma migrate dev
+npm run db:studio        # Prisma Studio
+npm run db:seed          # Seed (rhonner.matheus@gmail.com / 123456)
 ```
+
+Lista canônica e atualizada: [`.context/README.md`](.context/README.md) → "Comandos essenciais".
 
 ## Variáveis de Ambiente
 
-### Backend (.env)
-```
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
-JWT_SECRET=
-JWT_REFRESH_SECRET=
-EVOLUTION_API_URL=
-EVOLUTION_API_KEY=
-PORT=3333
-NODE_ENV=development
-```
+Um único `.env` na raiz (não há split backend/frontend). **Não** existem `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT` nem `NEXT_PUBLIC_API_URL` — a auth é NextAuth (`NEXTAUTH_SECRET`) e a API é interna ao Next.
 
-### Frontend (.env.local)
+O contrato de referência é [`.env.example`](.env.example); o conjunto **realmente consumido** pelo código é:
+
 ```
-NEXT_PUBLIC_API_URL=http://localhost:3333/api/v1
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+DATABASE_URL  DIRECT_URL                      # Postgres (pooled) + direct p/ migrations
+NEXTAUTH_SECRET  NEXTAUTH_URL                 # NextAuth
+NEXT_PUBLIC_APP_URL                           # base pública
+EVOLUTION_API_URL  EVOLUTION_API_KEY          # WhatsApp
+EVOLUTION_WEBHOOK_BASE_URL  EVOLUTION_WEBHOOK_SECRET
+BILLING_PROVIDER  ASAAS_API_URL  ASAAS_API_KEY
+ASAAS_PRO_PLAN_ID  ASAAS_PREMIUM_PLAN_ID  ASAAS_WEBHOOK_SECRET
+GOOGLE_CLIENT_ID  GOOGLE_CLIENT_SECRET        # Google Calendar (PREMIUM)
+GOOGLE_OAUTH_REDIRECT_URI  GCAL_TOKEN_ENC_KEY
+CPF_HASH_PEPPER  CRON_SECRET  ADMIN_EMAILS
+SENTRY_DSN  RESEND_API_KEY  PIX_QR_TTL_SECONDS
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY  RECAPTCHA_SECRET_KEY
 ```
 
 ## Regras para os Agents
 
 ### backend-architect
-- Sempre usar Fastify (não Express)
-- Prisma como ORM (não TypeORM, não Drizzle)
-- Validação com Zod em todas as rotas
-- BullMQ para jobs agendados (confirmações, lembretes)
-- Estrutura modular: cada feature em seu próprio módulo
-- Multi-tenant: todas as queries filtradas por `tenant_id`
+- Route Handlers do Next.js App Router (`src/app/api/<recurso>/route.ts`) — não há Fastify nem Express
+- Prisma como ORM (não TypeORM, não Drizzle) — v7 **exige** `@prisma/adapter-pg`, client em `@/generated/prisma/client`
+- Validação com Zod em todas as rotas (Zod v4: `.issues`, não `.errors`)
+- `node-cron` para jobs agendados (confirmações, lembretes), iniciado por `instrumentation.ts` a cada 30 min — não há BullMQ/Redis
+- Estrutura modular: cada feature em seu próprio módulo (`src/lib/services/<feature>`)
+- Multi-tenant: **não existe `tenant_id`** — cada `User` é um tenant; toda query Prisma filtra por `userId: session.user.id`
 
 ### frontend-developer
 - Next.js App Router (não Pages Router)

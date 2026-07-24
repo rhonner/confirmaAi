@@ -239,3 +239,129 @@ export async function syncPatientRename(userId: string, patientId: string): Prom
     await safeCapture(err, userId, "mirror.patientRename");
   }
 }
+
+// ── Horário bloqueado (TimeBlock) ──────────────────────────────────────────
+// Um bloqueio é espelhado como um evento SEM convidados (summary = título) no
+// Google Calendar do tenant. Reaproveita as MESMAS primitivas do Appointment
+// (id determinístico via appOriginEventId + tag confirmaaiOrigin=app → nunca
+// reaparece no overlay). O bloqueio NÃO tem status/paciente/ExternalEvent, então
+// a máquina de estados é mais simples: criar/patch/apagar. Ver time-blocks.md.
+
+const BLOCK_SELECT = {
+  id: true,
+  userId: true,
+  dateTime: true,
+  durationMinutes: true,
+  title: true,
+  googleEventId: true,
+} as const;
+
+type BlockRow = {
+  id: string;
+  userId: string;
+  dateTime: Date;
+  durationMinutes: number;
+  title: string;
+  googleEventId: string | null;
+};
+
+function blockEventInput(block: BlockRow): AppointmentEventInput {
+  return {
+    appointmentId: block.id, // usado só p/ o id determinístico + extendedProperties
+    userId: block.userId,
+    summary: block.title?.trim() || "Bloqueado",
+    description: null, // bloqueio não tem observações
+    start: block.dateTime,
+    durationMinutes: block.durationMinutes,
+  };
+}
+
+async function persistBlockEventId(blockId: string, userId: string, eventId: string): Promise<void> {
+  await prisma.timeBlock.updateMany({
+    where: { id: blockId, userId },
+    data: { googleEventId: eventId, googleCalendarId: "primary" },
+  });
+}
+
+async function auditBlockPushed(
+  userId: string,
+  blockId: string,
+  op: "created" | "updated" | "deleted",
+  googleEventId: string | null,
+): Promise<void> {
+  try {
+    await audit({
+      action: "gcal.pushed",
+      tenantUserId: userId,
+      entityType: "TimeBlock",
+      entityId: blockId,
+      metadata: { op, googleEventId },
+    });
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** Criou um bloqueio → cria o evento espelho no Google (idempotente). */
+export async function syncTimeBlockCreate(userId: string, blockId: string): Promise<void> {
+  try {
+    if (!(await mirroringEnabled(userId))) return;
+    const block = (await prisma.timeBlock.findFirst({
+      where: { id: blockId, userId },
+      select: BLOCK_SELECT,
+    })) as BlockRow | null;
+    if (!block) return;
+    if (block.googleEventId) return; // já espelhado
+    const result = await createGoogleEvent(userId, blockEventInput(block));
+    if (result.ok && result.eventId) {
+      await persistBlockEventId(blockId, userId, result.eventId);
+      await auditBlockPushed(userId, blockId, "created", result.eventId);
+    }
+  } catch (err) {
+    await safeCapture(err, userId, "mirror.block.create");
+  }
+}
+
+/** Editou um bloqueio → patch (ou cria se ainda não espelhado). */
+export async function syncTimeBlockUpdate(userId: string, blockId: string): Promise<void> {
+  try {
+    if (!(await mirroringEnabled(userId))) return;
+    const block = (await prisma.timeBlock.findFirst({
+      where: { id: blockId, userId },
+      select: BLOCK_SELECT,
+    })) as BlockRow | null;
+    if (!block) return;
+    if (block.googleEventId) {
+      await patchGoogleEvent(userId, block.googleEventId, blockEventInput(block));
+      return;
+    }
+    const result = await createGoogleEvent(userId, blockEventInput(block));
+    if (result.ok && result.eventId) {
+      await persistBlockEventId(blockId, userId, result.eventId);
+      await auditBlockPushed(userId, blockId, "created", result.eventId);
+    }
+  } catch (err) {
+    await safeCapture(err, userId, "mirror.block.update");
+  }
+}
+
+/**
+ * Excluiu um bloqueio → apaga o evento espelho. Recebe o `googleEventId` lido
+ * ANTES do delete (a linha já não existe). Fallback ao id determinístico caso o
+ * espelho tenha sido criado mas a persistência do id tenha falhado.
+ */
+export async function syncTimeBlockDelete(
+  userId: string,
+  args: { blockId: string; googleEventId: string | null },
+): Promise<void> {
+  try {
+    if (!(await mirroringEnabled(userId))) return;
+    const eid = args.googleEventId ?? appOriginEventId(args.blockId);
+    const del = await deleteGoogleEvent(userId, eid);
+    if (del.ok && args.googleEventId) {
+      await auditBlockPushed(userId, args.blockId, "deleted", eid);
+    }
+  } catch (err) {
+    await safeCapture(err, userId, "mirror.block.delete");
+  }
+}

@@ -139,7 +139,16 @@ type SendKind = {
 // (ver `autoCancelUnconfirmed`).
 const CONFIRMATION: SendKind = {
   type: "CONFIRMATION",
-  where: { confirmationSentAt: null, status: "PENDING", user: { whatsappStatus: "CONNECTED" } },
+  // `retroactive: false`: registro lançado no passado não recebe WhatsApp (o
+  // atendimento já aconteceu — mandar confirmação seria absurdo). Sem isso ele
+  // ficaria eternamente na fila de candidatos, pulado item a item pelo guard
+  // `now > dateTime` — correto no fim, mas varrendo lixo em todo run.
+  where: {
+    confirmationSentAt: null,
+    status: "PENDING",
+    retroactive: false,
+    user: { whatsappStatus: "CONNECTED" },
+  },
   hoursBeforeOf: (s) => s.confirmationHoursBefore,
   templateOf: (s) => s.confirmationMessage,
   sentAtField: "confirmationSentAt",
@@ -269,7 +278,11 @@ async function processSends(
 async function markNoShows(stats: SchedulerStats): Promise<void> {
   try {
     const result = await prisma.appointment.updateMany({
-      where: { dateTime: { lt: new Date() }, status: "PENDING" },
+      // `retroactive: false` é o que faz o "Retroativo" significar algo: um
+      // agendamento LANÇADO no passado (registro de organização) não é uma falta
+      // — sem esse filtro o cron o viraria NO_SHOW em até 30 min e corromperia a
+      // taxa de faltas, que é o produto. Ver features/appointments.md § Retroativo.
+      where: { dateTime: { lt: new Date() }, status: "PENDING", retroactive: false },
       data: { status: "NO_SHOW" },
     });
     stats.noShowsMarked = result.count;

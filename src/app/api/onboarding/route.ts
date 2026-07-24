@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!session?.user?.id) return unauthorizedResponse();
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return badRequestResponse("Ramo inválido");
+  if (!parsed.success) return badRequestResponse("Segmento inválido");
 
   const user = await prisma.user.update({
     where: { id: session.user.id },

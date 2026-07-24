@@ -2,13 +2,15 @@
 title: Firewall de eventos externos (tabela separada vs coluna source)
 type: concept
 created: 2026-07-05
-updated: 2026-07-10
+updated: 2026-07-24
 tags: [pattern, data-model, multi-tenancy, integrations, scheduler]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
+  - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
   - .context/features/google-calendar.md
+  - .context/features/time-blocks.md
 related:
   - .context/features/scheduler.md
   - pages/concepts/quota-ledger-immortal-slot.md
@@ -25,7 +27,7 @@ Ao trazer eventos do Google Calendar para dentro do ConfirmaAí, a tentação é
 
 - `sendConfirmations` / `sendReminders` (`src/lib/services/scheduler.ts`) — `where { status: PENDING, confirmationSentAt: null, user.whatsappStatus: CONNECTED }` → **mandaria WhatsApp** para o telefone anexado (lixo/errado).
 - `markNoShows` — `updateMany where { dateTime < now, status: PENDING }` (global, nem junta `user`) → marcaria todo evento passado importado como **NO_SHOW falso**, corrompendo a métrica de faltas que é o produto.
-- dashboard (`estimatedLoss`), `conflict.ts`, webhook de confirmação — todos leem `Appointment` amplamente.
+- dashboard (`estimatedLoss`), `conflict.ts` (deletado em 2026-07-24 — sobreposição virou permitida), webhook de confirmação — todos leem `Appointment` amplamente.
 
 ## Pontos-chave
 
@@ -51,6 +53,16 @@ A Fase C passou a **escrever** no Google (espelhar `Appointment`→evento). Isso
 - **`/convert` rejeita origem-app**: promover um evento cujo id já está gravado num `Appointment` é bloqueado (defesa contra chamada direta à API que não passa pelo overlay).
 - **Mirror ignora promovidos**: `mirror.ts` pula qualquer `Appointment` que tenha `ExternalEvent` vinculado — nunca reescreve/apaga o evento ORIGINAL que o usuário criou no Google (só espelha agendamentos nativos). O sentido Google→app continua **manual** (Fase B).
 - O scheduler segue sem enxergar nada (GCAL.7/10 intactos). Detalhe operacional + os 3 fixes de review em `.context/features/google-calendar.md` § Fase C; ver também [[revive-cancelled-event-on-id-reuse]].
+
+## Refinamento (2026-07-24) — **só-leitura ≠ inerte**, e o firewall também vale para bloqueios
+
+Duas extensões do mesmo padrão, no dia em que a agenda virou grade arrastável:
+
+- **`TimeBlock` é tabela separada pela mesma razão.** Horário bloqueado (almoço, reunião, férias) poderia ter sido "um `Appointment` sem `patientId`" — e aí toda query ampla do scheduler precisaria lembrar de `patientId != null`. Tabela própria = o scheduler **fisicamente não vê** bloqueios. O firewall não é sobre "dado externo"; é sobre **qualquer linha que não deve alimentar jobs com efeito colateral**.
+- **Não-arrastável não quer dizer não-clicável.** Enquanto o evento do Google foi tratado como *inerte* na UI (um `<div>` mudo), o feedback do dono foi direto: "clico neles e nada acontece". O firewall restringe **mutação** (só `Appointment`/`TimeBlock` se movem; o evento externo nunca é arrastado nem editado in-place), não **interação**. O evento passou a ser `<button>` com duas saídas: **promovível** → diálogo de promoção (a ponte manual de sempre); **não promovível** → abre no Google (`window.open`, `noopener`).
+- **A regra de "pode promover?" mora numa função só** (`canPromoteGoogleEvent`), usada pelas três visões. Dia inteiro não promove (a duração viraria mentira silenciosa) e "Ocupado" não promove (placeholder sem nada para pré-preencher). Grades apenas **reportam o id**; a política vive no pai — é o que impede a regra de divergir por visão.
+
+Detalhe operacional em `.context/features/agenda-day-grid.md` § "Clique num evento do Google" e `.context/features/time-blocks.md`.
 
 ## Quando aplicar / quando NÃO
 

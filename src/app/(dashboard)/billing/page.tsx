@@ -6,6 +6,7 @@ import { useUsage, useSubscription } from "@/hooks/use-api";
 import { PageHeader } from "@/components/layout/page-header";
 import { PlanCard } from "@/components/billing/plan-card";
 import { PLAN_LABELS } from "@/components/billing/plan-meta";
+import { getSubscriptionStatusMeta } from "@/lib/subscription-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -79,44 +80,53 @@ export default function BillingPage() {
           {usage.isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Stat label="Plano" value={PLAN_LABELS[usage.plan]} />
-                <Stat label="Status" value={usage.status} />
-                <Stat
-                  label="Pacientes"
-                  value={
-                    usage.isUnlimited
-                      ? "Ilimitado"
-                      : `${usage.count}/${usage.limit}`
-                  }
-                />
-              </div>
-              {!usage.isUnlimited && (
-                <div className="space-y-1">
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{ width: `${usage.percentage}%` }}
+            (() => {
+              const statusMeta = getSubscriptionStatusMeta(usage.status);
+              return (
+                <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <Stat label="Plano" value={PLAN_LABELS[usage.plan]} />
+                    <Stat
+                      label="Status"
+                      value={statusMeta.label}
+                      valueClassName={statusMeta.className}
+                    />
+                    <Stat
+                      label="Pacientes"
+                      value={
+                        usage.isUnlimited
+                          ? "Ilimitado"
+                          : `${usage.count}/${usage.limit}`
+                      }
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {usage.percentage}% do limite usado
-                  </p>
-                </div>
-              )}
-              {sub?.currentPeriodEnd && (
-                <p className="text-xs text-muted-foreground">
-                  Próxima cobrança em{" "}
-                  {new Date(sub.currentPeriodEnd).toLocaleDateString("pt-BR")}
-                </p>
-              )}
-              {sub?.cancelAtPeriodEnd && (
-                <p className="text-xs text-orange-600 dark:text-orange-400">
-                  Sua assinatura será cancelada no fim do ciclo atual.
-                </p>
-              )}
-            </>
+                  {!usage.isUnlimited && (
+                    <div className="space-y-1">
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full bg-primary transition-all"
+                          style={{ width: `${usage.percentage}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {usage.percentage}% do limite usado
+                      </p>
+                    </div>
+                  )}
+                  {sub?.currentPeriodEnd && (
+                    <p className="text-xs text-muted-foreground">
+                      Próxima cobrança em{" "}
+                      {new Date(sub.currentPeriodEnd).toLocaleDateString("pt-BR")}
+                    </p>
+                  )}
+                  {sub?.cancelAtPeriodEnd && (
+                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                      Sua assinatura será cancelada no fim do ciclo atual.
+                    </p>
+                  )}
+                </>
+              );
+            })()
           )}
         </CardContent>
       </Card>
@@ -222,13 +232,21 @@ export default function BillingPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <p className="text-xs uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
-      <p className="mt-1 text-base font-semibold">{value}</p>
+      <p className={"mt-1 text-base font-semibold " + (valueClassName ?? "")}>{value}</p>
     </div>
   );
 }
