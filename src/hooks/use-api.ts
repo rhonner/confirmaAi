@@ -12,6 +12,13 @@ type Patient = {
   name: string;
   phone: string;
   email?: string | null;
+  /** Data CIVIL "yyyy-MM-dd" — NUNCA passar por `new Date()` (ver src/lib/birthday.ts). */
+  birthDate?: string | null;
+  /** Sexo (clínico) — enum `Sex`. Campo diferente de identidade de gênero. */
+  sex?: string | null;
+  /** Identidade de gênero — enum `Gender`; texto livre em `genderSelfDescribed`. */
+  gender?: string | null;
+  genderSelfDescribed?: string | null;
   notes?: string | null;
   userId: string;
   createdAt: string;
@@ -77,6 +84,11 @@ type DashboardStats = {
     noShow: number;
     confirmed: number;
   }>;
+  /** Aniversariantes: `birthDate` é data CIVIL "yyyy-MM-dd" (não instanciar Date). */
+  birthdays?: {
+    today: Array<{ id: string; name: string; phone: string; birthDate: string; age: number | null }>;
+    upcoming: Array<{ id: string; name: string; phone: string; birthDate: string; inDays: number }>;
+  };
 };
 
 type Settings = {
@@ -196,7 +208,17 @@ export function useCreatePatient() {
   const label = useTerminology().patient.singular;
 
   return useMutation({
-    mutationFn: (patient: { name: string; phone: string; email?: string; notes?: string }) =>
+    mutationFn: (patient: {
+      name: string;
+      phone: string;
+      email?: string;
+      notes?: string;
+      cpf?: string;
+      birthDate?: string | null;
+      sex?: string | null;
+      gender?: string | null;
+      genderSelfDescribed?: string | null;
+    }) =>
       fetchApi<Patient>("/api/patients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,7 +240,21 @@ export function useUpdatePatient() {
   const label = useTerminology().patient.singular;
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; phone?: string; email?: string | null; notes?: string | null }) =>
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name?: string;
+      phone?: string;
+      email?: string | null;
+      notes?: string | null;
+      cpf?: string;
+      birthDate?: string | null;
+      sex?: string | null;
+      gender?: string | null;
+      genderSelfDescribed?: string | null;
+    }) =>
       fetchApi<Patient>(`/api/patients/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

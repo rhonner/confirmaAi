@@ -50,6 +50,15 @@ export type DashboardStats = {
     noShow: number
     confirmed: number
   }>
+  /**
+   * Aniversariantes (2026-07-24). `birthDate` é DATA CIVIL "yyyy-MM-dd" — o
+   * cliente NUNCA deve fazer `new Date(birthDate)` (deslizaria um dia em BRT).
+   * `today` = quem faz hoje; `upcoming` = próximos 7 dias, com `inDays`.
+   */
+  birthdays: {
+    today: Array<{ id: string; name: string; phone: string; birthDate: string; age: number | null }>
+    upcoming: Array<{ id: string; name: string; phone: string; birthDate: string; inDays: number }>
+  }
 }
 
 export type SettingsResponse = Settings & {

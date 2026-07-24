@@ -21,6 +21,15 @@ import { PHONE_REGEX } from "@/lib/phone"
 import { useCreatePatient, useUpdatePatient, useSubscription, PaywallError } from "@/hooks/use-api"
 import { useTerminology } from "@/hooks/use-terminology"
 import { validateCpf, formatCpf, canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
+import { ageOn, brToIso, isoToBr, maskBrDate } from "@/lib/birthday"
+import { todayIsoInAppTz } from "@/lib/timezone"
+import {
+  GENDER_OPTIONS,
+  GENDER_LABELS,
+  GENDER_SELF_DESCRIBED_MAX,
+  SEX_OPTIONS,
+  SEX_LABELS,
+} from "@/lib/gender"
 import { PaywallModal, type PaywallReason } from "@/components/billing/paywall-modal"
 
 const cpfFormSchema = z
@@ -40,6 +49,22 @@ const patientSchema = z.object({
   phone: z.string().regex(PHONE_REGEX, "Informe um celular válido com DDD"),
   cpf: cpfFormSchema,
   email: z.string().email("Email inválido").optional().or(z.literal("")),
+  // Guarda o texto MASCARADO "dd/mm/aaaa" (mesma estratégia do CPF formatado
+  // neste form). A conversão para a data civil ISO acontece no submit, via
+  // `brToIso`. Picker nativo foi descartado: o dono já o rejeitou no horário
+  // (ver src/components/forms/time-select.tsx) e para nascimento é pior ainda —
+  // ninguém quer navegar um calendário 40 anos para trás.
+  birthDate: z
+    .string()
+    .optional()
+    .or(z.literal(""))
+    .refine((v) => !v || brToIso(v) !== "", { message: "Data de nascimento inválida" })
+    .refine((v) => !v || brToIso(v) <= todayIsoInAppTz(), {
+      message: "Data de nascimento não pode ser no futuro",
+    }),
+  sex: z.string().optional(),
+  gender: z.string().optional(),
+  genderSelfDescribed: z.string().max(GENDER_SELF_DESCRIBED_MAX).optional(),
   notes: z.string().optional(),
 })
 
@@ -51,6 +76,10 @@ export type ExistingPatient = {
   phone: string
   cpf?: string | null
   email?: string | null
+  birthDate?: string | null
+  sex?: string | null
+  gender?: string | null
+  genderSelfDescribed?: string | null
   notes?: string | null
 }
 
@@ -92,11 +121,25 @@ export function PatientFormDialog({
     reset,
     control,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<PatientForm>({
     resolver: zodResolver(patientSchema),
-    defaultValues: { name: "", phone: "", cpf: "", email: "", notes: "" },
+    defaultValues: {
+      name: "",
+      phone: "",
+      cpf: "",
+      email: "",
+      birthDate: "",
+      sex: "",
+      gender: "",
+      genderSelfDescribed: "",
+      notes: "",
+    },
   })
+
+  // Só a opção "Prefiro me autodescrever" revela o campo de texto livre.
+  const watchGender = watch("gender")
 
   // Lê os defaults via ref: o reset roda só na ABERTURA (deps sem defaultValues).
   // Senão, o enriquecimento assíncrono dos sinais do evento (promoção) criaria
@@ -113,6 +156,10 @@ export function PatientFormDialog({
         phone: patient?.phone ?? dv?.phone ?? "",
         cpf: patient?.cpf ? formatCpf(canonicalizeCpf(patient.cpf)) : dv?.cpf ?? "",
         email: patient?.email ?? dv?.email ?? "",
+        birthDate: isoToBr(patient?.birthDate),
+        sex: patient?.sex ?? "",
+        gender: patient?.gender ?? "",
+        genderSelfDescribed: patient?.genderSelfDescribed ?? "",
         notes: patient?.notes ?? "",
       })
     }
@@ -131,6 +178,15 @@ export function PatientFormDialog({
         cpf: data.cpf ? canonicalizeCpf(data.cpf) : undefined,
         email: data.email || undefined,
         notes: data.notes || undefined,
+        // `null` explícito (não `undefined`): limpar um campo tem de chegar ao
+        // servidor. `undefined` sai no JSON.stringify e o update ignoraria.
+        birthDate: data.birthDate ? brToIso(data.birthDate) : null,
+        sex: data.sex || null,
+        gender: data.gender || null,
+        // Autodescrição só existe acompanhada da opção; o servidor normaliza de
+        // novo (defesa em profundidade — ver normalizeGender).
+        genderSelfDescribed:
+          data.gender === "SELF_DESCRIBED" ? data.genderSelfDescribed || null : null,
       }
       const saved = patient
         ? await updateMutation.mutateAsync({ ...cleaned, id: patient.id })
@@ -257,6 +313,87 @@ export function PatientFormDialog({
             />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>
+            )}
+          </div>
+
+          {/* Nascimento + sexo + identidade de gênero — TODOS opcionais.
+              Nenhum é exigido em nenhum plano; a idade é só um espelho da data
+              (ajuda a pegar ano digitado errado). Data civil: o valor do
+              <input type="date"> já é "yyyy-MM-dd" e NUNCA vira new Date(). */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="patient-birthdate">Data de nascimento (opcional)</Label>
+              <Controller
+                name="birthDate"
+                control={control}
+                render={({ field }) => {
+                  const iso = brToIso(field.value ?? "")
+                  const age = iso ? ageOn(iso) : null
+                  return (
+                    <>
+                      <Input
+                        id="patient-birthdate"
+                        inputMode="numeric"
+                        placeholder="dd/mm/aaaa"
+                        maxLength={10}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(maskBrDate(e.target.value))}
+                        aria-invalid={!!errors.birthDate}
+                      />
+                      {errors.birthDate ? (
+                        <p className="text-sm text-destructive">{errors.birthDate.message}</p>
+                      ) : age !== null ? (
+                        <p className="text-xs text-muted-foreground">{age} anos</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Usada no card de aniversariantes do dia.
+                        </p>
+                      )}
+                    </>
+                  )
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="patient-sex">Sexo (opcional)</Label>
+              <select
+                id="patient-sex"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...register("sex")}
+              >
+                <option value="">Não informado</option>
+                {SEX_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {SEX_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="patient-gender">Identidade de gênero (opcional)</Label>
+            <select
+              id="patient-gender"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {...register("gender")}
+            >
+              <option value="">Não informado</option>
+              {GENDER_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {GENDER_LABELS[value]}
+                </option>
+              ))}
+            </select>
+            {watchGender === "SELF_DESCRIBED" && (
+              <Input
+                id="patient-gender-self"
+                placeholder="Como você se identifica?"
+                maxLength={GENDER_SELF_DESCRIBED_MAX}
+                aria-label="Descreva sua identidade de gênero"
+                {...register("genderSelfDescribed")}
+              />
             )}
           </div>
 

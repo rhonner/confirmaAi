@@ -82,6 +82,37 @@ enum GoogleConnectionStatus {
 
 // Ramo do negócio (onboarding) — dirige a TERMINOLOGIA da UI (ex.: HEALTH usa
 // "Paciente"; os demais usam "Cliente"). Ver src/lib/terminology.ts.
+// ⚠️ SEXO e IDENTIDADE DE GÊNERO são campos DIFERENTES e ficam separados de
+// propósito (esclarecimento do dono, 2026-07-24). Misturar os dois num enum só
+// é erro de categoria: o sexo tem uso clínico (dosagem, faixas de referência de
+// exame) e a identidade é como a pessoa se identifica e quer ser tratada.
+// Os dois são OPCIONAIS e nenhuma tela pode exigi-los.
+
+// Sexo (biológico). Curto de propósito — é campo clínico, não de identidade.
+enum Sex {
+  FEMALE // Feminino
+  MALE // Masculino
+  INTERSEX // Intersexo
+  NOT_INFORMED // Prefiro não informar
+}
+
+// Identidade de gênero: lista curada + `SELF_DESCRIBED` (texto livre em
+// `Patient.genderSelfDescribed`) — nenhum enum finito atende "todos que
+// existem". `NOT_INFORMED` é distinto de campo vazio ("nunca preenchido").
+// Rótulos em pt-BR e helpers em src/lib/gender.ts (fonte única da UI).
+enum Gender {
+  CIS_WOMAN // Mulher cisgênero
+  CIS_MAN // Homem cisgênero
+  TRANS_WOMAN // Mulher trans
+  TRANS_MAN // Homem trans
+  TRAVESTI // Travesti (identidade própria no Brasil — não é sinônimo de mulher trans)
+  NON_BINARY // Não binário
+  AGENDER // Agênero
+  GENDERFLUID // Gênero fluido
+  SELF_DESCRIBED // Prefiro me autodescrever → usa genderSelfDescribed
+  NOT_INFORMED // Prefiro não informar
+}
+
 enum BusinessType {
   HEALTH // saúde: clínica, psicólogo, dentista → "Paciente"
   AESTHETICS // estética → "Cliente"
@@ -172,6 +203,21 @@ model Patient {
   cpf            String?
   cpfHash        String?
   notes          String?
+  // DATA CIVIL, não instante: "yyyy-MM-dd" como STRING de propósito.
+  // Um aniversário não tem fuso — 15/03 é 15/03 em qualquer lugar. Com
+  // `DateTime`/`@db.Date` o Prisma devolve meia-noite UTC e QUALQUER formatação
+  // local (BRT = UTC-3) mostraria o dia anterior para TODO MUNDO. String mata a
+  // classe de bug na raiz, ordena corretamente (ISO) e deixa a comparação de
+  // aniversário ser puro sufixo "-MM-DD" (ver src/lib/birthday.ts).
+  // ⚠️ NUNCA fazer `new Date(birthDate)` para exibir.
+  birthDate      String?   @db.VarChar(10)
+  // Sexo (clínico) e identidade de gênero — campos SEPARADOS, ver os enums.
+  // Os TRÊS entram em REDACTED_FIELDS do audit (prisma-extension.ts): sexo em
+  // contexto de clínica é dado de saúde e identidade de gênero é plausivelmente
+  // sensível (LGPD art. 5º, II) — e o AuditLog é append-only (irreversível).
+  sex                 Sex?
+  gender              Gender?
+  genderSelfDescribed String? @db.VarChar(60)
   userId         String
   archivedAt     DateTime?
   createdAt      DateTime  @default(now())

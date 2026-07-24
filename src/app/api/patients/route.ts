@@ -11,6 +11,7 @@ import {
   SlotConflictError,
 } from "@/lib/billing"
 import { canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
+import { normalizeGender } from "@/lib/gender"
 import type { ApiResponse, PaginatedResponse, PatientResponse } from "@/lib/types/api"
 
 export async function GET(request: NextRequest) {
@@ -137,6 +138,11 @@ export const POST = auditWrap(async (request: NextRequest) => {
     if (body.email === "") body.email = undefined
     if (body.notes === "") body.notes = undefined
     if (body.cpf === "") body.cpf = undefined
+    // Campos opcionais novos: "" do form vira ausência, não erro de validação.
+    if (body.birthDate === "") body.birthDate = undefined
+    if (body.sex === "") body.sex = undefined
+    if (body.gender === "") body.gender = undefined
+    if (body.genderSelfDescribed === "") body.genderSelfDescribed = undefined
 
     const validation = createPatientSchema.safeParse(body)
 
@@ -144,8 +150,11 @@ export const POST = auditWrap(async (request: NextRequest) => {
       return badRequestResponse(validation.error.issues[0].message)
     }
 
-    const { name, phone, cpf, email, notes } = validation.data
+    const { name, phone, cpf, email, notes, birthDate, sex } = validation.data
     const userId = session.user.id
+    // O par (gênero, autodescrição) é normalizado no SERVIDOR — trocar de
+    // "autodescrever" para outra opção tem de apagar o texto. Ver src/lib/gender.ts.
+    const { gender, genderSelfDescribed } = normalizeGender(validation.data)
 
     const phoneCanonical = canonicalizePhone(phone)
     const cpfCanonical = cpf ? canonicalizeCpf(cpf) : null
@@ -177,6 +186,10 @@ export const POST = auditWrap(async (request: NextRequest) => {
               cpfHash,
               email,
               notes,
+              birthDate: birthDate ?? null,
+              sex: sex ?? null,
+              gender,
+              genderSelfDescribed,
               userId,
             },
             include: { _count: { select: { appointments: true } } },

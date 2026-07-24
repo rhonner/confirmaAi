@@ -4,6 +4,8 @@ import { getAuthSession, unauthorizedResponse, paywallResponse, serverErrorRespo
 import { checkEntitlement } from "@/lib/billing"
 import { buildCsv } from "@/lib/csv"
 import { APP_TIMEZONE, formatInTimeZone, todayIsoInAppTz } from "@/lib/timezone"
+import { ageOn } from "@/lib/birthday"
+import { formatGender, formatSex } from "@/lib/gender"
 
 export async function GET(_req: NextRequest) {
   try {
@@ -36,11 +38,29 @@ export async function GET(_req: NextRequest) {
     const noShowMap = new Map(noShowCounts.map((c) => [c.patientId, c._count._all]))
 
     const csv = buildCsv(
-      ["Nome", "Telefone", "Email", "Consultas", "Faltas", "Observacoes", "Criado em"],
+      [
+        "Nome",
+        "Telefone",
+        "Email",
+        "Nascimento",
+        "Idade",
+        "Sexo",
+        "Genero",
+        "Consultas",
+        "Faltas",
+        "Observacoes",
+        "Criado em",
+      ],
       patients.map((p) => [
         p.name,
         p.phone,
         p.email ?? "",
+        // Data CIVIL: formata por fatia da string, NUNCA por new Date() — no
+        // runtime UTC isso mostraria o dia anterior. Ver src/lib/birthday.ts.
+        p.birthDate ? `${p.birthDate.slice(8, 10)}/${p.birthDate.slice(5, 7)}/${p.birthDate.slice(0, 4)}` : "",
+        p.birthDate ? (ageOn(p.birthDate) ?? "") : "",
+        formatSex(p.sex),
+        formatGender(p.gender, p.genderSelfDescribed),
         p._count.appointments,
         noShowMap.get(p.id) ?? 0,
         p.notes ?? "",

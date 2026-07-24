@@ -39,7 +39,22 @@ export async function buildAccountExport(userId: string) {
       }),
       prisma.patient.findMany({
         where: { userId },
-        select: { id: true, name: true, phone: true, email: true, cpf: true, notes: true, archivedAt: true, createdAt: true },
+        // Campos novos (2026-07-24) entram no export por obrigação de LGPD:
+        // o titular tem direito ao dado COMPLETO que guardamos dele.
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          cpf: true,
+          birthDate: true,
+          sex: true,
+          gender: true,
+          genderSelfDescribed: true,
+          notes: true,
+          archivedAt: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: "asc" },
       }),
       prisma.appointment.findMany({

@@ -17,6 +17,58 @@
 | Tipo                | `PatientResponse` em `src/lib/types/api.ts`            |
 | Modelo Prisma       | `Patient` em `prisma/schema.prisma`                    |
 
+## Perfil: nascimento, sexo e identidade de gênero (2026-07-24)
+
+> Pedido do dono em duas mensagens, com um esclarecimento importante no meio:
+> *"adicionar mais campos para pacientes (genero e data de nascimento)"* e
+> *"quando eu disse genero na primeira mensagem, quis dizer **sexo**, e no genero da
+> segunda, todos aqueles de cisgenero, trans, e toda essas coisas"*.
+
+**São TRÊS campos, e sexo ≠ identidade de gênero** (erro de categoria se juntar):
+
+| Campo | Tipo | Para que serve |
+| ----- | ---- | -------------- |
+| `Patient.birthDate` | `String? @db.VarChar(10)` — "yyyy-MM-dd" | idade + card de aniversariantes |
+| `Patient.sex` | `enum Sex?` (FEMALE/MALE/INTERSEX/NOT_INFORMED) | clínico (dosagem, faixa de referência) |
+| `Patient.gender` + `genderSelfDescribed` | `enum Gender?` (10 valores) + `String? @db.VarChar(60)` | como a pessoa se identifica |
+
+Migrations: `20260724224211_add_patient_birthdate_gender` e
+`20260724230500_add_patient_sex_split_gender_identity` (a 2ª faz DROP+recreate do
+enum `Gender` — seguro porque 0 de 21 pacientes tinham valor; conferido antes).
+
+- **Nenhum é obrigatório**, em nenhum plano. `NOT_INFORMED` ("prefiro não informar")
+  é **diferente** de `null` ("nunca preenchido") — a UI oferece as duas coisas.
+- **Catálogo em `src/lib/gender.ts`** (fonte única dos rótulos pt-BR): `SEX_OPTIONS`,
+  `GENDER_OPTIONS`, `formatSex`, `formatGender` e `normalizeGender`.
+- **`birthDate` é DATA CIVIL em string**, não `DateTime`. Um aniversário não tem fuso;
+  com `@db.Date` o Prisma devolve meia-noite UTC e qualquer formatação local (BRT)
+  mostraria o dia anterior **para todo mundo**. Helpers puros em `src/lib/birthday.ts`
+  (`isoToBr`, `brToIso`, `maskBrDate`, `ageOn`, `isBirthdayOn`, `splitBirthdays`).
+  ⚠️ **NUNCA** `new Date(birthDate)`.
+- **UI: input mascarado `dd/mm/aaaa`**, não `<input type="date">` — mesmo motivo do
+  `TimeSelect`: o dono rejeitou o picker nativo do Android, e para nascimento é pior
+  (ninguém navega calendário 40 anos para trás). O form guarda o texto mascarado e
+  converte no submit (`brToIso`), igual ao CPF formatado.
+- **Autodescrição**: só a opção "Prefiro me autodescrever" revela o campo livre.
+  Trocar de opção **APAGA** o texto (`normalizeGender`) — privacidade, não só dado.
+  ⚠️ No `PUT`, a normalização é **PÓS-MERGE** com o estado atual: normalizar o payload
+  cru fazia um PUT parcial (sem a chave `gender`) apagar a identidade cadastrada
+  (achado de code-review).
+- **Auditoria**: `sex`, `gender` e `genderSelfDescribed` entram em `REDACTED_FIELDS`
+  (`src/lib/audit/prisma-extension.ts`). ⚠️ Isso só passou a funcionar de verdade com o
+  fix **diff-then-redact**: redigir ANTES do `shallowDiff` fazia
+  `"[REDACTED]" === "[REDACTED]"` e a chave era **descartada** — a trilha ficava vazia
+  em vez de redigida (valia para o `cpf` também). Agora registra QUE mudou, sem o valor.
+- **LGPD**: os 3 campos entram no `buildAccountExport`; a Política de Privacidade deixou
+  de listar as categorias de paciente de forma FECHADA, declara a base do **art. 11, II,
+  "f"** (atendimento pelo profissional de saúde) e `LEGAL_VERSION`/`LEGAL_UPDATED_LABEL`
+  foram para `2026-07-24` (as duas juntas — divergir é bug).
+- **Export CSV** ganhou `Nascimento`, `Idade`, `Sexo`, `Genero` (nessa ordem).
+- **Fora do MVP**: busca/filtro por esses campos e coluna na tabela de `/pacientes`
+  (tela de balcão, visível a terceiros) — ficam no diálogo e no CSV.
+- Checks `PF.1`–`PF.6` + `PF.2b` em `scripts/test-sprints.ts`; unit em
+  `tests/unit/birthday.test.ts` (24) e `tests/unit/gender.test.ts` (17).
+
 ## Regras de negócio
 
 - **Nome**: 3–200 chars.

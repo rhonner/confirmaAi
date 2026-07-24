@@ -2861,6 +2861,145 @@ async function main() {
     where: { id: { in: [rtPast.id, rtNormal.id, ov1.id, ov2.id] } },
   });
 
+  // ====================================================================
+  // PERFIL DO PACIENTE + ANIVERSARIANTES (PF.*) — 2026-07-24
+  // ====================================================================
+  const genderLibSrc = readFileSync(join(root, "src/lib/gender.ts"), "utf8");
+  const auditExtSrc = readFileSync(join(root, "src/lib/audit/prisma-extension.ts"), "utf8");
+  const legalSrc = readFileSync(join(root, "src/lib/legal/content.ts"), "utf8");
+  const dashRouteSrc = readFileSync(join(root, "src/app/api/dashboard/route.ts"), "utf8");
+  const accountExportSrc = readFileSync(join(root, "src/lib/account/export.ts"), "utf8");
+
+  // PF.1 — round-trip real no DB: data civil como STRING (nunca desliza de dia),
+  // sexo e identidade de gênero como campos SEPARADOS.
+  const pfPatient = await prisma.patient.create({
+    data: {
+      userId: testUser.id,
+      name: "Perfil Completo",
+      phone: "+5511970000001",
+      phoneCanonical: "5511970000001",
+      birthDate: "1990-02-29",
+      sex: "FEMALE",
+      gender: "TRANS_WOMAN",
+    },
+  });
+  const pfReloaded = await prisma.patient.findUnique({ where: { id: pfPatient.id } });
+  check(
+    "PF.1 paciente guarda birthDate (string civil), sex e gender separados",
+    10,
+    pfReloaded?.birthDate === "1990-02-29" &&
+      typeof pfReloaded?.birthDate === "string" &&
+      pfReloaded?.sex === "FEMALE" &&
+      pfReloaded?.gender === "TRANS_WOMAN",
+  );
+
+  // PF.2 — autodescrição: sair de SELF_DESCRIBED tem de APAGAR o texto. É o
+  // caminho que o servidor normaliza (normalizeGender) — aqui travamos a regra
+  // no fonte + o comportamento da coluna.
+  const pfSelf = await prisma.patient.update({
+    where: { id: pfPatient.id },
+    data: { gender: "SELF_DESCRIBED", genderSelfDescribed: "Agênero fluido" },
+  });
+  const pfCleared = await prisma.patient.update({
+    where: { id: pfPatient.id },
+    data: { gender: "CIS_WOMAN", genderSelfDescribed: null },
+  });
+  // PF.2b — PUT PARCIAL não pode apagar a identidade já cadastrada: normalizar
+  // o payload cru devolvia `gender: null` quando a chave não vinha no body.
+  const pfPartialBase = await prisma.patient.update({
+    where: { id: pfPatient.id },
+    data: { gender: "CIS_WOMAN", genderSelfDescribed: null },
+  });
+  const patientPutSrc = readFileSync(join(root, "src/app/api/patients/[id]/route.ts"), "utf8");
+  check(
+    "PF.2b PUT parcial normaliza PÓS-MERGE (não apaga gênero ausente do payload)",
+    10,
+    pfPartialBase.gender === "CIS_WOMAN" &&
+      /"gender" in data \? data\.gender : existingPatient\.gender/.test(patientPutSrc),
+  );
+
+  check(
+    "PF.2 autodescrição grava e é apagada ao trocar de opção; servidor normaliza",
+    10,
+    pfSelf.genderSelfDescribed === "Agênero fluido" &&
+      pfCleared.genderSelfDescribed === null &&
+      genderLibSrc.includes("export function normalizeGender") &&
+      apptPostSrc.length > 0 &&
+      readFileSync(join(root, "src/app/api/patients/route.ts"), "utf8").includes("normalizeGender(") &&
+      readFileSync(join(root, "src/app/api/patients/[id]/route.ts"), "utf8").includes("normalizeGender("),
+  );
+
+  // PF.3 — PRIVACIDADE: sexo e identidade NUNCA no AuditLog (append-only por
+  // trigger = valor gravado é irreversível). A trilha registra QUE mudou.
+  // Procura a linha da trilha que corresponde a uma mudança REAL de gênero — a
+  // última `patient.update` pode ser um no-op (diff vazio), o que faria o check
+  // passar/falhar por acidente de ordem.
+  const pfAuditRows = await prisma.auditLog.findMany({
+    where: { entityType: "Patient", entityId: pfPatient.id, action: "patient.update" },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  const pfAudit = pfAuditRows.find((r) => JSON.stringify(r.afterJson ?? {}).includes("gender"));
+  const auditBlob = JSON.stringify(pfAudit ?? {});
+  const allAuditBlob = JSON.stringify(pfAuditRows);
+  // ⚠️ A asserção "o valor não aparece" passa até com a trilha VAZIA — que era
+  // exatamente o defeito (redact ANTES do diff fazia o shallowDiff descartar a
+  // chave). Então o check exige as DUAS coisas: o NOME do campo presente e o
+  // VALOR ausente. Achado de code-review, 2026-07-24.
+  check(
+    "PF.3 audit registra QUE o campo mudou e redige o VALOR (diff-then-redact)",
+    10,
+    /"sex"/.test(auditExtSrc) &&
+      /"gender"/.test(auditExtSrc) &&
+      /"genderSelfDescribed"/.test(auditExtSrc) &&
+      auditExtSrc.includes("function redactDiff") &&
+      auditBlob.includes("gender") &&
+      auditBlob.includes("[REDACTED]") &&
+      // o VALOR não pode aparecer em NENHUMA linha da trilha deste paciente
+      !allAuditBlob.includes("Agênero fluido") &&
+      !allAuditBlob.includes("TRANS_WOMAN"),
+  );
+
+  // PF.4 — LGPD: dado novo de paciente entra no export da conta e a política
+  // deixou de listar as categorias de forma FECHADA (era "nome, telefone e CPF").
+  check(
+    "PF.4 LGPD: export inclui os campos novos + política atualizada",
+    10,
+    accountExportSrc.includes("birthDate: true") &&
+      accountExportSrc.includes("gender: true") &&
+      legalSrc.includes("data de nascimento") &&
+      legalSrc.includes("identidade de gênero") &&
+      !legalSrc.includes('LEGAL_VERSION = "2026-07-10"'),
+  );
+
+  // PF.5 — aniversariantes: "hoje" vem do fuso do app (nunca new Date().getDate())
+  // e o casamento de dia é do helper puro (que trata 29/02 → 28/02).
+  check(
+    "PF.5 aniversariantes: hoje via todayIsoInAppTz + splitBirthdays (não SQL de dia)",
+    10,
+    dashRouteSrc.includes("todayIsoInAppTz()") &&
+      dashRouteSrc.includes("splitBirthdays(") &&
+      // ⚠️ asserção NEGATIVA roda sobre o código SEM comentários: o comentário
+      // que explica a regra cita justamente `new Date().getDate()` como o que
+      // NÃO se deve fazer. Mesma pegadinha do RT.3 (ver wiki:
+      // regression-test-assert-the-predicate § "check negativo").
+      !/new Date\(\)\.getDate\(\)/.test(stripComments(dashRouteSrc)) &&
+      readFileSync(join(root, "src/lib/birthday.ts"), "utf8").includes('born === "02-29"'),
+  );
+
+  // PF.6 — o card NÃO manda mensagem sozinho: é link wa.me (a cota de mensagem
+  // existe para prevenir falta, não para parabéns de marketing).
+  const birthdayCardSrc = readFileSync(join(root, "src/components/dashboard/birthdays-card.tsx"), "utf8");
+  check(
+    "PF.6 card de aniversário usa link wa.me e não consome cota de mensagem",
+    10,
+    birthdayCardSrc.includes("wa.me/") &&
+      !birthdayCardSrc.includes("sendWhatsApp") &&
+      !/fetch\(/.test(birthdayCardSrc),
+  );
+
+  await prisma.patient.delete({ where: { id: pfPatient.id } });
+
   // cleanup GCal (cascade apaga a conexão)
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET LOCAL app.allow_audit_mutation = 'true'");

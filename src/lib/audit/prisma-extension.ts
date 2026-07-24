@@ -48,7 +48,30 @@ const REDACTED_FIELDS = new Set([
   "cpf",
   "cpfHash",
   "identifierHash",
+  // Sexo e identidade de gênero (2026-07-24): sexo em contexto de clínica é dado
+  // de SAÚDE e identidade de gênero é plausivelmente sensível (LGPD art. 5º, II);
+  // o AuditLog é append-only por trigger — o valor gravado aqui é IRREVERSÍVEL. A trilha continua registrando QUE o campo mudou, sem guardar
+  // o conteúdo. `birthDate` fica visível de propósito: não é categoria sensível
+  // e é justamente o que se quer auditar numa edição acidental.
+  "sex",
+  "gender",
+  "genderSelfDescribed",
 ]);
+
+/**
+ * Redige os valores sensíveis de um diff JÁ CALCULADO, preservando as CHAVES.
+ * É o que mantém a informação útil ("o CPF mudou", "o gênero mudou") sem
+ * imortalizar o valor num AuditLog append-only.
+ */
+function redactDiff<T extends Record<string, unknown>>(diff: {
+  before: Partial<T>;
+  after: Partial<T>;
+}): { before: Partial<T>; after: Partial<T> } {
+  return {
+    before: (redact(diff.before as Record<string, unknown>) ?? {}) as Partial<T>,
+    after: (redact(diff.after as Record<string, unknown>) ?? {}) as Partial<T>,
+  };
+}
 
 function redact<T extends Record<string, unknown>>(obj: T | null | undefined): T | null {
   if (!obj) return null;
@@ -96,9 +119,16 @@ export const auditExtension = Prisma.defineExtension((client) => {
           if (!AUDITED_MODELS.has(model)) return query(args);
           const before = await readOne(client as never, model, args.where);
           const result = await query(args);
-          const diff = shallowDiff(
-            redact(before as Record<string, unknown>) ?? undefined,
-            redact(result as Record<string, unknown>) ?? undefined,
+          // DIFF-then-REDACT (corrigido em 2026-07-24). Redigir ANTES do diff
+          // fazia `"[REDACTED]" === "[REDACTED]"` e o `shallowDiff` DESCARTAVA a
+          // chave: a trilha de uma troca de CPF/gênero ficava vazia, em vez de
+          // registrar QUE o campo mudou. Agora o diff enxerga os valores reais
+          // (só em memória) e a redação acontece depois, sobre o resultado.
+          const diff = redactDiff(
+            shallowDiff(
+              before as Record<string, unknown> | undefined,
+              result as Record<string, unknown> | undefined,
+            ),
           );
           await audit({
             action: `${camelize(model)}.${ACTION_BY_OP[operation]}`,
@@ -116,9 +146,11 @@ export const auditExtension = Prisma.defineExtension((client) => {
           if (!AUDITED_MODELS.has(model)) return query(args);
           const before = await readOne(client as never, model, args.where);
           const result = await query(args);
-          const diff = shallowDiff(
-            redact(before as Record<string, unknown>) ?? undefined,
-            redact(result as Record<string, unknown>) ?? undefined,
+          const diff = redactDiff(
+            shallowDiff(
+              before as Record<string, unknown> | undefined,
+              result as Record<string, unknown> | undefined,
+            ),
           );
           await audit({
             action: `${camelize(model)}.${ACTION_BY_OP[operation]}`,

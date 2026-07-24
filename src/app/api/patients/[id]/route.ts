@@ -11,6 +11,7 @@ import {
 import { auditWrap } from "@/lib/audit"
 import { attachCpfToExistingSlot, canonicalizePhone, hashCpf } from "@/lib/billing"
 import { canonicalizeCpf } from "@/lib/anti-fraud/cpf-validator"
+import { normalizeGender } from "@/lib/gender"
 import { syncPatientRename } from "@/lib/services/google/mirror"
 import type { ApiResponse, PatientResponse } from "@/lib/types/api"
 
@@ -75,6 +76,10 @@ export const PUT = auditWrap(async (
 
     const body = await request.json()
     if (body.cpf === "") body.cpf = undefined
+    if (body.birthDate === "") body.birthDate = null
+    if (body.sex === "") body.sex = null
+    if (body.gender === "") body.gender = null
+    if (body.genderSelfDescribed === "") body.genderSelfDescribed = null
     const validation = updatePatientSchema.safeParse(body)
 
     if (!validation.success) {
@@ -83,6 +88,27 @@ export const PUT = auditWrap(async (
 
     const data = validation.data
     const updatePayload: Record<string, unknown> = { ...data }
+
+    // Gênero: normaliza SEMPRE que o campo vier no payload, para o par ficar
+    // coerente. Sair de "Prefiro me autodescrever" APAGA o texto anterior —
+    // sem esse null explícito o banco guardaria uma descrição de identidade que
+    // o usuário acredita ter removido. Ver src/lib/gender.ts.
+    if ("gender" in data || "genderSelfDescribed" in data) {
+      // Normaliza o par PÓS-MERGE com o estado atual. Um PUT parcial (só
+      // `genderSelfDescribed`, por exemplo) tem `data.gender === undefined` —
+      // normalizar o payload cru devolveria `gender: null` e APAGARIA a
+      // identidade já cadastrada. Achado de code-review, 2026-07-24.
+      const merged = {
+        gender: "gender" in data ? data.gender : existingPatient.gender,
+        genderSelfDescribed:
+          "genderSelfDescribed" in data
+            ? data.genderSelfDescribed
+            : existingPatient.genderSelfDescribed,
+      }
+      const normalized = normalizeGender(merged)
+      updatePayload.gender = normalized.gender
+      updatePayload.genderSelfDescribed = normalized.genderSelfDescribed
+    }
 
     // Manter phoneCanonical em sincronia se phone mudar.
     if (typeof data.phone === "string") {

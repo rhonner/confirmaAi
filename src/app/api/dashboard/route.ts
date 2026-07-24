@@ -5,7 +5,8 @@ import { getAuthSession, unauthorizedResponse, serverErrorResponse } from "@/lib
 import type { ApiResponse, DashboardStats } from "@/lib/types/api"
 import { startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval, subDays } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { APP_TIMEZONE, fromAppTz, toAppTz, formatInTimeZone } from "@/lib/timezone"
+import { APP_TIMEZONE, fromAppTz, toAppTz, formatInTimeZone, todayIsoInAppTz } from "@/lib/timezone"
+import { splitBirthdays, ageOn } from "@/lib/birthday"
 
 export async function GET(request: NextRequest) {
   try {
@@ -99,6 +100,47 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // ── Aniversariantes (hoje + próximos 7 dias) ────────────────────────────
+    // "Hoje" vem SEMPRE de `todayIsoInAppTz()`: com `new Date().getDate()` no
+    // runtime UTC da Vercel o card viraria de dia às 21:00 BRT (mesma classe do
+    // bug de fuso já documentado em features/dashboard.md).
+    //
+    // Filtro no banco por PREFIXO do mês (`contains: "-MM-"`) para não carregar
+    // a base inteira: só os meses que a janela alcança (hoje + 7 dias cruza no
+    // máximo 2 meses). O casamento exato de dia — incluindo 29/02 → 28/02 — fica
+    // em `splitBirthdays` (puro e testado), não em SQL.
+    const todayIso = todayIsoInAppTz()
+    const monthsInWindow = new Set<string>()
+    for (let i = 0; i <= 7; i++) {
+      const d = new Date(`${todayIso}T12:00:00.000Z`)
+      d.setUTCDate(d.getUTCDate() + i)
+      monthsInWindow.add(d.toISOString().slice(5, 7))
+    }
+    const birthdayCandidates = await prisma.patient.findMany({
+      where: {
+        userId: session.user.id,
+        archivedAt: null,
+        OR: [...monthsInWindow].map((mm) => ({ birthDate: { contains: `-${mm}-` } })),
+      },
+      select: { id: true, name: true, phone: true, birthDate: true },
+      orderBy: { name: "asc" },
+    })
+    const split = splitBirthdays(
+      birthdayCandidates.filter((p): p is typeof p & { birthDate: string } => !!p.birthDate),
+      todayIso,
+      7,
+    )
+    const birthdays = {
+      today: split.today.map((p) => ({ ...p, age: ageOn(p.birthDate, todayIso) })),
+      upcoming: split.upcoming.map((p) => ({
+        id: p.id,
+        name: p.name,
+        phone: p.phone,
+        birthDate: p.birthDate,
+        inDays: p.inDays,
+      })),
+    }
+
     const stats: DashboardStats = {
       totalAppointments,
       confirmed,
@@ -109,6 +151,7 @@ export async function GET(request: NextRequest) {
       noShowRate,
       estimatedLoss,
       weeklyData,
+      birthdays,
     }
 
     return NextResponse.json<ApiResponse<DashboardStats>>({

@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { PageHeader } from "@/components/layout/page-header";
+import { BirthdaysCard } from "@/components/dashboard/birthdays-card";
 import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
 import { getStatusColor, getStatusLabel } from "@/lib/appointment-status";
 
@@ -277,6 +278,8 @@ export default function DashboardPage() {
   }
 
   const weeklyTrend = computeWeeklyTrend(data.weeklyData);
+  const birthdaysToday = data.birthdays?.today ?? [];
+  const birthdaysUpcoming = data.birthdays?.upcoming ?? [];
 
   return (
     <div className="space-y-6">
@@ -311,6 +314,18 @@ export default function DashboardPage() {
       </div>
 
       <OnboardingBanner />
+
+      {/* Aniversariantes — logo no início, como o dono pediu. Só aparece quando
+          há alguém (hoje ou nos próximos 7 dias): dashboard não ganha card morto.
+          Os dados vêm do servidor, que é quem sabe o "hoje" em BRT. */}
+      {(birthdaysToday.length > 0 || birthdaysUpcoming.length > 0) && (
+        <div
+          className="opacity-0 animate-fade-in-up"
+          style={{ animationDelay: "60ms", animationFillMode: "forwards" }}
+        >
+          <BirthdaysCard today={birthdaysToday} upcoming={birthdaysUpcoming} />
+        </div>
+      )}
 
       {/* Metrics Grid */}
       <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">

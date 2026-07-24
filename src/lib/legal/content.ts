@@ -11,8 +11,8 @@
  * `LEGAL_UPDATED_LABEL`. Ao mudar o texto de forma material, BUMPe a versão.
  */
 
-export const LEGAL_VERSION = "2026-07-10";
-export const LEGAL_UPDATED_LABEL = "10 de julho de 2026";
+export const LEGAL_VERSION = "2026-07-24";
+export const LEGAL_UPDATED_LABEL = "24 de julho de 2026";
 
 /** Marcadores que o operador deve preencher antes de publicar de verdade. */
 export const CONTROLLER_NAME = "[A PREENCHER: razão social / nome do responsável]";
@@ -92,7 +92,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     heading: "2. Dados que coletamos",
     paragraphs: [
       "Do titular da conta (profissional/estabelecimento): nome, e-mail, senha (armazenada com hash), CPF, nome da clínica e dados de uso do Serviço.",
-      "Dos pacientes cadastrados pelo usuário: nome, telefone (WhatsApp) e, opcionalmente, CPF — fornecidos e controlados pelo próprio usuário, que é o controlador desses dados.",
+      "Dos pacientes cadastrados pelo usuário: nome, telefone (WhatsApp) e, opcionalmente, CPF, e-mail, data de nascimento, sexo, identidade de gênero e observações — fornecidos e controlados pelo próprio usuário, que é o controlador desses dados. Sexo e identidade de gênero podem ser considerados dados sensíveis (art. 5º, II, da LGPD): são de preenchimento opcional, existem para o atendimento do próprio paciente e não são usados para segmentação ou marketing.",
       "Dados técnicos: registros de acesso (endereço IP, data/hora), eventos de auditoria e métricas de uso, necessários para segurança e funcionamento.",
     ],
   },
@@ -103,6 +103,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       "Para criar conta, cobrança e comunicações essenciais: execução de contrato e cumprimento de obrigação legal/regulatória (ex.: fiscal).",
       "Para segurança, prevenção a fraude e melhoria do Serviço: legítimo interesse.",
       "Para o aceite destes documentos e comunicações de marketing eventuais: consentimento, quando aplicável.",
+      "Sobre dados que podem ser sensíveis (sexo e identidade de gênero do paciente, quando o profissional os registra): o preenchimento é opcional e a finalidade é exclusivamente a prestação do atendimento pelo profissional de saúde ao próprio titular (art. 11, II, alínea f, da LGPD). Não usamos esses dados para segmentação, publicidade ou qualquer decisão automatizada.",
     ],
   },
   {

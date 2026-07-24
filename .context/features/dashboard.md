@@ -45,3 +45,25 @@
 - **Nova métrica agregada**: adicione contador em `Promise.all`, atualize `DashboardStats` em `src/lib/types/api.ts` e renderize na página.
 - **Novo range** (ex: `90d`, `year`): adicionar `else if` ao parsing de `range` e novo botão na UI. Considerar custo do `findMany` para janelas longas.
 - **Quebra por status no chart**: `weeklyData` já filtra; adicionar nova chave (ex: `pending`) e atualizar `<Bar>` do Recharts.
+
+## Card "Aniversariantes de hoje" (2026-07-24)
+
+Pedido do dono: *"o aniversariantes é somente um card gráfico na dashboard ou em algum
+lugar de fácil visualização no início"*.
+
+- **Onde**: topo do dashboard, largura total, logo depois do `OnboardingBanner` —
+  **antes** das métricas. `src/components/dashboard/birthdays-card.tsx`.
+- **Só aparece quando há alguém** (hoje OU nos próximos 7 dias). Sem ninguém → o card
+  não é renderizado (dashboard não ganha card morto no topo).
+- **Dados**: `GET /api/dashboard` devolve `birthdays: { today[], upcoming[] }`. "Hoje"
+  vem de `todayIsoInAppTz()` — com `new Date().getDate()` no runtime UTC o card viraria
+  de dia às 21:00 BRT (mesma classe do bug de fuso desta feature).
+- **Query**: filtra por PREFIXO de mês (`birthDate: { contains: "-MM-" }`, no máx. 2
+  meses na janela) e o casamento exato de dia — incluindo **29/02 → 28/02** em ano não
+  bissexto — fica no helper puro `splitBirthdays`, não em SQL.
+- **Ação**: link `wa.me` com a mensagem pronta (o dono revisa e envia). **Nada é enviado
+  automaticamente**: cota de mensagem existe para prevenir falta (dinheiro), e parabéns
+  automático é marketing — risco de bloqueio do número.
+- Terminologia (Paciente/Cliente) vem do hook, nunca hardcodada.
+- Checks `PF.5`/`PF.6`; validado no Chrome (card com aniversariante de hoje + próximos,
+  e desaparecendo ao limpar as datas).
