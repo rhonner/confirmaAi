@@ -98,6 +98,15 @@ arrastar no Mês **só pode** mudar a data. Para mover o horário, use o Dia.
 - Bloqueios ainda **não são renderizados** no Mês (débito #1 de `time-blocks.md`): o
   aviso aparece, mas o usuário não vê o bloco na grade mensal.
 
+## Card BAIXO vira 1 linha (2026-07-24)
+
+Um card de 30 min tem 28px (`HOUR_PX=56`) — cabe **uma** linha de texto. O layout
+original punha horário+status na 1ª e o **nome do paciente na 2ª**, que era cortada: o
+card lia "10:00 · Pendente", sem dizer de QUEM era. Virou crítico quando sobrepor passou
+a ser permitido (3 colunas lado a lado = card estreito e baixo). Agora
+`compact = height < COMPACT_CARD_PX (40)` move o nome para a MESMA linha do horário
+(`10:00 Ana Costa` + selo de status à direita, tudo com `truncate`/`min-w-0`).
+
 ## Clique num evento do Google (nas duas grades)
 
 Antes, um evento do Google era **inerte** nas grades: no Dia era um `<div>` mudo (clique =
@@ -171,6 +180,23 @@ clique→criar, colunas de sobreposição, sem diálogo espúrio.
    o card **volta para 15:00**.
 6. Dados de teste **revertidos** ao fim (agendamento de volta em 07/07 15:00 via API — para o
    espelho do Google acompanhar — e bloqueio excluído).
+
+**Regras novas de agenda** (2026-07-24, Chrome MCP, mesma sessão — ver
+`appointments.md` § Retroativo):
+
+- Clique na **área livre da célula do Mês** (dia 13, no passado) → abriu **"Novo
+  Agendamento"** com `Data 13/07/2026` (não drilou para o Dia). Ao escolher 10:00 apareceu
+  o aviso *"vai entrar como **Retroativo**…"*; "Criar" → **sucesso** (antes era 400).
+  Chip no Mês com ícone ⟲, card do Dia `10:00 ⟲ Ana Costa`, selo **"⟲ Retroativo"** na
+  Semana. `GET /api/appointments` devolveu `retroactive: true`.
+- **Sobreposição**: 3 agendamentos às 10:00 do dia 27/07 (Ana, Pedro, Maria) criados **sem
+  nenhum erro de conflito** e renderizados **lado a lado em 3 colunas** no Dia, com o nome
+  de cada um visível (fix do card compacto acima).
+- **Número do dia** no Mês continua abrindo a visão Dia; o mini-calendário também.
+- ⚠️ O **firewall do retroativo** (cron não marca NO_SHOW / não manda WhatsApp) foi
+  validado por `RT.1`/`RT.2` (filtro real contra o DB + invariante no fonte), **não**
+  rodando o cron de verdade — `runSchedulerJobs()` dispararia também notificações de
+  billing (e-mail real). Todos os dados de teste foram apagados no fim.
 
 **Clique em evento do Google** (2026-07-24, Chrome MCP, mesma sessão):
 

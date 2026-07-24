@@ -92,16 +92,28 @@ Antes enviava lembrete para quem já recebeu confirmação mas ainda não respon
 
 ## `markNoShows`
 
-Marca como `NO_SHOW` qualquer agendamento ainda `PENDING` cuja `dateTime` já passou.
+Marca como `NO_SHOW` qualquer agendamento ainda `PENDING` cuja `dateTime` já passou **e
+que não seja um registro retroativo**.
 
 ```ts
 prisma.appointment.updateMany({
-  where: { dateTime: { lt: now }, status: "PENDING" },
+  where: { dateTime: { lt: now }, status: "PENDING", retroactive: false },
   data: { status: "NO_SHOW" },
 })
 ```
 
-> Não filtra por `userId` (atualização global). Tudo bem porque o critério `status=PENDING` + `dateTime<now` é universal — não há vazamento de dados, só atualização.
+> Não filtra por `userId` (atualização global). Tudo bem porque o critério é universal — não há vazamento de dados, só atualização.
+
+### ⚠️ `retroactive: false` é invariante (2026-07-24)
+
+Desde 2026-07-24 é possível **lançar agendamento no passado** para organizar o histórico
+(`Appointment.retroactive`, ver [`appointments.md`](appointments.md) § Retroativo). Esses
+registros **não são faltas** — sem o filtro, o cron os marcaria `NO_SHOW` em até 30 min e
+**corromperia a taxa de faltas, que é o produto**. O mesmo filtro está na query de
+confirmação (`CONFIRMATION.where`): registro retroativo **não recebe WhatsApp** (o
+atendimento já aconteceu) e não fica eternamente na fila de candidatos sendo pulado pelo
+guard `now > dateTime`. Checks `RT.1` (fonte) e `RT.2` (comportamento no DB) em
+`scripts/test-sprints.ts`.
 
 ## Pontos sensíveis
 

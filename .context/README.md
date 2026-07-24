@@ -53,14 +53,14 @@ Quando o usuário pedir para desenvolver, alterar ou debugar algo:
 | -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
 | Autenticação         | [features/auth.md](features/auth.md)                 | Login, registro, sessão NextAuth, helpers de auth                  |
 | Pacientes            | [features/patients.md](features/patients.md)         | CRUD de pacientes, paginação, busca, export CSV                    |
-| Agendamentos         | [features/appointments.md](features/appointments.md) | CRUD, status, export CSV, **grade Dia arrastável**. ⚠️ **sobreposição permitida** (guard de conflito removido em 2026-07-24) |
+| Agendamentos         | [features/appointments.md](features/appointments.md) | CRUD, status, export CSV, **grade Dia arrastável**. ⚠️ **sobreposição permitida** (guard de conflito removido em 2026-07-24) e **agendar no passado permitido** como `retroactive` — fora da automação (sem WhatsApp/no-show) |
 | Arraste na agenda    | [features/agenda-day-grid.md](features/agenda-day-grid.md) | Dia = grade de horas estilo Google Agenda (arrastar p/ mover o **horário** + alça p/ estender; snap 15min, colunas de sobreposição). Mês = arrastar chip entre **dias** mantendo o horário (`moveKeepingTime`, hit-test `data-month-day`). Pointer Events nos dois; Semana inalterada. Inclui a armadilha do `pending` × structural sharing do React Query |
 | Horário bloqueado    | [features/time-blocks.md](features/time-blocks.md)   | `TimeBlock` (sem paciente): almoço/reunião/férias. Firewall (scheduler não vê); espelho no Google (evento sem convidados); aviso SUAVE ao agendar em cima |
 | Dashboard            | [features/dashboard.md](features/dashboard.md)       | Métricas agregadas, gráfico semanal, prejuízo estimado             |
 | Configurações        | [features/settings.md](features/settings.md)         | Mensagens, antecedência, valor médio, nome da clínica              |
 | WhatsApp (Evolution) | [features/whatsapp.md](features/whatsapp.md)         | Conexão, QR code, status, desconexão por usuário                   |
 | Webhook Evolution    | [features/webhook-evolution.md](features/webhook-evolution.md) | Recebe estados de conexão e respostas dos pacientes      |
-| Scheduler / Cron     | [features/scheduler.md](features/scheduler.md)       | Envio de confirmações, auto-cancelamento no deadline e marcação de no-show |
+| Scheduler / Cron     | [features/scheduler.md](features/scheduler.md)       | Envio de confirmações, auto-cancelamento no deadline e marcação de no-show. ⚠️ ignora `retroactive: true` (invariante) |
 | Confirmação por Link | [features/confirmation-link.md](features/confirmation-link.md) | Paciente confirma/cancela por LINK (página + botão, POST) em vez de "1/2"; auto-cancela no deadline. Token HMAC stateless; GET read-only (anti-prefetch) |
 | Onboarding + Terminologia | [features/onboarding.md](features/onboarding.md) | Wizard escolhe o ramo (BusinessType) no 1º login → terminologia da UI (Paciente vs Cliente). `businessType`/`onboardingCompletedAt` no User + sessão. ⚠️ refac de rótulos PARCIAL |
 | Auditoria            | [features/audit.md](features/audit.md)               | Trilha de mutações (Prisma extension) + eventos de domínio (login, msg, webhook) |

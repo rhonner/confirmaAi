@@ -266,10 +266,14 @@ pré-preencher). Antes dessa mudança o clique nas grades **não fazia nada** e 
 morto (feedback do dono). Detalhes de interação em
 [`agenda-day-grid.md`](agenda-day-grid.md) § "Clique num evento do Google".
 
-⚠️ **Evento no passado**: o diálogo abre normalmente (com o aviso "este horário já passou") e
-o `POST /convert` recusa com "Não é possível promover um evento no passado" — o usuário pode
-ajustar a data/hora no próprio diálogo. Comportamento pré-existente do botão da Semana, não
-regressão do clique.
+**Evento no passado (atualizado 2026-07-24)**: agora **promove normalmente** — o
+agendamento nasce com `retroactive: true` (fora da automação; ver
+[`appointments.md`](appointments.md) § Retroativo) e o diálogo avisa isso antes. O antigo
+`400 "Não é possível promover um evento no passado"` foi removido; o motivo dele
+(`markNoShows` marcaria falta falsa) agora é resolvido pelo próprio flag.
+**Sobreposição** também deixou de ser rejeitada no `/convert` — promover um evento para um
+horário que já tem agendamento é permitido (e a antiga limitação de corrida entre dois
+`/convert` simultâneos deixou de ser um risco: sobrepor é resultado válido).
 
 ### `POST /convert` (`convert/route.ts`)
 
