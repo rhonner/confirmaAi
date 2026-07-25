@@ -21,6 +21,8 @@ import {
   type TimeBlock,
 } from "@/hooks/use-api";
 import { parseEventSignals } from "@/lib/services/google/promote-signals";
+import { isRetroactive } from "@/lib/retroactive";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -124,11 +126,17 @@ function RetroactiveBadge() {
  * - **Dia inteiro não promove**: `handleOpenPromote` encaixa a duração numa das
  *   `DURATION_OPTIONS` (máx. 8h), então um evento de 24h viraria um agendamento
  *   de 8h — mentira silenciosa. (Achado de code-review da Fase B.)
- * - **"Ocupado" não promove**: é o placeholder de evento particular; não há
- *   título/convidados para pré-preencher nada.
+ * - **Evento particular não promove**: o título chega redigido ("Ocupado") e
+ *   descrição/convidados vêm vazios; não há o que pré-preencher.
+ *
+ * ⚠️ Decide por `isPrivate` (booleano vindo de `visibility` no mapper), **nunca**
+ * por `title !== "Ocupado"`. O rótulo é copy pt-BR: renomeá-lo (trabalho do
+ * agente `ux-writer`) faria um placeholder particular virar promovível e o
+ * `parseEventSignals` sugerir o próprio rótulo como nome do paciente — criando
+ * um paciente "Ocupado" e queimando uma vaga vitalícia de quota.
  */
-function canPromoteGoogleEvent(event: { title: string; allDay: boolean }) {
-  return !event.allDay && event.title !== "Ocupado";
+function canPromoteGoogleEvent(event: { isPrivate: boolean; allDay: boolean }) {
+  return !event.allDay && !event.isPrivate;
 }
 
 /**
@@ -397,6 +405,7 @@ export default function AgendaPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AppointmentForm>({
     resolver: zodResolver(appointmentSchema),
@@ -585,7 +594,8 @@ export default function AgendaPage() {
           )
         : 30;
     // Pré-preenche o nome pelo título já disponível no overlay (instantâneo).
-    const local = parseEventSignals({ title: event.title });
+    // `isPrivate` evita sugerir o rótulo redigido como nome do paciente.
+    const local = parseEventSignals({ title: event.title, isPrivate: event.isPrivate });
     setNewPatientDefaults({
       name: local.suggestedName,
       phone: local.suggestedPhone,
@@ -619,8 +629,11 @@ export default function AgendaPage() {
   // NADA no Dia (o bloco era um `div` mudo) e no Mês só drilava para o Dia — ou
   // seja, o evento parecia "morto" (feedback do dono, 2026-07-24).
   // Agora: se dá para promover, abre o diálogo de promoção (a ação útil dentro do
-  // app); se não dá (dia inteiro / "Ocupado"), abre o evento no Google, o único
+  // app); se não dá (dia inteiro / particular), abre o evento no Google, o único
   // lugar com mais contexto. A lista da Semana segue com o botão "Promover".
+  // ⚠️ TODO caminho aqui precisa dar UM feedback: `htmlLink` é `string | null`, e
+  // um `if` sem `else` recriaria exatamente o "clico e não acontece nada" que
+  // originou esta feature.
   const handleGoogleEventClick = (id: string) => {
     const event = googleEvents.find((e) => e.id === id);
     if (!event) return;
@@ -628,7 +641,15 @@ export default function AgendaPage() {
       handleOpenPromote(event);
       return;
     }
-    if (event.htmlLink) window.open(event.htmlLink, "_blank", "noopener,noreferrer");
+    if (event.htmlLink) {
+      window.open(event.htmlLink, "_blank", "noopener,noreferrer");
+      return;
+    }
+    toast.info(
+      event.allDay
+        ? "Evento de dia inteiro do Google. Abra na sua Google Agenda para ver os detalhes."
+        : "Evento particular da sua Google Agenda. Abra lá para ver os detalhes.",
+    );
   };
 
   // Primeiro bloqueio que sobrepõe [start, start+dur) — base do aviso de conflito.
@@ -707,9 +728,25 @@ export default function AgendaPage() {
   // devolve a MESMA referência de dados (structural sharing) → o efeito que
   // observa as props nunca dispara e o card fica preso na posição arrastada.
   const rescheduleAppointment = (id: string, newStart: Date, newDurationMinutes: number) => {
+    // Arrastar para um horário JÁ PASSADO faz o servidor marcar o registro como
+    // Retroativo (`isRetroactive` no PUT) — ele SAI do WhatsApp e do controle de
+    // faltas. É um efeito grande para um gesto pequeno (ex.: clínica atrasada
+    // arrasta o card das 14h para 14h30 às 15h), então avisamos na TRANSIÇÃO —
+    // não em todo arraste de um card que já era retroativo. Mesma função pura
+    // do servidor, para as duas pontas concordarem.
+    const wasRetroactive = appointments?.find((a) => a.id === id)?.retroactive === true;
+    const flipsToRetroactive = isRetroactive(newStart) && !wasRetroactive;
+    const notifyIfFlipped = () => {
+      if (!flipsToRetroactive) return;
+      toast.info("Marcado como Retroativo", {
+        description:
+          "O horário já passou, então isto vira só registro: sem WhatsApp e fora do controle de faltas.",
+      });
+    };
     const doIt = () =>
       updateMutation
         .mutateAsync({ id, dateTime: newStart.toISOString(), durationMinutes: newDurationMinutes })
+        .then(notifyIfFlipped) // só no sucesso; falha cai no catch abaixo
         .catch(() => {}) // erro já é toast na mutação; o refetch abaixo restaura a posição
         .then(() => queryClient.invalidateQueries({ queryKey: ["appointments"] }));
     const overlap = overlappingBlockFor(newStart.getTime(), newDurationMinutes);
@@ -799,6 +836,9 @@ export default function AgendaPage() {
           dateTime,
           durationMinutes: data.durationMinutes,
           notes: data.notes,
+          // Só vai preenchido no retroativo (ver o efeito de `isPastSchedule`);
+          // agendamento futuro segue nascendo PENDING pelo default do schema.
+          ...(data.status ? { status: data.status } : {}),
         });
       }
       setDialogOpen(false);
@@ -853,8 +893,24 @@ export default function AgendaPage() {
     if (current && !statusOptions.some((s) => s.value === current)) {
       return [{ value: current, label: getStatusLabel(current) }, ...statusOptions];
     }
+    // Criando um registro cujo horário JÁ PASSOU: "Pendente" não é um estado
+    // possível (o atendimento já aconteceu ou não) e é justamente o que a
+    // automação nunca vai resolver num retroativo — deixá-lo disponível seria
+    // convidar o usuário a inflar o denominador da taxa de faltas com registros
+    // que nunca saem de Pendente. Só os desfechos reais.
+    if (!selectedAppointment && isPastSchedule) {
+      return statusOptions.filter((s) => s.value !== "PENDING");
+    }
     return statusOptions;
-  }, [selectedAppointment]);
+  }, [selectedAppointment, isPastSchedule]);
+
+  // Ao criar, quando o horário vira passado o status precisa nascer classificado
+  // (default "Confirmado" = compareceu, o caso comum de backfill de histórico);
+  // se voltar para o futuro, some do payload e o registro nasce PENDING normal.
+  useEffect(() => {
+    if (selectedAppointment) return;
+    setValue("status", isPastSchedule ? "CONFIRMED" : undefined);
+  }, [isPastSchedule, selectedAppointment, setValue]);
 
   return (
     <div className="space-y-6">
@@ -995,9 +1051,11 @@ export default function AgendaPage() {
                 </p>
               )}
 
-              {/* Status — só ao editar (novo/promoção nasce PENDING). Substitui o
-                  antigo menu "⋮" por-visão, unificando a ação em todas as visões. */}
-              {selectedAppointment && (
+              {/* Status — ao EDITAR (substitui o antigo menu "⋮" por-visão) e
+                  também ao CRIAR com horário passado, para o registro retroativo
+                  nascer classificado em vez de virar um "Pendente" eterno que a
+                  automação nunca resolve e que dilui a taxa de faltas. */}
+              {(selectedAppointment || isPastSchedule) && (
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <select

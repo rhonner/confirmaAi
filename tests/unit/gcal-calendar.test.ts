@@ -33,6 +33,7 @@ describe("mapGoogleEvent (matriz 'formato do evento')", () => {
       end: "2026-07-07T15:00:00-03:00",
       allDay: false,
       htmlLink: "https://calendar.google.com/event?eid=abc",
+      isPrivate: false,
     });
   });
 
@@ -60,7 +61,12 @@ describe("mapGoogleEvent (matriz 'formato do evento')", () => {
     expect(mapGoogleEvent(timed({ eventType: "fromGmail" }))).not.toBeNull();
   });
 
-  it("privado/confidencial não vaza o título — vira 'Ocupado'", () => {
+  it("privado/confidencial expõe isPrivate e não vaza o título", () => {
+    // O booleano é o contrato: quem decide "pode promover?" / "extrai nome?"
+    // lê `isPrivate`, nunca o rótulo (que é copy e pode ser reescrito).
+    expect(mapGoogleEvent(timed({ visibility: "private" }))?.isPrivate).toBe(true);
+    expect(mapGoogleEvent(timed({ visibility: "confidential" }))?.isPrivate).toBe(true);
+    expect(mapGoogleEvent(timed({ visibility: "default" }))?.isPrivate).toBe(false);
     expect(mapGoogleEvent(timed({ visibility: "private" }))?.title).toBe("Ocupado");
     expect(mapGoogleEvent(timed({ visibility: "confidential" }))?.title).toBe("Ocupado");
     expect(mapGoogleEvent(timed({ visibility: "public" }))?.title).toBe("Consulta João");

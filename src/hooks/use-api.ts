@@ -325,6 +325,8 @@ export function useCreateAppointment() {
       dateTime: string;
       durationMinutes?: number;
       notes?: string;
+      /** Só honrado quando o horário é passado (registro retroativo). */
+      status?: string;
     }) =>
       fetchApi<Appointment>("/api/appointments", {
         method: "POST",
@@ -545,6 +547,12 @@ export type GcalEvent = {
   end: string;
   allDay: boolean;
   htmlLink: string | null;
+  /**
+   * Evento particular (visibility private/confidential) — o `title` chega
+   * REDIGIDO. Para decidir "é placeholder particular?", leia ESTE campo, nunca
+   * compare o título: o rótulo é copy e pode ser reescrito.
+   */
+  isPrivate: boolean;
 };
 
 type GcalEventsResponse = {

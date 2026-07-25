@@ -120,8 +120,19 @@ dono (2026-07-24): "clico neles e nada acontece". Agora:
   com data/hora/duração e os sinais do evento).
 - **Não promovível → abre o evento no Google** (`window.open(htmlLink, "_blank",
   "noopener,noreferrer")`). Regra em `canPromoteGoogleEvent`: **dia inteiro não promove**
-  (a duração encaixaria em no máx. 8h → mentira silenciosa) e **"Ocupado" não promove**
-  (placeholder de evento particular, nada para pré-preencher).
+  (a duração encaixaria em no máx. 8h → mentira silenciosa) e **evento particular não
+  promove** (título redigido, sem descrição/convidados — nada para pré-preencher).
+- ⚠️ **"Particular" decide por `isPrivate`, NUNCA pelo rótulo "Ocupado"** (fix de review
+  2026-07-25). O `GcalEventDTO` passou a carregar `isPrivate: boolean` (o mapper já o
+  calculava a partir de `visibility` e descartava); `canPromoteGoogleEvent` e
+  `parseEventSignals` leem o booleano. **Por quê:** "Ocupado" é copy pt-BR — renomeá-lo
+  (trabalho do agente `ux-writer`) faria evento particular virar promovível **e** o
+  `parseEventSignals` sugerir o próprio rótulo como nome do paciente, criando um paciente
+  "Ocupado" e **queimando uma vaga vitalícia de quota**. Regressão travada no `MV.4`
+  (asserção negativa sobre o código sem comentários).
+- **Todo caminho do clique dá feedback**: `htmlLink` é `string | null`, então quando não há
+  link o handler emite um `toast.info` explicando (dia inteiro / particular). Um `if` sem
+  `else` recriaria exatamente o "clico e não acontece nada" que originou a feature.
 - O evento continua **não arrastável** (firewall: só `Appointment`/`TimeBlock` se movem) e
   visualmente distinto (tracejado azul); ganhou só `hover` e virou `<button>` (teclado).
 - ⚠️ **Divergência proposital com a Semana**: na lista, o corpo do evento é um link que

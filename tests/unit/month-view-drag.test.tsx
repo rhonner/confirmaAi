@@ -260,6 +260,7 @@ describe("MonthView — arraste entre dias", () => {
               end: "2026-07-20T11:00:00",
               allDay: false,
               htmlLink: "https://calendar.google.com/x",
+              isPrivate: false,
             },
           ],
         }}

@@ -74,9 +74,28 @@
     `scripts/test-sprints.ts`.
 - **Reversível pelo horário**: mover o agendamento para o futuro (edição ou arraste)
   **limpa** o flag e devolve o registro ao fluxo normal; mover para o passado marca.
-- **Status é manual**: o retroativo nasce `PENDING`; o profissional define
-  Confirmado/Faltou na janela de edição. **Métricas contam por status normalmente** — se
-  ele marcar "Faltou", conta como falta (é uma falta real, só registrada depois).
+- **Nasce CLASSIFICADO (2026-07-25, fix de review)**: o retroativo **não** nasce mais
+  `PENDING`. Ao criar com horário passado, o `Select` de status aparece no diálogo (antes
+  era só na edição) com default **"Confirmado"** (compareceu — o caso comum de backfill) e
+  **sem a opção "Pendente"**. `createAppointmentSchema` ganhou `status` opcional e o
+  `POST` só o honra quando `retroactive` é true — agendamento **futuro ignora** qualquer
+  status enviado e nasce `PENDING` (senão daria para criar um "Confirmado" que nunca passou
+  pela confirmação). Check `RT.6`.
+  - **Por quê**: `PENDING` tem semânticas OPOSTAS nos dois casos. Num agendamento normal é
+    **transitório** — o cron sempre resolve (CONFIRMED ou NO_SHOW). Num retroativo é
+    **terminal**, porque o cron pula retroativo. O dashboard não distingue os dois: cada
+    registro de backfill deixado em Pendente entrava no **denominador** de
+    `noShowRate`/`confirmationRate` e diluía a métrica para sempre. Backfillar 50 consultas
+    derrubava a taxa de faltas sem nada ter mudado na clínica.
+- **Métricas contam por status normalmente** (o dashboard **não** filtra `retroactive`) — se
+  o profissional marcar "Faltou", conta como falta: é uma falta real, só registrada depois.
+  Foi decisão explícita do dono manter o retroativo na métrica, e é o que torna o parágrafo
+  acima necessário.
+- **Arrastar para o passado avisa**: `rescheduleAppointment` compara o estado anterior com
+  `isRetroactive(newStart)` (mesma função pura do servidor) e, **só na transição**, emite um
+  toast "Marcado como Retroativo — fica só como registro". Um arraste é gesto de baixa
+  intenção para uma chave que remove o registro do controle de faltas (cenário real: clínica
+  atrasada arrasta o card das 14h para 14h30 às 15h).
 - **UI**: selo `RetroactiveBadge` ("⟲ Retroativo") na lista da Semana; ícone `History`
   no card da grade do Dia e no chip do Mês (`aria-label="Retroativo"`, tooltip explica a
   consequência). No diálogo, ao escolher um horário passado aparece o aviso *"Este horário

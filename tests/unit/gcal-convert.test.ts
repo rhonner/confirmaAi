@@ -44,10 +44,24 @@ describe("parseEventSignals", () => {
     expect(s.suggestedPhone).toBeUndefined();
   });
 
-  it("não sugere nome para evento privado ('Ocupado')", () => {
-    const s = parseEventSignals({ title: "Ocupado" });
+  it("não sugere nome para evento privado — decide por isPrivate, não pelo rótulo", () => {
+    const s = parseEventSignals({ title: "Ocupado", isPrivate: true });
     expect(s.suggestedName).toBeUndefined();
     expect(s.suggestedPhone).toBeUndefined();
+  });
+
+  it("privado com rótulo RENOMEADO continua sem sugerir nome (regressão: rótulo é copy)", () => {
+    // Se alguém trocar a redação de "Ocupado" para outra coisa, o guard não
+    // pode depender do texto — senão o rótulo vira nome de paciente e queima
+    // uma vaga vitalícia de quota.
+    const s = parseEventSignals({ title: "Reservado", isPrivate: true });
+    expect(s.suggestedName).toBeUndefined();
+  });
+
+  it("evento NÃO privado com título 'Ocupado' é tratado como título normal", () => {
+    // Contraprova: o rótulo em si não tem poder — só o booleano tem.
+    const s = parseEventSignals({ title: "Ocupado", isPrivate: false });
+    expect(s.suggestedName).toBe("Ocupado");
   });
 
   it("não sugere o prefixo de agenda como nome quando o título é só prefixo + telefone", () => {

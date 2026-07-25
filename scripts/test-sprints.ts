@@ -2698,6 +2698,11 @@ async function main() {
   // ====================================================================
   const monthViewSrc = readFileSync(join(root, "src/components/agenda/month-view.tsx"), "utf8");
   const agendaPageSrc = readFileSync(join(root, "src/app/(dashboard)/agenda/page.tsx"), "utf8");
+  // Asserção NEGATIVA precisa ler o código SEM comentários: a documentação
+  // costuma citar justamente a string proibida para explicar por que ela saiu.
+  // (Ver o corolário 2 em .wiki/pages/concepts/regression-test-assert-the-predicate.md.)
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
   // MV.1 — a visão Mês tem arraste entre dias por Pointer Events, com hit-test
   // por `data-month-day` e helper que PRESERVA o horário (moveKeepingTime).
@@ -2742,8 +2747,18 @@ async function main() {
       agendaPageSrc.includes("function canPromoteGoogleEvent") &&
       // a lista da Semana usa a MESMA regra (não uma cópia do teste de "Ocupado")
       agendaPageSrc.includes("canPromote={canPromoteGoogleEvent(item.event)}") &&
-      // dia inteiro nunca promove (duração encaixaria em 8h) — invariante da Fase B
-      /return !event\.allDay && event\.title !== "Ocupado"/.test(agendaPageSrc) &&
+      // dia inteiro nunca promove (duração encaixaria em 8h) — invariante da Fase B;
+      // e "é particular?" decide por `isPrivate`, o booleano vindo do mapper
+      /return !event\.allDay && !event\.isPrivate/.test(agendaPageSrc) &&
+      // ⚠️ REGRESSÃO: o guard NÃO pode voltar a comparar o rótulo. "Ocupado" é
+      // copy pt-BR — renomeá-lo faria evento particular virar promovível e o
+      // parseEventSignals sugerir o rótulo como nome do paciente (queimando uma
+      // vaga vitalícia de quota). Negativa lê o código SEM comentários, que
+      // citam o rótulo justamente para explicar por que ele não serve de guard.
+      !/["']Ocupado["']/.test(stripComments(agendaPageSrc)) &&
+      !/["']Ocupado["']/.test(
+        stripComments(readFileSync(join(root, "src/lib/services/google/promote-signals.ts"), "utf8")),
+      ) &&
       // firewall: as grades NÃO arrastam evento do Google (só agendamento/bloqueio)
       !/onPointerDown=\{[^}]*GoogleEvent/.test(dayGridSrc),
   );
@@ -2811,8 +2826,7 @@ async function main() {
   // ⚠️ Compara sobre o CÓDIGO sem comentários: os próprios comentários dessas
   // rotas citam a mensagem antiga ("Conflito com agendamento") para explicar o
   // que saiu — sem o strip, o check falharia por causa da documentação.
-  const stripComments = (src: string) =>
-    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  // (`stripComments` é declarado junto dos MV.* acima — mesmo motivo.)
   const apptPostCode = stripComments(apptPostSrc);
   const apptPutCode = stripComments(apptPutSrc);
   const convertCode = stripComments(convertSrcRt);
@@ -2857,8 +2871,41 @@ async function main() {
       agendaPageSrc.includes("RetroactiveBadge"),
   );
 
+  // RT.6 — retroativo NASCE classificado. Sem isso ele ficaria PENDING para
+  // sempre (o cron pula retroativo) e cada registro de backfill inflaria o
+  // denominador da taxa de faltas — que é o produto. O inverso também importa:
+  // agendamento FUTURO tem de ignorar qualquer status enviado e nascer PENDING,
+  // senão dá para criar um "Confirmado" que nunca passou por confirmação.
+  const rtRetroStatus = await prisma.appointment.create({
+    data: {
+      patientId: rtPatient.id,
+      userId: testUser.id,
+      dateTime: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      durationMinutes: 30,
+      retroactive: true,
+      status: "CONFIRMED",
+    },
+  });
+  const apptPostCodeRt = stripComments(apptPostSrc);
+  check(
+    "RT.6 retroativo nasce classificado; futuro ignora status e nasce PENDING",
+    10,
+    rtRetroStatus.status === "CONFIRMED" &&
+      // a rota só honra o status quando `retroactive` é true
+      /retroactive && status/.test(apptPostCodeRt) &&
+      // o schema de criação passou a aceitar o campo
+      /status:\s*z\.enum/.test(
+        readFileSync(join(root, "src/lib/validations/appointment.ts"), "utf8"),
+      ) &&
+      // e a UI mostra o Select ao criar no passado (não só ao editar)
+      /\{\(selectedAppointment \|\| isPastSchedule\) && \(/.test(agendaPageSrc) &&
+      // "Pendente" fora das opções de criação retroativa — é o estado que a
+      // automação nunca resolve nesses registros
+      /!selectedAppointment && isPastSchedule[\s\S]{0,200}s\.value !== "PENDING"/.test(agendaPageSrc),
+  );
+
   await prisma.appointment.deleteMany({
-    where: { id: { in: [rtPast.id, rtNormal.id, ov1.id, ov2.id] } },
+    where: { id: { in: [rtPast.id, rtNormal.id, ov1.id, ov2.id, rtRetroStatus.id] } },
   });
 
   // ====================================================================

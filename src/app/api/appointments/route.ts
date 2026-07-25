@@ -131,7 +131,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
       return badRequestResponse(validation.error.issues[0].message)
     }
 
-    const { patientId, dateTime, durationMinutes, notes } = validation.data
+    const { patientId, dateTime, durationMinutes, notes, status } = validation.data
     const duration = durationMinutes ?? 30
 
     // Agendar no PASSADO é permitido (registro de organização, decisão do dono
@@ -140,6 +140,14 @@ export const POST = auditWrap(async (request: NextRequest) => {
     // O flag é decidido AQUI, no servidor — o cliente não manda esse campo.
     const appointmentDate = new Date(dateTime)
     const retroactive = isRetroactive(appointmentDate)
+
+    // Status na CRIAÇÃO só faz sentido no retroativo: o usuário está lançando
+    // um atendimento que já aconteceu e informa o desfecho (Confirmado/Faltou/
+    // Cancelado). Sem isso o registro nasceria PENDING e ficaria assim para
+    // sempre — o cron pula retroativo —, inflando o denominador da taxa de
+    // faltas. Num agendamento FUTURO ignoramos qualquer status enviado: ele tem
+    // de nascer PENDING e percorrer o fluxo de confirmação.
+    const initialStatus = retroactive && status ? (status as AppointmentStatus) : undefined
 
     // Verify patient belongs to user
     const patient = await prisma.patient.findFirst({
@@ -164,6 +172,7 @@ export const POST = auditWrap(async (request: NextRequest) => {
         dateTime: new Date(dateTime),
         durationMinutes: duration,
         retroactive,
+        ...(initialStatus ? { status: initialStatus } : {}),
         notes,
       },
       include: {

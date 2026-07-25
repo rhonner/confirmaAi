@@ -113,6 +113,14 @@ export type GcalEventDTO = {
   allDay: boolean;
   /** Link para abrir o evento no Google Calendar (read-only na nossa UI). */
   htmlLink: string | null;
+  /**
+   * Evento com `visibility` private/confidential — o `title` vem REDIGIDO
+   * ("Ocupado"). Consumidores que precisam saber "isso é um placeholder
+   * particular?" DEVEM ler este booleano, **nunca** comparar o título: o rótulo
+   * é copy pt-BR e pode ser reescrito a qualquer momento (ver agente
+   * `ux-writer`). Ver `canPromoteGoogleEvent` e `promote-signals.ts`.
+   */
+  isPrivate: boolean;
 };
 
 export type GcalFetchResult =
@@ -194,6 +202,7 @@ export function mapGoogleEvent(raw: RawGoogleEvent): GcalEventDTO | null {
     end,
     allDay,
     htmlLink: raw.htmlLink ?? null,
+    isPrivate,
   };
 }
 

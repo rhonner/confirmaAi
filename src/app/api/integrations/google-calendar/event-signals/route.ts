@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       title: event.title,
       description: event.description,
       attendeeEmails: event.attendeeEmails,
+      isPrivate: event.isPrivate,
     });
 
     return NextResponse.json<ApiResponse<SignalsResponse>>({

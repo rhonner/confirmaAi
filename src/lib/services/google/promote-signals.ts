@@ -38,6 +38,11 @@ export function parseEventSignals(input: {
   title?: string | null;
   description?: string | null;
   attendeeEmails?: string[];
+  /**
+   * Evento particular → título redigido; não extrair nome dele. Use SEMPRE este
+   * booleano em vez de comparar o rótulo ("Ocupado"), que é copy e muda.
+   */
+  isPrivate?: boolean;
 }): EventSignals {
   const title = (input.title ?? "").trim();
   const text = [title, input.description ?? ""].join("\n");
@@ -49,8 +54,8 @@ export function parseEventSignals(input: {
   const email = input.attendeeEmails?.find((e) => EMAIL_LIKE.test(e)) ?? text.match(EMAIL_LIKE)?.[0];
   if (email) signals.suggestedEmail = email.toLowerCase();
 
-  // Eventos privados chegam como "Ocupado" (título redigido) — não sugerir nome.
-  if (title && title !== "Ocupado") {
+  // Eventos privados chegam com o título redigido — não sugerir nome a partir dele.
+  if (title && !input.isPrivate) {
     const name = title
       .replace(PHONE_LIKE, " ")
       .replace(/\s{2,}/g, " ")
