@@ -2,11 +2,13 @@
 title: Firewall de eventos externos (tabela separada vs coluna source)
 type: concept
 created: 2026-07-05
-updated: 2026-07-24
+updated: 2026-07-25
 tags: [pattern, data-model, multi-tenancy, integrations, scheduler]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
   - raw/sessions/2026-07-24-2050-agenda-retroactive-and-month-click.md
+  - raw/sessions/2026-07-25-0028-isprivate-and-retroactive-status.md
+  - raw/sessions/2026-07-25-1100-prod-walkthrough-812289e.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
   - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
@@ -62,9 +64,28 @@ Duas extensões do mesmo padrão, no dia em que a agenda virou grade arrastável
 
 - **`TimeBlock` é tabela separada pela mesma razão.** Horário bloqueado (almoço, reunião, férias) poderia ter sido "um `Appointment` sem `patientId`" — e aí toda query ampla do scheduler precisaria lembrar de `patientId != null`. Tabela própria = o scheduler **fisicamente não vê** bloqueios. O firewall não é sobre "dado externo"; é sobre **qualquer linha que não deve alimentar jobs com efeito colateral**.
 - **Não-arrastável não quer dizer não-clicável.** Enquanto o evento do Google foi tratado como *inerte* na UI (um `<div>` mudo), o feedback do dono foi direto: "clico neles e nada acontece". O firewall restringe **mutação** (só `Appointment`/`TimeBlock` se movem; o evento externo nunca é arrastado nem editado in-place), não **interação**. O evento passou a ser `<button>` com duas saídas: **promovível** → diálogo de promoção (a ponte manual de sempre); **não promovível** → abre no Google (`window.open`, `noopener`).
-- **A regra de "pode promover?" mora numa função só** (`canPromoteGoogleEvent`), usada pelas três visões. Dia inteiro não promove (a duração viraria mentira silenciosa) e "Ocupado" não promove (placeholder sem nada para pré-preencher). Grades apenas **reportam o id**; a política vive no pai — é o que impede a regra de divergir por visão.
+- **A regra de "pode promover?" mora numa função só** (`canPromoteGoogleEvent`), usada pelas três visões. Dia inteiro não promove (a duração viraria mentira silenciosa) e evento particular não promove (placeholder sem nada para pré-preencher). Grades apenas **reportam o id**; a política vive no pai — é o que impede a regra de divergir por visão.
 
 Detalhe operacional em `.context/features/agenda-day-grid.md` § "Clique num evento do Google" e `.context/features/time-blocks.md`.
+
+## Correção (2026-07-25) — a política lia **copy**, não dado
+
+A primeira versão de `canPromoteGoogleEvent` reconhecia "evento particular" comparando o
+**título** com `"Ocupado"` — que é a copy pt-BR que o próprio mapper escreve ao redigir eventos
+`visibility: private`. Renomear esse rótulo (trabalho legítimo de redação) faria particular virar
+**promovível** e o `parseEventSignals` sugerir o rótulo como **nome do paciente** → paciente
+"Ocupado" → vaga vitalícia queimada. Fix: o `GcalEventDTO` passou a **exportar** `isPrivate:
+boolean` (o mapper já o calculava a partir de `visibility` e descartava) e a política lê o
+booleano. Regressão travada em `MV.4` (asserção negativa sobre o fonte sem comentários).
+
+A lição vale além do firewall: **quem redige tem de exportar o motivo da redação** →
+[[redacted-label-is-copy-not-contract]].
+
+**Validado em produção (2026-07-25)**: evento particular e de dia inteiro abrem no Google sem
+nenhum diálogo, nas duas grades; evento normal continua abrindo a promoção; sem `htmlLink` sai um
+`toast.info` (nunca silêncio). E os `gcal.pushed` da auditoria provaram que o espelho é apagado
+no Google de verdade — algo que o overlay não mostra, porque evento com tag de origem-app é
+dropado ([[audit-trail-proves-side-effect-absence]]).
 
 ## Quando aplicar / quando NÃO
 

@@ -103,6 +103,32 @@
   confirmação por WhatsApp nem falta automática"* (também ao **editar**, porque mover para
   o passado tira da automação).
 
+### Validação manual no browser — retroativo em PRODUÇÃO (2026-07-25)
+
+Chrome MCP, `clinicaorganizada.com`, conta `clinicazeroum`, paciente **já existente**
+("Teste Smoke" — regra: não criar paciente em prod, cada `Patient` queima uma vaga vitalícia).
+
+- **Nasce classificado**: no diálogo de **criação** com data de ontem (24/07 10:30) apareceu o
+  aviso âmbar + o `Select` de Status com `CONFIRMED` default e opções **Confirmado / Cancelado /
+  Faltou** — **"Pendente" não existe** na lista. Após salvar, `GET /api/appointments` devolveu
+  `status: "CONFIRMED"`, `retroactive: true`, `googleEventId` setado (espelho no Google), e a UI
+  mostrou chip verde `10:30 ⟲ Teste Smoke` no Mês e card com badge **Confirmado** no Dia.
+- **Contraprova (futuro)**: 25/07 15:00 → **sem** aviso âmbar e **sem** Select de status;
+  nasceu `PENDING` (badge âmbar "Pendente").
+- **Toast só na transição** (arraste na grade Dia):
+  1. 15:00 → 09:00 (passado): toast **"Marcado como Retroativo — O horário já passou, então
+     isto vira só registro: sem WhatsApp e fora do controle de faltas."** + selo ⟲ no card;
+     servidor gravou `retroactive: true`.
+  2. 09:00 → 08:00 (ainda passado): **só** "Agendamento atualizado com sucesso" — o aviso
+     **não** repetiu.
+  3. 08:00 → 15:45 (futuro): selo ⟲ **desapareceu** e `retroactive: false` — flag reversível.
+  - ⚠️ **Armadilha de teste**: o sonner **pausa** os timers quando o mouse está sobre a pilha de
+    toasts. Terminar o arraste dentro da área do toast (top-center) mantém toasts antigos na
+    tela e esconde o novo — parece "o toast não disparou". Soltar o card fora dessa faixa (ou
+    dar `hover` longe dela antes do screenshot).
+- Ambos os agendamentos de teste foram **excluídos** ao fim (`Excluir` no diálogo → AlertDialog
+  do shadcn, **não** `confirm()` nativo; 24/07 e 25/07 voltaram a ficar vazios).
+
 ## Endpoints
 
 | Método | Path                            | Body / Query                                                                                  | Resposta                                                          |

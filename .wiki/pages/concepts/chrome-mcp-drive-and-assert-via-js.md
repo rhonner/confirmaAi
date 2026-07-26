@@ -2,16 +2,19 @@
 title: Dirigir e asseverar a app via JS no Chrome MCP
 type: concept
 created: 2026-07-10
-updated: 2026-07-24
+updated: 2026-07-25
 tags: [chrome-mcp, testing, react-hook-form, fetch, mobile, gotcha]
 sources:
   - raw/sessions/2026-07-10-2200-agenda-month-view.md
   - raw/sessions/2026-07-19-confirmation-link-onboarding-mobile.md
   - raw/sessions/2026-07-24-1526-agenda-drag-timeblocks.md
+  - raw/sessions/2026-07-25-1100-prod-walkthrough-812289e.md
 related:
   - pages/entities/radix-popover-and-dialog.md
   - pages/concepts/rhf-radix-gotcha.md
   - pages/concepts/horizontal-scroll-from-offscreen-elements.md
+  - pages/concepts/toast-timers-pause-on-hover.md
+  - pages/concepts/audit-trail-proves-side-effect-absence.md
 status: stable
 ---
 
@@ -95,20 +98,33 @@ Quando o caminho a validar depende de um dado que só existe numa conta de terce
 
 ```js
 // evento de dia inteiro + "Ocupado" não existiam na agenda real → fabricados no fetch
+window.__opened = [];
 const orig = window.fetch;
-window.fetch = async (url, opts) => {
-  const res = await orig(url, opts);
-  if (!String(url).includes('/api/integrations/google-calendar/events')) return res;
+window.fetch = async (input, opts) => {
+  const url = typeof input === 'string' ? input : input?.url || '';
+  const res = await orig(input, opts);
+  if (!url.includes('/api/integrations/google-calendar/events')) return res;
   const body = await res.clone().json();
-  body.data.push(fakeAllDayEvent, fakeBusyEvent);
-  return new Response(JSON.stringify(body), { status: 200, headers: res.headers });
+  body.data.events = [...(body.data.events || []), fakeAllDay, fakePrivate, fakeNoLink];
+  return new Response(JSON.stringify(body), {
+    status: res.status, headers: { 'content-type': 'application/json' },
+  });
 };
-window.open = (...a) => { window.__opened = a; };   // stub do efeito colateral
+window.open = (...a) => { window.__opened.push(a); return null; };   // stub + histórico
 ```
 
 Assim se provou o ramo "não promovível → abre no Google": clique nos dois chips chamou `window.open("<htmlLink>", "_blank", "noopener,noreferrer")` e **nenhum diálogo** abriu — sem escrever nada na agenda do dono (2026-07-24, [[external-event-firewall]]).
 
 Vale a distinção: **injetar leitura** é seguro e reversível com um reload; **criar o dado na fonte externa** é mutação de terceiro, custa limpeza e pode disparar espelhamento de volta. Prefira sempre o primeiro para caminhos de exceção.
+
+**Refinamentos de 2026-07-25 (a mesma técnica rodada contra PRODUÇÃO)**
+
+- **A resposta é `{ data: { events: [...] } }`** — envelope `ApiResponse<T>`; empurrar em `body.data` (como dizia a versão anterior deste trecho) não funciona. Respeite o envelope real da rota.
+- **Acumule em array** (`__opened.push`) em vez de sobrescrever: dá para asseverar "o 2º clique **não** abriu nada" comparando o `length`, que é como se provou o caminho sem `htmlLink` (deve sair `toast.info`, não `window.open`).
+- **Guardar `input?.url`**: a app chama `fetch` com string, mas um `Request` passa batido num `String(input)` e a condição falha silenciosamente.
+- **Injetar num dia/faixa que a UI ainda NÃO buscou** (ex.: amanhã, e depois clicar "Próximo"): o React Query serve cache para chave já visitada e o patch nunca é exercido. Mudar de faixa garante query nova.
+- **Vale contra o bundle de produção**, e aí ganha significado extra: prova a **política deployada** (não a do dev) sem tocar em dado real. O que a injeção **não** cobre é o mapper do servidor — declare esse resíduo explicitamente e cubra com unit.
+- **Cursor de repouso importa**: se a asserção é um toast, onde o clique/arraste terminou pode congelar a pilha → [[toast-timers-pause-on-hover]].
 
 ## Higiene
 

@@ -345,3 +345,70 @@ Manutenção pós-ingestão, autorizada pelo dono ("pode fazer tudo que achar v�
   2 estavam na memória do agente como caminho em forma de wikilink (`[[time-blocks]]`,
   `[[.context/features/auth.md]]`) → viraram caminho em código. ⚠️ Nota de método: um checker que
   não aceita a forma de **path** (`[[../concepts/x]]`) reporta ~45 falsos-positivos.
+
+## [2026-07-26 12:55] ingest | Walk-through do `812289e` em produção + os 4 fixes da agenda — 3 concepts novas, 4 páginas atualizadas, 2 raw
+
+**Fontes**: `raw/sessions/2026-07-25-0028-isprivate-and-retroactive-status.md` (era `-PENDING`,
+corpo reconstruído do commit + `.context/` + memória) e
+`raw/sessions/2026-07-25-1100-prod-walkthrough-812289e.md` (nova — este walk-through).
+
+**Páginas novas (3)**
+
+- `concepts/redacted-label-is-copy-not-contract.md` — rótulo redigido ("Ocupado") é copy, não
+  contrato. Smell nomeado: **derivar e descartar** (o mapper já sabia por `visibility` e jogou o
+  predicado fora). Assimetria de raio de explosão: mudança de copy → paciente "Ocupado" criado →
+  vaga vitalícia queimada.
+- `concepts/toast-timers-pause-on-hover.md` — sonner pausa/expande no hover; o cursor **fica onde
+  a ação terminou**, então a posição de repouso do ponteiro é parte do setup do teste. Asseverar
+  `[data-sonner-toast]` no DOM em vez de pixel.
+- `concepts/audit-trail-proves-side-effect-absence.md` — auditoria como prova de **ausência**
+  (nenhum WhatsApp) e de **mutação de terceiro** (`gcal.pushed` só no `ok`). Exige logar o caminho
+  de falha, senão a ausência é ambígua.
+
+**Atualizadas (4)**
+
+- `concepts/external-event-firewall.md` — seção de correção 2026-07-25 (política lia copy) +
+  validação em produção; `updated` 07-24 → 07-25.
+- `concepts/chrome-mcp-drive-and-assert-via-js.md` — §6 refinada e com **correção de fato**: o
+  snippet dizia `body.data.push(...)`, mas o envelope real é `{ data: { events: [...] } }`
+  (`ApiResponse<T>`); + acumular `__opened`, `input?.url`, injetar em faixa não-cacheada (React
+  Query serve cache), e o ganho de rodar contra o bundle de **produção**.
+- `concepts/claude-chrome-per-profile-extension.md` — a premissa "existe um perfil WeCalc
+  conectado" caiu: só pessoal + work. Enumerar contas por `u/N` (redirect p/ `u/0` = fim da
+  lista); sessão do app ≠ conta Google do perfil.
+- `synthesis/google-calendar-integration-state.md` — **corrige drift**: as seções diziam Fase B/C
+  "implementadas, não commitadas"; hoje as três fases estão **em produção** (evidência:
+  `status CONNECTED` + `mirrorActive`, diálogo de promoção abrindo nas grades de prod,
+  `googleEventId` no create e `gcal.pushed` no delete). O tier segue `hidden:true`.
+
+**Contradição resolvida (relevante)**: eu havia relatado ao dono que o caso "evento privado real"
+estava sem cobertura. A raw de 2026-07-10 mostra que o overlay **já foi validado com um evento
+privado real** (título redigido para "Ocupado") e um de dia inteiro. Logo a corrente inteira está
+coberta (Google real 07-10 → mapper em unit → política no bundle de prod 07-25); o resíduo é só
+"não num único clique". Registrado nas duas páginas e na synthesis.
+
+**Não escrito na wiki de propósito**: o passo-a-passo do walk-through (mora em
+`.context/features/appointments.md` e `agenda-day-grid.md`, atualizados fora desta operação com
+aviso ao dono) e as regras de segurança operacionais de teste em prod (memória do projeto).
+
+## [2026-07-26 13:20] meta | graphify update pós-ingestão — 1961→2042 nós, 172 comunidades renomeadas por transferência
+
+84 arquivos mudados desde a última indexação (49 de código + 35 docs; cache semântico 0/35 porque o prompt de
+extração mudou). AST 341 nós/1295 arestas + 2 subagentes semânticos (144+46 nós, 420 arestas, 6 hiperarestas,
+~400k tokens). Diagnóstico de integridade limpo: 0 arestas dangling/missing/colapsadas.
+
+- **Nós 1961 → 2042** (+225 novos, −144 substituídos pelo replace-on-re-extract).
+- ⚠️ **Arestas 4505 → 4189** (−316: 516 novas × 832 removidas). Não é corrupção — é o replace: a re-extração
+  destes 35 docs em **2 chunks grandes** rendeu menos arestas do que a extração anterior dos mesmos arquivos.
+  Se a densidade importar, re-extrair os docs em chunks menores (mais subagentes) recupera.
+- **Armadilha dos nomes de comunidade evitada**: re-clusterizar **renumera** as comunidades, e
+  `.graphify_labels.json` é indexado por número — nomear na mão de novo perderia os 172 nomes curados. Solução:
+  transferir por **sobreposição de nós** (nova comunidade herda o nome da antiga que domina seus nós, corte em
+  50%) → **151 nomes preservados** automaticamente, só **21** nomeados à mão (as comunidades genuinamente novas
+  ou remisturadas). Vale como procedimento padrão para todo `update` daqui pra frente.
+- **Sem nó semântico stale nesta rodada**: 0 nós apontando para arquivo inexistente, e o
+  `findConflictingAppointment` (podado à mão em 24/jul) não voltou — o replace-on-re-extract cobriu o que a
+  poda manual tinha feito. Resíduo aceitável: `Appointment conflict detection (overlap window)` continua como
+  nó, mas vem de `.ralph/specs/backend-improvements.md`, um spec histórico que ainda existe.
+- Skipados: `.env.example` (sensível, correto) e `servicos-clinica-organizada.xlsx` (falta `graphifyy[office]`);
+  4 `migration.sql` não renderam nós (falta `graphifyy[sql]`).

@@ -2,7 +2,7 @@
 title: Estado da integração Google Calendar (2026-07)
 type: synthesis
 created: 2026-07-05
-updated: 2026-07-24
+updated: 2026-07-25
 tags: [google-calendar, integrations, roadmap, premium, oauth]
 sources:
   - raw/sessions/2026-07-05-google-calendar-integration-fase-a.md
@@ -10,9 +10,13 @@ sources:
   - raw/sessions/2026-07-10-google-calendar-e2e-verify-prod.md
   - raw/sessions/2026-07-10-1447-gcal-phase-b-promotion.md
   - raw/sessions/2026-07-10-1900-gcal-phase-c-mirror.md
+  - raw/sessions/2026-07-25-0028-isprivate-and-retroactive-status.md
+  - raw/sessions/2026-07-25-1100-prod-walkthrough-812289e.md
   - .context/features/google-calendar.md
 related:
   - pages/concepts/external-event-firewall.md
+  - pages/concepts/redacted-label-is-copy-not-contract.md
+  - pages/concepts/audit-trail-proves-side-effect-absence.md
   - pages/concepts/soft-delete-skips-cascade-cleanup.md
   - pages/concepts/oauth-scope-check-before-persist.md
   - pages/concepts/oauth-state-cookie-ttl-expiry.md
@@ -52,6 +56,33 @@ Entrega faseada, cada fase independentemente entregável:
 - **Config de prod pronta**: Vercel 4/4 env vars + redirect de prod no cliente OAuth; app OAuth **renomeado "ConfirmaAí" → "Clínica Organizada"** (consistência marca↔domínio); política de privacidade ganhou seção "Integração com o Google Calendar" (Uso Limitado).
 - **Aprendizado-chave do OAuth Google** (mantido): revogar um refresh token derruba o grant inteiro do par conta+app — na reconexão, só revogar o token antigo se a conta MUDOU.
 - **Bloqueio restante para GA (dono):** (1) **verificação OAuth** do Google — maior item ([[google-oauth-verification-sensitive-scope]]); a prep está feita (branding/URLs/nome/política); falta preencher o controlador na política (nome + **CPF** — CNPJ não é exigido — + DPO) e submeter; (2) `plans.ts hidden:false` só após a verificação + E2E em prod.
+
+## Atualização (2026-07-25) — A, B e C **rodando em produção** (tier ainda dark)
+
+O walk-through do commit `812289e` em `clinicaorganizada.com` (conta `clinicazeroum`) mostrou as
+três fases **vivas em produção**, não só implementadas local:
+
+- `/api/integrations/google-calendar/status` → `CONNECTED` em `wcwecalc@gmail.com`,
+  `mirrorActive: true`, `needsWriteReconsent: false` → **Fase A + escopo de escrita da Fase C**
+  ativos em prod.
+- **Fase B em prod**: clicar num evento real do overlay abriu o diálogo "Promover evento a
+  agendamento" pré-preenchido (data/hora/duração), nas grades **Dia** e **Mês**.
+- **Fase C em prod**: agendamento criado nasceu com `googleEventId` setado; ao excluir, a
+  auditoria registrou `gcal.pushed` (que só é escrito quando o delete no Google **retorna ok**)
+  → o espelho é criado e apagado de verdade. Ver [[audit-trail-proves-side-effect-absence]].
+- **Política de promoção corrigida** (evento particular decide por `isPrivate`, não pelo rótulo
+  "Ocupado") validada contra o bundle de produção → [[redacted-label-is-copy-not-contract]].
+
+Ou seja: o "não commitadas" das seções abaixo é **histórico** — o backend inteiro está em prod.
+O que continua valendo do bloqueio de GA: **verificação OAuth do escopo de escrita** e
+`plans.ts hidden:false`.
+
+Resíduo de teste, pequeno e explícito: não houve um clique em evento **marcado como Privado na
+Google Agenda real** (a conta `wcwecalc` não está logada em nenhum Chrome local — ver
+[[claude-chrome-per-profile-extension]]). Mas cada elo da corrente está coberto: o Google
+devolvendo `visibility: private` foi exercido com dado real em **2026-07-10** (o overlay mostrou
+o evento do dono redigido como "Ocupado"), o mapper está pinado em unit
+(`tests/unit/gcal-calendar.test.ts`) e a política do cliente foi validada no bundle de prod.
 
 ## Fase B — promoção manual (2026-07-10, implementada + validada E2E, não commitada)
 

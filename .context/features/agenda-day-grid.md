@@ -225,6 +225,32 @@ de `sm` não há chips, logo não há arraste.
 
 Gate: tsc · vitest **395** · build · test:sprints **161/161** (MV.1–MV.4).
 
+### Validação em PRODUÇÃO dos fixes de 2026-07-25 (commit `812289e`)
+
+Chrome MCP, `clinicaorganizada.com`, conta `clinicazeroum` (PREMIUM, Google Agenda
+**CONNECTED** em `wcwecalc@gmail.com`, `mirrorActive: true`). Pré-voo: `/api/health` **200**
+e a API já devolvia o campo novo `isPrivate` — prova de que o deploy do fix estava no ar.
+
+1. **Contraprova (evento promovível), dados REAIS**: os 3 eventos do Google de 11/07
+   (`isPrivate: false`, com hora) → clique no chip do **Mês** e no bloco do **Dia** abriu o
+   diálogo "Promover evento a agendamento" pré-preenchido (11/07/2026, 17:30, 1 hora, aviso
+   âmbar de retroativo + Status "Confirmado"). O guard **não** ficou restritivo demais.
+2. **Caminhos não promovíveis** — a agenda real não tem evento particular nem de dia inteiro,
+   então foram injetados 4 eventos na resposta do `fetch` (patch só no cliente, **sem tocar
+   na agenda do dono**) e `window.open` foi stubado. Contra o **bundle de produção**:
+   - `isPrivate: true` com título "Ocupado" → `window.open(htmlLink, "_blank",
+     "noopener,noreferrer")`, **nenhum diálogo** (Dia **e** Mês).
+   - `allDay: true` (strip acima da grade) → mesma coisa.
+   - `isPrivate: true` **sem `htmlLink`** → `toast.info` "Evento particular da sua Google
+     Agenda. Abra lá para ver os detalhes." — sem silêncio e sem `window.open` (fix #4).
+   - evento normal → diálogo de promoção (contraprova dentro da mesma injeção).
+3. **Resíduo conhecido (pequeno)**: não foi exercido um evento **marcado como Privado na
+   Google Agenda de verdade** — a conta `wcwecalc` não está logada em nenhum Chrome local e
+   criar o evento exigiria esse login. O trecho não coberto é só "o Google devolve
+   `visibility: private`"; o mapper que traduz isso está pinado em
+   `tests/unit/gcal-calendar.test.ts` (`private`/`confidential` → `isPrivate: true`,
+   `default` → `false`) e a política do cliente foi validada no bundle de prod acima.
+
 ## Como estender
 
 - **Grade também na Semana**: generalizar `DayGrid` para N colunas (dias) — bem mais esforço;
